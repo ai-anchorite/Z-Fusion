@@ -33,3 +33,4 @@ MIT License - See [LICENSE](LICENSE) file
 - Built with [Gradio](https://gradio.app/) and [ComfyKit](https://puke3615.github.io/ComfyKit/)
 - Powered by [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 - Upscaling via [ComfyUI-SeedVR2_VideoUpscaler](https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler)
+- Camera prompts reference by [CameraPromptsGenerator](https://github.com/demon4932/CameraPromptsGenerator) (MIT)

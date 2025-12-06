@@ -39,6 +39,14 @@ module.exports = {
         message: "git pull"
       }
     },
+    // Update CameraPromptsGenerator
+    {
+      method: "shell.run",
+      params: {
+        path: "app/CameraPromptsGenerator",
+        message: "git pull"
+      }
+    },       
     // Reinstall ComfyUI requirements (in case of changes)
     {
       method: "shell.run",

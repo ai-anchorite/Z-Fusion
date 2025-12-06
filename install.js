@@ -36,6 +36,15 @@ module.exports = {
         ],
       }
     },
+    // Clone Camera Prompts Project
+    {
+      method: "shell.run",
+      params: {
+        message: [
+          "git clone https://github.com/demon4932/CameraPromptsGenerator.git app/CameraPromptsGenerator",
+        ],
+      }
+    },    
     // Install ComfyUI requirements
     {
       method: "shell.run",
