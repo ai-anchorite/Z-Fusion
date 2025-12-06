@@ -2,17 +2,16 @@
 
 A streamlined Gradio interface for fast image generation using the Z-Image 6B turbo model, powered by ComfyUI backend.
 
-![Z-Image Fusion](../icon.png)
+![Z-Image Fusion](./icon.png)
 
 ## Features
 
-- ⚡ **Z-Image Turbo** - Fast 9-step generation with the Z-Image 6B distilled model
-- 🖼️ **Text → Image & Image → Image** - Full generation modes with aspect ratio control
-- 🔍 **SeedVR2 4K Upscaler** - High-quality image upscaling with before/after comparison
+- ⚡ **Z-Image Turbo** - Fast low-step image generation with the Z-Image 6B distilled model
+- 🖼️ **Text → Image & Image → Image** - with full comfyui node parameters exposed
+- 🔍 **SeedVR2 4K Upscaler** - High-quality image upscaling
 - 🤖 **LLM Prompt Assistant** - AI-powered prompt enhancement and image description
 - 🎨 **LoRA Support** - Apply style/character LoRAs with adjustable strength
-- 💾 **Flexible Saving** - Manual save or auto-save to organized output folders
-- ⚙️ **GGUF Mode** - Quantized models for lower VRAM usage
+- ⚙️ **GGUF friendly** - Quantized models for lower VRAM usage
 
 ## License
 
