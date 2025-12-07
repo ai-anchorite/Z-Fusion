@@ -11,7 +11,7 @@ import gradio as gr
 import torch
 
 # -----------------------------------------------------------------------------
-# PART 1: Backend Engine (The Muscle)
+# PART 1: Backend Engine
 # -----------------------------------------------------------------------------
 
 try:
@@ -20,6 +20,23 @@ try:
 except ModuleNotFoundError:
     flash_attn_varlen_func = None 
     FLASH_VER = None
+
+
+def get_best_device():
+    if torch.cuda.is_available():
+        return "cuda:0"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def safe_empty_cache():
+    """Safely clear GPU cache if available, no-op on CPU-only systems."""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        pass
+    gc.collect()
 
 
 def download_model_snapshot(repo_id: str) -> str:
@@ -54,8 +71,9 @@ class PromptOutput:
     message: str
 
 class QwenPromptExpander:
-    def __init__(self, model_path, device=0):
-        self.device = device
+    def __init__(self, model_path, device=None):
+        # Auto-detect best device if not specified
+        self.device = device if device is not None else get_best_device()
         self.model_path = model_path
         
         # Heuristic to determine if model is Vision-Language capable
@@ -161,8 +179,7 @@ class QwenPromptExpander:
             return PromptOutput(False, prompt, str(e))
         finally:
             self.model = self.model.to("cpu")
-            torch.cuda.empty_cache()
-            gc.collect()
+            safe_empty_cache()
 
     def _run_vision(self, prompt, system_prompt, image, seed, temperature=0.7, max_new_tokens=512):
         if not self.is_vl:
@@ -207,11 +224,10 @@ class QwenPromptExpander:
             return PromptOutput(False, prompt, str(e))
         finally:
             self.model = self.model.to("cpu")
-            torch.cuda.empty_cache()
-            gc.collect()
+            safe_empty_cache()
 
 # -----------------------------------------------------------------------------
-# PART 2: UI Assistant Logic (The Brain)
+# PART 2: UI Assistant Logic
 # -----------------------------------------------------------------------------
 
 DEFAULT_MODEL_DEFAULTS = [
@@ -337,8 +353,7 @@ class PromptAssistant:
         if self.active_engine:
             del self.active_engine
             self.active_engine = None
-            gc.collect()
-            torch.cuda.empty_cache()
+            safe_empty_cache()
             return "✅ Memory Cleared"
         return "ℹ️ Nothing to unload"
 
@@ -357,7 +372,7 @@ class PromptAssistant:
         # Load the new model
         yield f"⏳ Loading {os.path.basename(target_model)}... (Please Wait)"
         try:
-            self.active_engine = QwenPromptExpander(model_path=target_model, device=0)
+            self.active_engine = QwenPromptExpander(model_path=target_model)
             yield f"✅ Model loaded: {os.path.basename(target_model)}"
         except Exception as e:
             raise RuntimeError(f"Load Failed: {e}")
