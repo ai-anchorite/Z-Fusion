@@ -20,8 +20,9 @@ import webbrowser
 from comfykit import ComfyKit
 from huggingface_hub import hf_hub_download
 
-# Prompt Assistant module
+# Custom modules
 from modules.prompt_assistant import PromptAssistant
+from modules.system_monitor import SystemMonitor
 
 # Configure logging
 logging.basicConfig(
@@ -455,7 +456,7 @@ async def unload_models() -> str:
                 json={"unload_models": True, "free_memory": True}
             )
             if response.status_code == 200:
-                return "✓ Models unloaded, VRAM freed"
+                return "✓ ComfyUI models unloaded, VRAM freed"
             return f"❌ Failed: {response.status_code}"
     except Exception as e:
         return f"❌ Error: {e}"
@@ -601,6 +602,50 @@ def create_interface() -> gr.Blocks:
         margin-bottom: 12px;
         font-weight: 500;
     }
+
+    /* Enhanced Monitor Textboxes */
+    .monitor-box {
+        min-width: 0 !important;
+    }
+    .monitor-box textarea {
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+        font-size: 0.85em !important;
+        line-height: 1.6 !important;
+        padding: 12px !important;
+        border-radius: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%) !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+        resize: none !important;
+        font-weight: 500 !important;
+    }
+    .gpu-monitor textarea {
+        border-left: 3px solid #667eea !important;
+        background: linear-gradient(135deg, #667eea08 0%, #ffffff 100%) !important;
+    }
+    .cpu-monitor textarea {
+        border-left: 3px solid #f5576c !important;
+        background: linear-gradient(135deg, #f5576c08 0%, #ffffff 100%) !important;
+    }
+    .monitor-box textarea:focus {
+        outline: none !important;
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+    }
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+        .monitor-box textarea {
+            background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%) !important;
+            border-color: #4a5568 !important;
+            color: #e2e8f0 !important;
+        }
+        .gpu-monitor textarea {
+            background: linear-gradient(135deg, #667eea15 0%, #2d3748 100%) !important;
+        }
+        .cpu-monitor textarea {
+            background: linear-gradient(135deg, #f5576c15 0%, #2d3748 100%) !important;
+        }
+    }    
     """
     
     with gr.Blocks(title="Z-Image Turbo", css=css) as interface:
@@ -695,7 +740,7 @@ def create_interface() -> gr.Blocks:
                                 lora_strength = gr.Slider(label="Strength", value=1.0, minimum=0.0, maximum=2.0, step=0.05, scale=2)
                             with gr.Row():
                                 open_loras_btn = gr.Button("📂 Open LoRAs Folder", size="sm")
-                            gr.Markdown("*[🔗 Browse CivitAI LoRAs](https://civitai.com/models) — Filter by 'Z-Image' on the right sidebar*")
+                            gr.Markdown("*[🔗 Browse CivitAI LoRAs](https://civitai.com/models) — Filter by 'Z-Image' (top-right)*")
                         
                         # Model selection - auto-open if setup needed
                         with gr.Accordion("🔧 Models", open=show_setup_banner):
@@ -706,7 +751,7 @@ def create_interface() -> gr.Blocks:
                                 # Use smart defaults based on detected mode
                                 initial_diffusion = get_models_by_mode(DIFFUSION_DIR, default_gguf_mode, DEFAULT_DIFFUSION, DEFAULT_DIFFUSION_GGUF, ZIMAGE_FILTERS["diffusion"])
                                 initial_diffusion_default = DEFAULT_DIFFUSION_GGUF if default_gguf_mode else DEFAULT_DIFFUSION
-                                unet_name = gr.Dropdown(label="Diffusion", choices=initial_diffusion, value=get_default_model(initial_diffusion, initial_diffusion_default), scale=2)
+                                unet_name = gr.Dropdown(label="Diffusion Model", choices=initial_diffusion, value=get_default_model(initial_diffusion, initial_diffusion_default), scale=2)
                             with gr.Row():
                                 initial_te = get_models_by_mode(TEXT_ENCODERS_DIR, default_gguf_mode, DEFAULT_TEXT_ENCODER, DEFAULT_TEXT_ENCODER_GGUF, ZIMAGE_FILTERS["text_encoder"])
                                 initial_te_default = DEFAULT_TEXT_ENCODER_GGUF if default_gguf_mode else DEFAULT_TEXT_ENCODER
@@ -715,46 +760,68 @@ def create_interface() -> gr.Blocks:
                             
                             # Model Management - auto-open if setup needed
                             with gr.Accordion("📦 Model Management", open=show_setup_banner):
-                                gr.Markdown("**Open Folders**")
                                 with gr.Row():
-                                    open_diffusion_btn = gr.Button("📂 Diffusion", size="sm")
-                                    open_te_btn = gr.Button("📂 Text Encoders", size="sm")
-                                    open_vae_btn = gr.Button("📂 VAE", size="sm")
-                                
-                                gr.Markdown("**Download Starter Models** *(check terminal for progress)*")
-                                download_status = gr.Textbox(label="Status", interactive=False, show_label=False, lines=2)
-                                
-                                gr.Markdown("*Standard (bf16) — Full precision, ~20GB total*")
+                                    open_diffusion_btn = gr.Button("📂 diffusion_models", size="sm")
+                                    open_te_btn = gr.Button("📂 text_encoders", size="sm")
+                                    open_vae_btn = gr.Button("📂 vae", size="sm")
+ 
+                                download_status = gr.Textbox(label="Status", interactive=False, show_label=False, lines=2) 
+                                gr.Markdown("**=> Download Starter Models** *(check terminal for progress)*")
+                                gr.Markdown("---")
+                                gr.Markdown("*Standard (bf16) complete set — Full precision, ~20GB total*")
                                 with gr.Row():
                                     dl_all_standard_btn = gr.Button("⬇️ Download All (bf16)", variant="primary", size="sm")
+                                gr.Markdown("*Or download individually*")                                     
                                 with gr.Row():
                                     dl_diffusion_bf16_btn = gr.Button("⬇️ Diffusion", size="sm")
                                     dl_te_bf16_btn = gr.Button("⬇️ Text Encoder", size="sm")
                                     dl_vae_btn = gr.Button("⬇️ VAE", size="sm")
-                                
-                                gr.Markdown("*GGUF (Q4) — Low VRAM, ~7GB total*")
+                                gr.Markdown("---")
+
+                                gr.Markdown("*GGUF (Q4) complete set — Low VRAM, ~7GB total*")
                                 with gr.Row():
                                     dl_all_gguf_btn = gr.Button("⬇️ Download All (GGUF)", variant="primary", size="sm")
+                                gr.Markdown("*Or download individually*")                         
                                 with gr.Row():
                                     dl_diffusion_gguf_btn = gr.Button("⬇️ Diffusion Q4", size="sm")
                                     dl_te_gguf_btn = gr.Button("⬇️ Qwen3 TE Q4", size="sm")
                                     dl_vae_gguf_btn = gr.Button("⬇️ VAE", size="sm")
-                                
+                                gr.Markdown("---")
+
                                 gr.Markdown("*Advanced — Browse repos for other quants*")
                                 with gr.Row():
-                                    gr.Button("🔗 Z-Image GGUF Repo", size="sm", link="https://huggingface.co/gguf-org/z-image-gguf")
-                                    gr.Button("🔗 Qwen3 GGUF Repo", size="sm", link="https://huggingface.co/Qwen/Qwen3-4B-GGUF")
+                                    gr.Button("🔗 Z-Image GGUF Repo", size="sm", link="https://huggingface.co/gguf-org/z-image-gguf/tree/main")
+                                    gr.Button("🔗 Qwen3 GGUF Repo", size="sm", link="https://huggingface.co/Qwen/Qwen3-4B-GGUF/tree/main")
                         
                     with gr.Column(scale=1):
                         output_image = gr.Image(label="Generated Image", type="filepath", interactive=False, height=512)
-                        gen_status = gr.Textbox(label="Status", interactive=False, show_label=False)
-                        autosave = gr.Checkbox(label="Auto-save", value=False)                        
                         with gr.Row():
                             save_btn = gr.Button("💾 Save", size="sm")
-                            open_folder_btn = gr.Button("📂 Open Folder", size="sm")
                             send_to_upscale_btn = gr.Button("🔍 Send to Upscale", size="sm")
-                            unload_btn = gr.Button("🧹 Unload Models", size="sm")
+                        autosave = gr.Checkbox(label="Auto-save", value=False)
+                        gen_status = gr.Textbox(label="Status", interactive=False, show_label=False)
+                        open_folder_btn = gr.Button("📂 Open Output Folder", size="sm")
                         
+                        with gr.Row():
+                            gpu_monitor = gr.Textbox(
+                                lines=4.5,
+                                container=False,
+                                interactive=False,
+                                show_label=False,
+                                elem_classes="monitor-box gpu-monitor"
+                            )
+                        with gr.Column(scale=1, min_width=200):
+                            cpu_monitor = gr.Textbox(
+                                lines=4,
+                                container=False,
+                                interactive=False,
+                                show_label=False,
+                                elem_classes="monitor-box cpu-monitor"
+                            )                            
+                        unload_btn = gr.Button("🧹 Unload ComfyUI Models", size="sm")
+
+
+
                         with gr.Accordion("📸 Camera Prompts", open=False):
                             gr.Markdown("Visual guide to camera angles, shots & composition. *Opens in browser.*")
                             open_camera_prompts_btn = gr.Button("🔗 Open Reference Tool", size="sm")
@@ -811,11 +878,12 @@ def create_interface() -> gr.Blocks:
                             type="filepath",
                             show_download_button=True
                         )
-                        upscale_status = gr.Textbox(label="Status", interactive=False)
-                        upscale_autosave = gr.Checkbox(label="Auto-save", value=False)
-                        with gr.Row():
-                            upscale_save_btn = gr.Button("💾 Save", size="sm")
-                            upscale_open_folder_btn = gr.Button("📂 Open Folder", size="sm")
+                        upscale_save_btn = gr.Button("💾 Save", size="sm")
+                        upscale_open_folder_btn = gr.Button("📂 Open Folder", size="sm")
+                        with gr.Row():                       
+                            upscale_autosave = gr.Checkbox(label="Auto-save", value=False)
+                            upscale_status = gr.Textbox(label="Status", interactive=False)
+
                         # Hidden state for upscaled image path
                         upscale_result_path = gr.State(value=None)
             
@@ -1026,6 +1094,15 @@ def create_interface() -> gr.Blocks:
         open_diffusion_btn.click(fn=lambda: open_folder(DIFFUSION_DIR))
         open_te_btn.click(fn=lambda: open_folder(TEXT_ENCODERS_DIR))
         open_vae_btn.click(fn=lambda: open_folder(VAE_DIR))
+
+        # System Monitor 
+        def update_monitor():
+            gpu_info, cpu_info = SystemMonitor.get_system_info()
+            # Return same info for both video and image tabs
+            return gpu_info, cpu_info
+            
+        monitor_timer = gr.Timer(2, active=True)
+        monitor_timer.tick(fn=update_monitor, outputs=[gpu_monitor, cpu_monitor]) 
         
         # Model download buttons - refresh dropdowns and hide banner after download
         def download_and_refresh(is_gguf, show_all, model_key, progress=gr.Progress()):
