@@ -1,20 +1,20 @@
 {
   "10": {
     "inputs": {
-      "seed": 42,
-      "resolution": 4096,
-      "max_resolution": 4096,
-      "batch_size": 1,
-      "uniform_batch_size": false,
+      "seed": 2011020030,
+      "resolution": 1080,
+      "max_resolution": 0,
+      "batch_size": 33,
+      "uniform_batch_size": true,
       "color_correction": "lab",
-      "temporal_overlap": 0,
+      "temporal_overlap": 3,
       "prepend_frames": 0,
-      "input_noise_scale": 0.000,
+      "input_noise_scale": 0,
       "latent_noise_scale": 0,
       "offload_device": "cpu",
       "enable_debug": false,
       "image": [
-        "17",
+        "28",
         0
       ],
       "dit": [
@@ -28,7 +28,7 @@
     },
     "class_type": "SeedVR2VideoUpscaler",
     "_meta": {
-      "title": "Upscaler, $seed, $resolution, $max_resolution, $batch_size, $uniform_batch_size, $color_correction, $temporal_overlap, $input_noise_scale, $latent_noise_scale"
+      "title": "Upscaler, $seed, $resolution, $batch_size, $uniform_batch_size, $color_correction, $temporal_overlap, $input_noise_scale, $latent_noise_scale"
     }
   },
   "13": {
@@ -39,7 +39,7 @@
       "encode_tile_size": 1024,
       "encode_tile_overlap": 128,
       "decode_tiled": true,
-      "decode_tile_size": 1024,
+      "decode_tile_size": 768,
       "decode_tile_overlap": 128,
       "tile_debug": "false",
       "offload_device": "cpu",
@@ -52,9 +52,9 @@
   },
   "14": {
     "inputs": {
-      "model": "seedvr2_ema_7b_sharp-Q4_K_M.gguf",
+      "model": "seedvr2_ema_3b-Q4_K_M.gguf",
       "device": "cuda:0",
-      "blocks_to_swap": 36,
+      "blocks_to_swap": 32,
       "swap_io_components": false,
       "offload_device": "cpu",
       "cache_model": false,
@@ -65,41 +65,61 @@
       "title": "$dit_model.model, $blocks_to_swap"
     }
   },
-  "16": {
+  "24": {
     "inputs": {
-      "image": "placeholder.png"
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "$image!"
-    }
-  },
-  "17": {
-    "inputs": {
-      "image": [
-        "16",
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "codec": "auto",
+      "video": [
+        "29",
         0
-      ],
-      "alpha": [
-        "16",
-        1
       ]
     },
-    "class_type": "JoinImageWithAlpha",
+    "class_type": "SaveVideo",
     "_meta": {
-      "title": "Join Image with Alpha"
+      "title": "$output.result"
     }
   },
-  "23": {
+  "26": {
     "inputs": {
+      "file": "placeholder.mp4",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "$video.file!"
+    }
+  },
+  "28": {
+    "inputs": {
+      "video": [
+        "26",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "29": {
+    "inputs": {
+      "fps": [
+        "28",
+        2
+      ],
       "images": [
         "10",
         0
+      ],
+      "audio": [
+        "28",
+        1
       ]
     },
-    "class_type": "PreviewImage",
+    "class_type": "CreateVideo",
     "_meta": {
-      "title": "$output.result"
+      "title": "Create Video"
     }
   }
 }

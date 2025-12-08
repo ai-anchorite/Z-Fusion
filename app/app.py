@@ -34,6 +34,29 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Paths
 APP_DIR = Path(__file__).parent
+UI_SETTINGS_FILE = APP_DIR / "ui_settings.json"
+
+
+def load_ui_settings() -> dict:
+    """Load UI settings from JSON file."""
+    import json
+    if UI_SETTINGS_FILE.exists():
+        try:
+            with open(UI_SETTINGS_FILE, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load UI settings: {e}")
+    return {}
+
+
+def save_ui_settings(settings: dict) -> None:
+    """Save UI settings to JSON file."""
+    import json
+    try:
+        with open(UI_SETTINGS_FILE, "w") as f:
+            json.dump(settings, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save UI settings: {e}")
 OUTPUTS_DIR = APP_DIR / "outputs" / "z-image-fusion"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 MODULES_DIR = APP_DIR / "modules"
@@ -393,6 +416,20 @@ async def upscale_image(
     max_resolution: int,
     dit_model: str,
     blocks_to_swap: int,
+    # VAE settings
+    encode_tiled: bool,
+    encode_tile_size: int,
+    encode_tile_overlap: int,
+    decode_tiled: bool,
+    decode_tile_size: int,
+    decode_tile_overlap: int,
+    # Upscaler settings
+    batch_size: int,
+    uniform_batch_size: bool,
+    color_correction: str,
+    temporal_overlap: int,
+    input_noise_scale: float,
+    latent_noise_scale: float,
     autosave: bool,
 ) -> tuple:
     """Upscale an image using SeedVR2. Returns (slider_tuple, status, seed, upscaled_path)."""
@@ -407,7 +444,7 @@ async def upscale_image(
         if not workflow_path.exists():
             return None, "❌ Upscale workflow not found", seed, None
         
-        logger.info(f"Upscaling with SeedVR2: {dit_model}, res={resolution}, max={max_resolution}")
+        logger.info(f"Upscaling image with SeedVR2: {dit_model}, res={resolution}, max={max_resolution}")
         
         params = {
             "image": input_image,
@@ -416,6 +453,20 @@ async def upscale_image(
             "max_resolution": int(max_resolution),
             "dit_model": dit_model,
             "blocks_to_swap": int(blocks_to_swap),
+            # VAE settings
+            "encode_tiled": encode_tiled,
+            "encode_tile_size": int(encode_tile_size),
+            "encode_tile_overlap": int(encode_tile_overlap),
+            "decode_tiled": decode_tiled,
+            "decode_tile_size": int(decode_tile_size),
+            "decode_tile_overlap": int(decode_tile_overlap),
+            # Upscaler settings
+            "batch_size": int(batch_size),
+            "uniform_batch_size": uniform_batch_size,
+            "color_correction": color_correction,
+            "temporal_overlap": int(temporal_overlap),
+            "input_noise_scale": float(input_noise_scale),
+            "latent_noise_scale": float(latent_noise_scale),
         }
         
         result = await kit.execute(str(workflow_path), params)
@@ -445,6 +496,114 @@ async def upscale_image(
         if "connect" in str(e).lower():
             return None, "❌ Cannot connect to ComfyUI", seed, None
         return None, f"❌ {str(e)}", seed, None
+
+
+async def upscale_video(
+    input_video,
+    seed: int,
+    randomize_seed: bool,
+    resolution: int,
+    dit_model: str,
+    blocks_to_swap: int,
+    # VAE settings
+    encode_tiled: bool,
+    encode_tile_size: int,
+    encode_tile_overlap: int,
+    decode_tiled: bool,
+    decode_tile_size: int,
+    decode_tile_overlap: int,
+    # Upscaler settings
+    batch_size: int,
+    uniform_batch_size: bool,
+    color_correction: str,
+    temporal_overlap: int,
+    input_noise_scale: float,
+    latent_noise_scale: float,
+    autosave: bool,
+) -> tuple:
+    """Upscale a video using SeedVR2. Returns (video_path, status, seed)."""
+    try:
+        if input_video is None:
+            return None, "❌ Please upload a video to upscale", seed
+        
+        # SeedVR2 uses 32-bit seed max (4294967295)
+        actual_seed = new_random_seed_32bit() if randomize_seed else min(int(seed), 4294967295)
+        
+        workflow_path = APP_DIR / "workflows" / "SeedVR2_HD_video_upscale.json"
+        if not workflow_path.exists():
+            return None, "❌ Video upscale workflow not found", seed
+        
+        logger.info(f"Upscaling video with SeedVR2: {dit_model}, res={resolution}")
+        
+        params = {
+            "video": input_video,
+            "seed": actual_seed,
+            "resolution": int(resolution),
+            "dit_model": dit_model,
+            "blocks_to_swap": int(blocks_to_swap),
+            # VAE settings
+            "encode_tiled": encode_tiled,
+            "encode_tile_size": int(encode_tile_size),
+            "encode_tile_overlap": int(encode_tile_overlap),
+            "decode_tiled": decode_tiled,
+            "decode_tile_size": int(decode_tile_size),
+            "decode_tile_overlap": int(decode_tile_overlap),
+            # Upscaler settings
+            "batch_size": int(batch_size),
+            "uniform_batch_size": uniform_batch_size,
+            "color_correction": color_correction,
+            "temporal_overlap": int(temporal_overlap),
+            "input_noise_scale": float(input_noise_scale),
+            "latent_noise_scale": float(latent_noise_scale),
+        }
+        
+        result = await kit.execute(str(workflow_path), params)
+        
+        if result.status == "error":
+            return None, f"❌ Video upscale failed: {result.msg}", actual_seed
+        
+        if not result.videos:
+            return None, "❌ No video generated", actual_seed
+        
+        video_path = result.videos[0]
+        if video_path.startswith("http"):
+            # Download video from ComfyUI
+            async with httpx.AsyncClient() as client:
+                response = await client.get(video_path)
+                response.raise_for_status()
+                suffix = Path(video_path).suffix or ".mp4"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                    f.write(response.content)
+                    video_path = f.name
+        
+        # Autosave
+        if autosave:
+            save_video_to_outputs(video_path)
+            status = f"✓ {result.duration:.1f}s | Saved" if result.duration else "✓ Saved"
+        else:
+            status = f"✓ {result.duration:.1f}s" if result.duration else "✓ Done"
+        
+        return video_path, status, actual_seed
+        
+    except Exception as e:
+        logger.error(f"Video upscale error: {e}", exc_info=True)
+        if "connect" in str(e).lower():
+            return None, "❌ Cannot connect to ComfyUI", seed
+        return None, f"❌ {str(e)}", seed
+
+
+def save_video_to_outputs(video_path: str) -> str:
+    """Save video to outputs folder with timestamp."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target_dir = OUTPUTS_DIR / "upscaled"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    suffix = Path(video_path).suffix or ".mp4"
+    filename = f"{timestamp}_upscaled{suffix}"
+    output_path = target_dir / filename
+    shutil.copy2(video_path, output_path)
+    logger.info(f"Saved video to: {output_path}")
+    return str(output_path)
 
 
 async def unload_models() -> str:
@@ -618,6 +777,7 @@ def create_interface() -> gr.Blocks:
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
         resize: none !important;
         font-weight: 500 !important;
+        overflow-y: hidden !important;  /* Override global textarea scroll */
     }
     .gpu-monitor textarea {
         border-left: 3px solid #667eea !important;
@@ -801,23 +961,24 @@ def create_interface() -> gr.Blocks:
                         autosave = gr.Checkbox(label="Auto-save", value=False)
                         gen_status = gr.Textbox(label="Status", interactive=False, show_label=False)
                         open_folder_btn = gr.Button("📂 Open Output Folder", size="sm")
-                        
+                       
                         with gr.Row():
-                            gpu_monitor = gr.Textbox(
-                                lines=4.5,
-                                container=False,
-                                interactive=False,
-                                show_label=False,
-                                elem_classes="monitor-box gpu-monitor"
-                            )
-                        with gr.Column(scale=1, min_width=200):
-                            cpu_monitor = gr.Textbox(
-                                lines=4,
-                                container=False,
-                                interactive=False,
-                                show_label=False,
-                                elem_classes="monitor-box cpu-monitor"
-                            )                            
+                            with gr.Column(scale=1, min_width=200):                            
+                                gpu_monitor = gr.Textbox(
+                                    lines=4,
+                                    container=False,
+                                    interactive=False,
+                                    show_label=False,
+                                    elem_classes="monitor-box gpu-monitor"
+                                )
+                            with gr.Column(scale=1, min_width=200):
+                                cpu_monitor = gr.Textbox(
+                                    lines=4,
+                                    container=False,
+                                    interactive=False,
+                                    show_label=False,
+                                    elem_classes="monitor-box cpu-monitor"
+                                )                            
                         unload_btn = gr.Button("🧹 Unload ComfyUI Models", size="sm")
 
 
@@ -830,25 +991,40 @@ def create_interface() -> gr.Blocks:
             with gr.TabItem("🔍 Upscale", id="tab_upscale"):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        upscale_input_image = gr.Image(label="Input Image", type="filepath", height=360)
-                        
-                        with gr.Row():
-                            upscale_resolution = gr.Slider(
-                                label="Resolution",
-                                value=4096,
-                                minimum=1024,
-                                maximum=8192,
-                                step=256,
-                                info="Target resolution"
-                            )
-                            upscale_max_resolution = gr.Slider(
-                                label="Max Resolution",
-                                value=4096,
-                                minimum=1024,
-                                maximum=8192,
-                                step=256,
-                                info="Maximum output resolution"
-                            )
+                        # Image/Video input tabs
+                        with gr.Tabs() as upscale_input_tabs:
+                            with gr.TabItem("🖼️ Image", id="upscale_image_tab"):
+                                upscale_input_image = gr.Image(label="Input Image", type="filepath", height=300)
+                                with gr.Row():
+                                    upscale_resolution = gr.Slider(
+                                        label="Resolution",
+                                        value=4096,
+                                        minimum=1024,
+                                        maximum=8192,
+                                        step=256,
+                                        info="Target resolution"
+                                    )
+                                    upscale_max_resolution = gr.Slider(
+                                        label="Max Resolution",
+                                        value=4096,
+                                        minimum=1024,
+                                        maximum=8192,
+                                        step=256,
+                                        info="Maximum output resolution"
+                                    )
+                                upscale_btn = gr.Button("🔍 Upscale Image", variant="primary", size="lg")
+                            
+                            with gr.TabItem("🎬 Video", id="upscale_video_tab"):
+                                upscale_input_video = gr.Video(label="Input Video", height=300)
+                                upscale_video_resolution = gr.Slider(
+                                    label="Resolution",
+                                    value=1080,
+                                    minimum=480,
+                                    maximum=2160,
+                                    step=120,
+                                    info="Target resolution (height)"
+                                )
+                                upscale_video_btn = gr.Button("🎬 Upscale Video", variant="primary", size="lg")
                         
                         with gr.Accordion("🔧 SeedVR2 Settings", open=True):
                             upscale_dit_model = gr.Dropdown(
@@ -865,27 +1041,143 @@ def create_interface() -> gr.Blocks:
                                 step=1,
                                 info="3B: 0-32, 7B: 0-36 (higher = less VRAM)"
                             )
+                            with gr.Row():
+                                upscale_batch_size = gr.Slider(
+                                    label="Batch Size",
+                                    value=1,
+                                    minimum=1,
+                                    maximum=64,
+                                    step=1,
+                                    info="Frames per batch (video: ~33)"
+                                )
+                                upscale_uniform_batch = gr.Checkbox(
+                                    label="Uniform Batch",
+                                    value=False,
+                                    info="Equal batch sizes"
+                                )
+                            with gr.Row():
+                                upscale_color_correction = gr.Dropdown(
+                                    label="Color Correction",
+                                    choices=["none", "lab", "wavelet", "adain"],
+                                    value="lab",
+                                    info="Color matching method"
+                                )
+                                upscale_temporal_overlap = gr.Slider(
+                                    label="Temporal Overlap",
+                                    value=0,
+                                    minimum=0,
+                                    maximum=16,
+                                    step=1,
+                                    info="Frame overlap (video: ~3)"
+                                )
+                            with gr.Row():
+                                upscale_input_noise = gr.Slider(
+                                    label="Input Noise",
+                                    value=0.0,
+                                    minimum=0.0,
+                                    maximum=0.2,
+                                    step=0.001,
+                                    info="Noise added to input. Low levels (<0.1) can add additional detail."
+                                )
+                                upscale_latent_noise = gr.Slider(
+                                    label="Latent Noise",
+                                    value=0.0,
+                                    minimum=0.0,
+                                    maximum=1.0,
+                                    step=0.001,
+                                    info="Noise added to latent. Not recommended."
+                                )
+                        
+                        with gr.Accordion("🎛️ VAE Tiling", open=False):
+                            with gr.Row():
+                                upscale_encode_tiled = gr.Checkbox(label="Encode Tiled", value=True)
+                                upscale_decode_tiled = gr.Checkbox(label="Decode Tiled", value=True)
+                            with gr.Row():
+                                upscale_encode_tile_size = gr.Slider(
+                                    label="Encode Tile Size",
+                                    value=1024,
+                                    minimum=256,
+                                    maximum=2048,
+                                    step=64
+                                )
+                                upscale_encode_tile_overlap = gr.Slider(
+                                    label="Encode Overlap",
+                                    value=128,
+                                    minimum=0,
+                                    maximum=512,
+                                    step=16
+                                )
+                            with gr.Row():
+                                upscale_decode_tile_size = gr.Slider(
+                                    label="Decode Tile Size",
+                                    value=1024,
+                                    minimum=256,
+                                    maximum=2048,
+                                    step=64
+                                )
+                                upscale_decode_tile_overlap = gr.Slider(
+                                    label="Decode Overlap",
+                                    value=128,
+                                    minimum=0,
+                                    maximum=512,
+                                    step=16
+                                )
+                        
+                        with gr.Accordion("💾 Presets", open=False):
+                            # Load existing user presets + built-in defaults for dropdown
+                            ui_settings = load_ui_settings()
+                            user_presets = list(ui_settings.get("upscale_presets", {}).keys())
+                            builtin_presets = ["Image Default", "Video Default"]
+                            preset_choices = user_presets + (["─────────"] if user_presets else []) + builtin_presets
+                            
+                            # Track which input tab is active for "Save as Default"
+                            upscale_active_tab = gr.State(value="Image")
+                            
+                            upscale_save_default_btn = gr.Button("⭐ Save current settings as default", size="sm")
+                            gr.Markdown("---")
+                            with gr.Row():
+                                upscale_preset_dropdown = gr.Dropdown(
+                                    label="Load Preset",
+                                    choices=preset_choices,
+                                    value="Image Default",
+                                    scale=2
+                                )
+                                upscale_load_preset_btn = gr.Button("📂 Load", size="sm", scale=1)
+                            with gr.Row():
+                                upscale_preset_name = gr.Textbox(
+                                    label="Preset Name",
+                                    placeholder="my_preset",
+                                    scale=2
+                                )
+                                upscale_save_preset_btn = gr.Button("💾 Save", size="sm", scale=1)
+                            upscale_preset_status = gr.Textbox(label="", interactive=False, show_label=False)
                         
                         with gr.Row():
                             upscale_seed = gr.Number(label="Seed", value=new_random_seed_32bit(), minimum=0, maximum=4294967295, step=1)
                             upscale_randomize_seed = gr.Checkbox(label="🎲 Randomize", value=True)
-                        
-                        upscale_btn = gr.Button("🔍 Upscale", variant="primary", size="lg")
                     
                     with gr.Column(scale=1):
-                        upscale_slider = gr.ImageSlider(
-                            label="Before / After",
-                            type="filepath",
-                            show_download_button=True
-                        )
-                        upscale_save_btn = gr.Button("💾 Save", size="sm")
-                        upscale_open_folder_btn = gr.Button("📂 Open Folder", size="sm")
-                        with gr.Row():                       
-                            upscale_autosave = gr.Checkbox(label="Auto-save", value=False)
-                            upscale_status = gr.Textbox(label="Status", interactive=False)
+                        # Output tabs matching input
+                        with gr.Tabs() as upscale_output_tabs:
+                            with gr.TabItem("🖼️ Image Result", id="upscale_image_result"):
+                                upscale_slider = gr.ImageSlider(
+                                    label="Before / After",
+                                    type="filepath",
+                                    show_download_button=True
+                                )
+                            with gr.TabItem("🎬 Video Result", id="upscale_video_result"):
+                                upscale_output_video = gr.Video(label="Upscaled Video")
 
-                        # Hidden state for upscaled image path
+                        with gr.Row():                          
+                            upscale_save_btn = gr.Button("💾 Save", size="sm")
+                            upscale_open_folder_btn = gr.Button("📂 Open Folder", size="sm")
+                     
+                        upscale_autosave = gr.Checkbox(label="Auto-save", value=False)
+                        upscale_status = gr.Textbox(label="Status", interactive=False, show_label=False)
+
+                        # Hidden state for upscaled paths
                         upscale_result_path = gr.State(value=None)
+                        upscale_video_result_path = gr.State(value=None)
             
             # ===== LLM SETTINGS TAB =====
             with gr.TabItem("⚙️ LLM Settings"):
@@ -982,6 +1274,179 @@ def create_interface() -> gr.Blocks:
             outputs=[upscale_blocks_to_swap]
         )
         
+        # Unified upscale preset system
+        upscale_all_settings = [
+            upscale_dit_model,
+            upscale_blocks_to_swap,
+            upscale_batch_size,
+            upscale_uniform_batch,
+            upscale_color_correction,
+            upscale_temporal_overlap,
+            upscale_input_noise,
+            upscale_latent_noise,
+            upscale_encode_tiled,
+            upscale_encode_tile_size,
+            upscale_encode_tile_overlap,
+            upscale_decode_tiled,
+            upscale_decode_tile_size,
+            upscale_decode_tile_overlap,
+        ]
+        upscale_setting_keys = [
+            "dit_model", "blocks_to_swap", "batch_size", "uniform_batch",
+            "color_correction", "temporal_overlap", "input_noise", "latent_noise",
+            "encode_tiled", "encode_tile_size", "encode_tile_overlap",
+            "decode_tiled", "decode_tile_size", "decode_tile_overlap",
+        ]
+        
+        # Built-in defaults (used if no user preset exists)
+        UPSCALE_BUILTIN_DEFAULTS = {
+            "Image Default": {
+                "dit_model": DEFAULT_SEEDVR2_DIT,
+                "blocks_to_swap": 36,
+                "batch_size": 1,
+                "uniform_batch": False,
+                "color_correction": "lab",
+                "temporal_overlap": 0,
+                "input_noise": 0.0,
+                "latent_noise": 0.0,
+                "encode_tiled": True,
+                "encode_tile_size": 1024,
+                "encode_tile_overlap": 128,
+                "decode_tiled": True,
+                "decode_tile_size": 1024,
+                "decode_tile_overlap": 128,
+            },
+            "Video Default": {
+                "dit_model": "seedvr2_ema_3b_fp16.safetensors",
+                "blocks_to_swap": 32,
+                "batch_size": 33,
+                "uniform_batch": True,
+                "color_correction": "lab",
+                "temporal_overlap": 3,
+                "input_noise": 0.0,
+                "latent_noise": 0.0,
+                "encode_tiled": True,
+                "encode_tile_size": 1024,
+                "encode_tile_overlap": 128,
+                "decode_tiled": True,
+                "decode_tile_size": 768,
+                "decode_tile_overlap": 128,
+            },
+        }
+        
+        def get_upscale_preset(name: str) -> dict:
+            """Get preset by name - checks user presets first, then built-in defaults."""
+            settings = load_ui_settings()
+            user_presets = settings.get("upscale_presets", {})
+            if name in user_presets:
+                return user_presets[name]
+            return UPSCALE_BUILTIN_DEFAULTS.get(name, UPSCALE_BUILTIN_DEFAULTS["Image Default"])
+        
+        def apply_upscale_preset(preset: dict):
+            """Convert preset dict to tuple of values for UI components."""
+            max_blocks = get_seedvr2_max_blocks(preset.get("dit_model", DEFAULT_SEEDVR2_DIT))
+            return (
+                preset.get("dit_model", DEFAULT_SEEDVR2_DIT),
+                gr.update(value=preset.get("blocks_to_swap", 36), maximum=max_blocks),
+                preset.get("batch_size", 1),
+                preset.get("uniform_batch", False),
+                preset.get("color_correction", "lab"),
+                preset.get("temporal_overlap", 0),
+                preset.get("input_noise", 0.0),
+                preset.get("latent_noise", 0.0),
+                preset.get("encode_tiled", True),
+                preset.get("encode_tile_size", 1024),
+                preset.get("encode_tile_overlap", 128),
+                preset.get("decode_tiled", True),
+                preset.get("decode_tile_size", 1024),
+                preset.get("decode_tile_overlap", 128),
+            )
+        
+        # Tab switching loads from preset system and tracks active tab
+        def on_upscale_tab_select(evt: gr.SelectData):
+            """Switch presets based on which tab is selected."""
+            if evt.value == "🖼️ Image":
+                preset = get_upscale_preset("Image Default")
+                active_tab = "Image"
+            elif evt.value == "🎬 Video":
+                preset = get_upscale_preset("Video Default")
+                active_tab = "Video"
+            else:
+                return (gr.update(),) * len(upscale_all_settings) + (gr.update(),)
+            
+            return apply_upscale_preset(preset) + (active_tab,)
+        
+        upscale_input_tabs.select(
+            fn=on_upscale_tab_select,
+            outputs=upscale_all_settings + [upscale_active_tab]
+        )
+        
+        def save_as_default(active_tab, *values):
+            """Save current settings as the default for the active tab (Image/Video)."""
+            preset_name = f"{active_tab} Default"
+            
+            # Build preset dict
+            preset = dict(zip(upscale_setting_keys, values))
+            
+            # Load existing settings, update, save
+            settings = load_ui_settings()
+            if "upscale_presets" not in settings:
+                settings["upscale_presets"] = {}
+            settings["upscale_presets"][preset_name] = preset
+            save_ui_settings(settings)
+            
+            # Update dropdown choices
+            user_presets = list(settings["upscale_presets"].keys())
+            choices = user_presets + ["─────────"] + list(UPSCALE_BUILTIN_DEFAULTS.keys())
+            return f"✓ Saved as '{preset_name}'", gr.update(choices=choices, value=preset_name)
+        
+        upscale_save_default_btn.click(
+            fn=save_as_default,
+            inputs=[upscale_active_tab] + upscale_all_settings,
+            outputs=[upscale_preset_status, upscale_preset_dropdown]
+        )
+        
+        def save_upscale_preset(name, *values):
+            """Save current upscale settings as a preset."""
+            if not name or not name.strip():
+                return "❌ Enter a preset name", gr.update()
+            name = name.strip()
+            
+            # Build preset dict
+            preset = dict(zip(upscale_setting_keys, values))
+            
+            # Load existing settings, update, save
+            settings = load_ui_settings()
+            if "upscale_presets" not in settings:
+                settings["upscale_presets"] = {}
+            settings["upscale_presets"][name] = preset
+            save_ui_settings(settings)
+            
+            # Update dropdown choices - user presets + built-in defaults
+            user_presets = list(settings["upscale_presets"].keys())
+            choices = user_presets + ["─────────"] + list(UPSCALE_BUILTIN_DEFAULTS.keys())
+            return f"✓ Saved '{name}'", gr.update(choices=choices, value=name)
+        
+        def load_upscale_preset_btn(name):
+            """Load a preset's settings via button click."""
+            if name == "─────────":
+                return ("",) + (gr.update(),) * len(upscale_all_settings)
+            
+            preset = get_upscale_preset(name)
+            return (f"✓ Loaded '{name}'",) + apply_upscale_preset(preset)
+        
+        upscale_save_preset_btn.click(
+            fn=save_upscale_preset,
+            inputs=[upscale_preset_name] + upscale_all_settings,
+            outputs=[upscale_preset_status, upscale_preset_dropdown]
+        )
+        
+        upscale_load_preset_btn.click(
+            fn=load_upscale_preset_btn,
+            inputs=[upscale_preset_dropdown],
+            outputs=[upscale_preset_status] + upscale_all_settings
+        )
+        
         # Shared inputs for both generate buttons
         common_inputs = [
             use_gguf,
@@ -1015,20 +1480,60 @@ def create_interface() -> gr.Blocks:
             outputs=[output_image, gen_status, seed]
         )
         
-        # Upscale
+        # Shared upscale inputs (SeedVR2 settings)
+        upscale_common_inputs = [
+            upscale_dit_model,
+            upscale_blocks_to_swap,
+            # VAE settings
+            upscale_encode_tiled,
+            upscale_encode_tile_size,
+            upscale_encode_tile_overlap,
+            upscale_decode_tiled,
+            upscale_decode_tile_size,
+            upscale_decode_tile_overlap,
+            # Upscaler settings
+            upscale_batch_size,
+            upscale_uniform_batch,
+            upscale_color_correction,
+            upscale_temporal_overlap,
+            upscale_input_noise,
+            upscale_latent_noise,
+            upscale_autosave,
+        ]
+        
+        # Image Upscale - wrapper to also switch output tab
+        async def upscale_image_and_switch(*args):
+            result = await upscale_image(*args)
+            # Return result + tab switch to image result
+            return result + (gr.Tabs(selected="upscale_image_result"),)
+        
         upscale_btn.click(
-            fn=upscale_image,
+            fn=upscale_image_and_switch,
             inputs=[
                 upscale_input_image,
                 upscale_seed,
                 upscale_randomize_seed,
                 upscale_resolution,
                 upscale_max_resolution,
-                upscale_dit_model,
-                upscale_blocks_to_swap,
-                upscale_autosave,
-            ],
-            outputs=[upscale_slider, upscale_status, upscale_seed, upscale_result_path]
+            ] + upscale_common_inputs,
+            outputs=[upscale_slider, upscale_status, upscale_seed, upscale_result_path, upscale_output_tabs]
+        )
+        
+        # Video Upscale - wrapper to also switch output tab
+        async def upscale_video_and_switch(*args):
+            result = await upscale_video(*args)
+            # Return result + tab switch to video result
+            return result + (gr.Tabs(selected="upscale_video_result"),)
+        
+        upscale_video_btn.click(
+            fn=upscale_video_and_switch,
+            inputs=[
+                upscale_input_video,
+                upscale_seed,
+                upscale_randomize_seed,
+                upscale_video_resolution,
+            ] + upscale_common_inputs,
+            outputs=[upscale_output_video, upscale_status, upscale_seed, upscale_output_tabs]
         )
         
         unload_btn.click(
