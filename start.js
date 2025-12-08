@@ -12,7 +12,7 @@ module.exports = {
         },
         path: "app",
         message: [
-          "{{platform === 'win32' && gpu === 'amd' ? 'python comfyui/main.py --directml' : 'python comfyui/main.py'}}"
+          "python comfyui/main.py {{platform === 'win32' && gpu === 'amd' ? '--directml' : args.sage ? '--use-sage-attention' : args.flash ? '--use-flash-attention' : ''}}"          
         ],
         on: [{
           // Wait for ComfyUI to be ready

@@ -73,7 +73,19 @@ module.exports = {
           default: true,
           icon: "fa-solid fa-power-off",
           text: "Start",
-          href: "start.js",
+          href: "start.js?ts=" + Date.now(),
+        }, {
+          icon: "fa-solid fa-power-off",
+          text: "Start -w Optimization flags",
+          menu: [{
+            icon: "fa-solid fa-power-off",
+            text: "<div><strong>Start</strong><br><div>+SageAttention2</div></div>",
+            href: "start.js?sage=true&ts=" + Date.now(),
+          }, {
+            icon: "fa-solid fa-power-off",
+            text: "<div><strong>Start</strong><br><div>+FlashAttention2</div></div>",
+            href: "start.js?flash=true&ts=" + Date.now(),
+          }],  
         }, {
           icon: "fa-solid fa-plug",
           text: "Update",
@@ -81,17 +93,16 @@ module.exports = {
         }, {
           icon: "fa-solid fa-plug",
           text: "Install",
-          href: "install.js",          
+          href: "install.js",
         }, {
           icon: "fa-regular fa-circle-xmark",
-          text: "<div><strong>Reset</strong><div>Revert to pre-install state</div></div>",
+          text: "Reset",
           href: "reset.js",
           confirm: "Are you sure you wish to reset the app?"
         }]
       }
-    } 
     // Not installed state
-    else {
+   } else {
       return [{
         default: true,
         icon: "fa-solid fa-plug",

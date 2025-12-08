@@ -1,14 +1,39 @@
 # Z-Image Fusion
 
-This project is designed for 1-click installing via [Pinokio:](https://pinokio.co/)
+An enhanced Gradio interface for fast image generation using the Z-Image 6B turbo model, powered by a ComfyUI backend.
 
-Will be updated often next week or two!
+This project is designed for 1-click installing via [Pinokio](https://pinokio.co/)
 
 ---
 
-An enhanced Gradio interface for fast image generation using the Z-Image 6B turbo model, powered by a ComfyUI backend.
+## Screenshots
 
-![Z-Image Fusion](./icon.png)
+<table>
+<tr>
+<td align="center"><b>⚡ Z-Image Turbo</b></td>
+<td align="center"><b>🔍 Upscale</b></td>
+<td align="center"><b>⚙️ LLM Settings</b></td>
+</tr>
+<tr>
+<td><img src="./app/assets/z-image-tab.png" width="300"/></td>
+<td><img src="./app/assets/upscale-tab.png" width="300"/></td>
+<td><img src="./app/assets/llm-tab.png" width="300"/></td>
+</tr>
+</table>
+
+<details>
+<summary>📸 Click to view full-size screenshots</summary>
+
+### ⚡ Z-Image Turbo Tab
+<img src="./assets/z-image-tab.png" width="800"/>
+
+### 🔍 Upscale Tab
+<img src="./assets/upscale-tab.png" width="800"/>
+
+### ⚙️ LLM Settings Tab
+<img src="./assets/llm-tab.png" width="800"/>
+
+</details>
 
 ## Features
 
