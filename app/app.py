@@ -146,7 +146,7 @@ SEEDVR2_DIT_MODELS = [
     "seedvr2_ema_7b_fp16.safetensors",
     "seedvr2_ema_7b_sharp_fp16.safetensors",
 ]
-DEFAULT_SEEDVR2_DIT = "seedvr2_ema_7b_sharp-Q4_K_M.gguf"
+DEFAULT_SEEDVR2_DIT = "seedvr2_ema_3b-Q4_K_M.gguf"
 
 
 def scan_models(folder: Path, extensions: tuple = (".safetensors", ".ckpt", ".pt", ".gguf"), name_filter: str = None) -> list:
@@ -253,8 +253,8 @@ async def download_image_from_url(url: str) -> str:
 
 
 def save_image_to_outputs(image_path: str, prompt: str, subfolder: str = None) -> str:
-    """Save image to outputs folder with timestamp."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    """Save image to outputs folder with prompt and short timestamp."""
+    timestamp = datetime.now().strftime("%H%M%S")
     safe_prompt = "".join(c if c.isalnum() or c in " -_" else "" for c in prompt[:30]).strip()
     safe_prompt = safe_prompt.replace(" ", "_") if safe_prompt else "image"
     
@@ -262,10 +262,55 @@ def save_image_to_outputs(image_path: str, prompt: str, subfolder: str = None) -
     target_dir = OUTPUTS_DIR / subfolder if subfolder else OUTPUTS_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
     
-    filename = f"{timestamp}_{safe_prompt}.png"
+    # Format: prompt_HHMMSS.png (timestamp at end, less obtrusive)
+    filename = f"{safe_prompt}_{timestamp}.png"
     output_path = target_dir / filename
     shutil.copy2(image_path, output_path)
     logger.info(f"Saved to: {output_path}")
+    return str(output_path)
+
+
+def extract_meaningful_filename(filepath: str) -> str:
+    """Extract a meaningful filename, filtering out temp file patterns."""
+    if not filepath:
+        return "image"
+    
+    stem = Path(filepath).stem
+    
+    # Detect Gradio/system temp file patterns (tmp*, random hex strings, etc.)
+    # These typically start with 'tmp' or are short random strings
+    is_temp = (
+        stem.lower().startswith('tmp') or
+        stem.lower().startswith('temp') or
+        (len(stem) < 12 and not any(c.isalpha() for c in stem[:3]))  # Short random strings
+    )
+    
+    if is_temp:
+        return "image"
+    
+    # Truncate if too long
+    if len(stem) > 50:
+        stem = stem[:50]
+    
+    return stem
+
+
+def save_upscale_to_outputs(image_path: str, original_path: str, resolution: int, subfolder: str = "upscaled") -> str:
+    """Save upscaled image preserving original name with upscale details."""
+    timestamp = datetime.now().strftime("%H%M%S")
+    
+    # Extract meaningful filename, filtering out temp patterns
+    original_name = extract_meaningful_filename(original_path)
+    
+    target_dir = OUTPUTS_DIR / subfolder
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Format: originalname_4Kup_HHMMSS.png
+    res_label = f"{resolution // 1000}K" if resolution >= 1000 else f"{resolution}p"
+    filename = f"{original_name}_{res_label}up_{timestamp}.png"
+    output_path = target_dir / filename
+    shutil.copy2(image_path, output_path)
+    logger.info(f"Saved upscale to: {output_path}")
     return str(output_path)
 
 
@@ -432,17 +477,17 @@ async def upscale_image(
     latent_noise_scale: float,
     autosave: bool,
 ) -> tuple:
-    """Upscale an image using SeedVR2. Returns (slider_tuple, status, seed, upscaled_path)."""
+    """Upscale an image using SeedVR2. Returns (slider_tuple, status, seed, upscaled_path, original_path, resolution)."""
     try:
         if input_image is None:
-            return None, "❌ Please upload an image to upscale", seed, None
+            return None, "❌ Please upload an image to upscale", seed, None, None, None
         
         # SeedVR2 uses 32-bit seed max (4294967295)
         actual_seed = new_random_seed_32bit() if randomize_seed else min(int(seed), 4294967295)
         
         workflow_path = APP_DIR / "workflows" / "SeedVR2_4K_image_upscale.json"
         if not workflow_path.exists():
-            return None, "❌ Upscale workflow not found", seed, None
+            return None, "❌ Upscale workflow not found", seed, None, None, None
         
         logger.info(f"Upscaling image with SeedVR2: {dit_model}, res={resolution}, max={max_resolution}")
         
@@ -472,10 +517,10 @@ async def upscale_image(
         result = await kit.execute(str(workflow_path), params)
         
         if result.status == "error":
-            return None, f"❌ Upscale failed: {result.msg}", actual_seed, None
+            return None, f"❌ Upscale failed: {result.msg}", actual_seed, None, None, None
         
         if not result.images:
-            return None, "❌ No images generated", actual_seed, None
+            return None, "❌ No images generated", actual_seed, None, None, None
         
         image_path = result.images[0]
         if image_path.startswith("http"):
@@ -483,19 +528,20 @@ async def upscale_image(
         
         # Autosave
         if autosave:
-            save_image_to_outputs(image_path, "upscale", subfolder="upscaled")
+            save_upscale_to_outputs(image_path, input_image, resolution)
             status = f"✓ {result.duration:.1f}s | Saved" if result.duration else "✓ Saved"
         else:
             status = f"✓ {result.duration:.1f}s" if result.duration else "✓ Done"
         
         # Return tuple for ImageSlider (original, upscaled) + upscaled path for save button
-        return (input_image, image_path), status, actual_seed, image_path
+        # Also return input_image path and resolution for manual save
+        return (input_image, image_path), status, actual_seed, image_path, input_image, resolution
         
     except Exception as e:
         logger.error(f"Upscale error: {e}", exc_info=True)
         if "connect" in str(e).lower():
-            return None, "❌ Cannot connect to ComfyUI", seed, None
-        return None, f"❌ {str(e)}", seed, None
+            return None, "❌ Cannot connect to ComfyUI", seed, None, None, None
+        return None, f"❌ {str(e)}", seed, None, None, None
 
 
 async def upscale_video(
@@ -578,7 +624,7 @@ async def upscale_video(
         
         # Autosave
         if autosave:
-            save_video_to_outputs(video_path)
+            save_video_to_outputs(video_path, input_video, resolution)
             status = f"✓ {result.duration:.1f}s | Saved" if result.duration else "✓ Saved"
         else:
             status = f"✓ {result.duration:.1f}s" if result.duration else "✓ Done"
@@ -592,14 +638,20 @@ async def upscale_video(
         return None, f"❌ {str(e)}", seed
 
 
-def save_video_to_outputs(video_path: str) -> str:
-    """Save video to outputs folder with timestamp."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+def save_video_to_outputs(video_path: str, original_path: str = None, resolution: int = None) -> str:
+    """Save upscaled video preserving original name with upscale details."""
+    timestamp = datetime.now().strftime("%H%M%S")
     target_dir = OUTPUTS_DIR / "upscaled"
     target_dir.mkdir(parents=True, exist_ok=True)
     
+    # Extract meaningful filename, filtering out temp patterns
+    original_name = extract_meaningful_filename(original_path)
+    if original_name == "image":
+        original_name = "video"  # Better default for videos
+    
     suffix = Path(video_path).suffix or ".mp4"
-    filename = f"{timestamp}_upscaled{suffix}"
+    res_label = f"{resolution}p" if resolution else "HDup"
+    filename = f"{original_name}_{res_label}_{timestamp}{suffix}"
     output_path = target_dir / filename
     shutil.copy2(video_path, output_path)
     logger.info(f"Saved video to: {output_path}")
@@ -839,9 +891,18 @@ def create_interface() -> gr.Blocks:
                             
                             with gr.TabItem("Image → Image"):
                                 input_image = gr.Image(label="Input Image", type="filepath", height=360)
-                                generate_i2i_btn = gr.Button("⚡ Generate", variant="primary", size="lg")                                
                                 with gr.Row():
-                                    megapixels = gr.Slider(label="Megapixels", info="Scales against input image to maintain aspect ratio", value=2.0, minimum=0.5, maximum=4.0, step=0.1)
+                                    generate_i2i_btn = gr.Button("⚡ Generate", variant="primary", size="lg", scale=2)
+                                    i2i_describe_btn = gr.Button("🖼️ Describe", variant="secondary", size="lg", scale=1)
+                                with gr.Row():                                    
+                                    i2i_assist_status = gr.Textbox(
+                                        value="💡 Tip: Use Describe to generate a prompt describing your image. Adding a character LoRA allows for some powerful transformations!",
+                                        lines=2,
+                                        interactive=False,
+                                        show_label=False
+                                    )
+                                with gr.Row():
+                                    megapixels = gr.Slider(label="Megapixels", info="Scales against input image to maintain aspect ratio", value=1.5, minimum=0.5, maximum=4.0, step=0.1)
                                     denoise = gr.Slider(label="Denoise", value=0.67, minimum=0.0, maximum=1.0, step=0.01)
                             
                             with gr.TabItem("🤖 Prompt Assistant"):
@@ -965,7 +1026,7 @@ def create_interface() -> gr.Blocks:
                         with gr.Row():
                             with gr.Column(scale=1, min_width=200):                            
                                 gpu_monitor = gr.Textbox(
-                                    lines=4,
+                                    lines=4.5,
                                     container=False,
                                     interactive=False,
                                     show_label=False,
@@ -986,6 +1047,29 @@ def create_interface() -> gr.Blocks:
                         with gr.Accordion("📸 Camera Prompts", open=False):
                             gr.Markdown("Visual guide to camera angles, shots & composition. *Opens in browser.*")
                             open_camera_prompts_btn = gr.Button("🔗 Open Reference Tool", size="sm")
+                        
+                        with gr.Accordion("ℹ️ Getting Started", open=False):
+                            gr.Markdown("""
+**First Time Setup**
+1. Download models in **🔧 Models** section (left panel)
+2. Choose **GGUF** for lower VRAM (~8GB) or **Standard** for full precision (~16GB+)
+3. Click the download button — check Pinokio's `->_ Terminal` button (top bar) for progress
+
+**Already have ComfyUI via Pinokio?**  
+Your models & LoRAs are automatically shared — no re-download needed!
+
+**🤖 Prompt Assistant**
+- **Enhance Text**: Expands simple prompts into detailed descriptions
+- **Describe Image**: Generates prompts from uploaded images (uses VL model)
+- Defaults work great, but you can change LLMs in the **⚙️ LLM Settings** tab
+- After changing models there, click **Save All Settings** to apply
+
+**Tips**
+- Default settings are tuned for the Z-Image Turbo model
+- Use 🧹 **Unload ComfyUI Models** to keep Z-Image-Fusion active while freeing resources for other activities.
+- Check the GPU/CPU monitor to track resource usage
+""")
+                            # open_docs_btn = gr.Button("📖 Open Documentation", size="sm")
             
             # ===== UPSCALE TAB =====
             with gr.TabItem("🔍 Upscale", id="tab_upscale"):
@@ -998,7 +1082,7 @@ def create_interface() -> gr.Blocks:
                                 with gr.Row():
                                     upscale_resolution = gr.Slider(
                                         label="Resolution",
-                                        value=4096,
+                                        value=3072,
                                         minimum=1024,
                                         maximum=8192,
                                         step=256,
@@ -1039,8 +1123,10 @@ def create_interface() -> gr.Blocks:
                                 minimum=0,
                                 maximum=36,
                                 step=1,
-                                info="3B: 0-32, 7B: 0-36 (higher = less VRAM)"
+                                info="Higher = less VRAM, slower. Lower = faster, more VRAM"
                             )
+                        
+                        with gr.Accordion("🎛️ Advanced Settings", open=False):
                             with gr.Row():
                                 upscale_batch_size = gr.Slider(
                                     label="Batch Size",
@@ -1077,7 +1163,7 @@ def create_interface() -> gr.Blocks:
                                     minimum=0.0,
                                     maximum=0.2,
                                     step=0.001,
-                                    info="Noise added to input. Low levels (<0.1) can add additional detail."
+                                    info="Low levels (<0.1) can add detail"
                                 )
                                 upscale_latent_noise = gr.Slider(
                                     label="Latent Noise",
@@ -1085,7 +1171,7 @@ def create_interface() -> gr.Blocks:
                                     minimum=0.0,
                                     maximum=1.0,
                                     step=0.001,
-                                    info="Noise added to latent. Not recommended."
+                                    info="Not recommended for most use"
                                 )
                         
                         with gr.Accordion("🎛️ VAE Tiling", open=False):
@@ -1175,9 +1261,28 @@ def create_interface() -> gr.Blocks:
                         upscale_autosave = gr.Checkbox(label="Auto-save", value=False)
                         upscale_status = gr.Textbox(label="Status", interactive=False, show_label=False)
 
-                        # Hidden state for upscaled paths
+                        # Hidden state for upscaled paths and original info (for save naming)
                         upscale_result_path = gr.State(value=None)
+                        upscale_original_path = gr.State(value=None)
+                        upscale_result_resolution = gr.State(value=None)
                         upscale_video_result_path = gr.State(value=None)
+                        
+                        with gr.Accordion("ℹ️ Upscale Help", open=False):
+                            gr.Markdown("""
+**Running Out of VRAM (OOM errors)?**
+1. Reduce **Resolution** to 2048 or lower
+2. Increase **Block Swap** to maximum (32 for 3B, 36 for 7B)
+3. Reduce **VAE Tile Size** to 512 or 256
+4. Use a **3B GGUF** model instead of 7B
+
+**Performance Tips**
+- **Block Swap**: Lower values = faster but uses more VRAM
+- **Batch Size**: Higher = faster video upscaling (if VRAM allows)
+- Defaults are tuned for lower-end hardware
+
+**Presets**: Save your settings with **💾 Presets** — use **⭐ Save as default** to auto-load on startup
+""")
+                            gr.Button("🎬 SeedVR2 Tutorial Video", size="sm", link="https://www.youtube.com/watch?v=MBtWYXq_r60")
             
             # ===== LLM SETTINGS TAB =====
             with gr.TabItem("⚙️ LLM Settings"):
@@ -1212,6 +1317,13 @@ def create_interface() -> gr.Blocks:
             fn=prompt_assistant.describe_image,
             inputs=[assist_image, prompt],
             outputs=[prompt, assist_status]
+        )
+        
+        # I2I tab describe button - uses the input_image directly
+        i2i_describe_btn.click(
+            fn=prompt_assistant.describe_image,
+            inputs=[input_image, prompt],
+            outputs=[prompt, i2i_assist_status]
         )
         
         clear_prompt_btn.click(
@@ -1516,7 +1628,7 @@ def create_interface() -> gr.Blocks:
                 upscale_resolution,
                 upscale_max_resolution,
             ] + upscale_common_inputs,
-            outputs=[upscale_slider, upscale_status, upscale_seed, upscale_result_path, upscale_output_tabs]
+            outputs=[upscale_slider, upscale_status, upscale_seed, upscale_result_path, upscale_original_path, upscale_result_resolution, upscale_output_tabs]
         )
         
         # Video Upscale - wrapper to also switch output tab
@@ -1555,15 +1667,15 @@ def create_interface() -> gr.Blocks:
         )
         
         # Save upscaled image
-        def save_upscaled_image(image_path):
+        def save_upscaled_image(image_path, original_path, resolution):
             if not image_path:
                 return "❌ No image to save"
-            saved_path = save_image_to_outputs(image_path, "upscale", subfolder="upscaled")
+            saved_path = save_upscale_to_outputs(image_path, original_path, resolution or 4096)
             return f"✓ Saved: {Path(saved_path).name}"
         
         upscale_save_btn.click(
             fn=save_upscaled_image,
-            inputs=[upscale_result_path],
+            inputs=[upscale_result_path, upscale_original_path, upscale_result_resolution],
             outputs=[upscale_status]
         )
         
@@ -1599,6 +1711,19 @@ def create_interface() -> gr.Blocks:
         open_diffusion_btn.click(fn=lambda: open_folder(DIFFUSION_DIR))
         open_te_btn.click(fn=lambda: open_folder(TEXT_ENCODERS_DIR))
         open_vae_btn.click(fn=lambda: open_folder(VAE_DIR))
+        
+        # Open documentation file
+        def open_documentation():
+            doc_path = APP_DIR / "DOCUMENTATION.md"
+            if doc_path.exists():
+                if sys.platform == "win32":
+                    os.startfile(doc_path)
+                elif sys.platform == "darwin":
+                    subprocess.run(["open", str(doc_path)])
+                else:
+                    subprocess.run(["xdg-open", str(doc_path)])
+        
+        # open_docs_btn.click(fn=open_documentation)
 
         # System Monitor 
         def update_monitor():

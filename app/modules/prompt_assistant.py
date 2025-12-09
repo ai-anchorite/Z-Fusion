@@ -390,7 +390,7 @@ class PromptAssistant:
             self.unload_llms()
         
         # Load the new model
-        yield f"⏳ Loading {os.path.basename(target_model)}... (Please Wait)"
+        yield f"⏳ Loading {os.path.basename(target_model)}... (model downloads on 1st run.)"
         try:
             self.active_engine = QwenPromptExpander(model_path=target_model)
             yield f"✅ Model loaded: {os.path.basename(target_model)}"
@@ -673,8 +673,8 @@ class PromptAssistant:
                 label="Assistant Status", 
                 value="Ready", 
                 interactive=False, 
-                lines=1.5,
-                max_lines=3
+                lines=2,
+                max_lines=4
             )
             
             enhance_btn.click(
