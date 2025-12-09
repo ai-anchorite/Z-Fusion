@@ -1,6 +1,6 @@
 module.exports = {
   run: [
-    // Clone ComfyUI into app/comfyui (skip if already exists)
+    // Clone ComfyUI into app/comfyui
     {
       method: "shell.run",
       params: {
