@@ -896,13 +896,13 @@ def create_interface() -> gr.Blocks:
                                     i2i_describe_btn = gr.Button("🖼️ Describe", variant="secondary", size="lg", scale=1)
                                 with gr.Row():                                    
                                     i2i_assist_status = gr.Textbox(
-                                        value="💡 Tip: Use Describe to generate a prompt describing your image. Adding a character LoRA allows for some powerful transformations!",
-                                        lines=2,
+                                        value="💡 Tip: Use Describe to generate a prompt describing your image. A low denoise img2img pass can greatly enhance existing images. Add a character LoRA for powerful transformations!",
+                                        lines=2.5,
                                         interactive=False,
                                         show_label=False
                                     )
                                 with gr.Row():
-                                    megapixels = gr.Slider(label="Megapixels", info="Scales against input image to maintain aspect ratio", value=1.5, minimum=0.5, maximum=4.0, step=0.1)
+                                    megapixels = gr.Slider(label="Megapixels", info="Scales against input image to maintain aspect ratio", value=2, minimum=0.5, maximum=3.0, step=0.1)
                                     denoise = gr.Slider(label="Denoise", value=0.67, minimum=0.0, maximum=1.0, step=0.01)
                             
                             with gr.TabItem("🤖 Prompt Assistant"):
