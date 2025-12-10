@@ -39,12 +39,26 @@ module.exports = {
         message: "git pull"
       }
     },
+    // Clone SeedVarianceEnhancer if not exists (for existing installs)
+    {
+      method: "shell.run",
+      params: {
+        message: "git clone https://github.com/ChangeTheConstants/SeedVarianceEnhancer.git app/comfyui/custom_nodes/SeedVarianceEnhancer"
+      }
+    },
     // Pull latest changes for SeedVarianceEnhancer
     {
       method: "shell.run",
       params: {
         path: "app/comfyui/custom_nodes/SeedVarianceEnhancer",
         message: "git pull"
+      }
+    },
+    // Clone CameraPromptsGenerator if not exists (for existing installs)
+    {
+      method: "shell.run",
+      params: {
+        message: "git clone https://github.com/demon4932/CameraPromptsGenerator.git app/CameraPromptsGenerator"
       }
     },
     // Update CameraPromptsGenerator
