@@ -1362,6 +1362,7 @@ def create_interface() -> gr.Blocks:
                             object_fit="contain",
                             show_download_button=True,
                             preview=True,
+                            interactive=False,
                             show_share_button=False
                         )
                         with gr.Row():

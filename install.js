@@ -148,6 +148,8 @@ module.exports = {
           "ipadapter": "app/comfyui/models/ipadapter",
           "loras": "app/comfyui/models/loras",
           "photomaker": "app/comfyui/models/photomaker",
+          "SEEDVR2": "app/comfyui/models/SEEDVR2",
+          "model_patches": "app/comfyui/models/model_patches",
           "style_models": "app/comfyui/models/style_models",
           "text_encoders": "app/comfyui/models/text_encoders",
           "unet": "app/comfyui/models/unet",
@@ -162,6 +164,7 @@ module.exports = {
           "https://github.com/cocktailpeanutlabs/comfyui.git",
           "https://github.com/pinokiofactory/comfy.git",
           "https://github.com/pinokiofactory/stable-diffusion-webui-forge.git",
+          
         ]
       }
     },
