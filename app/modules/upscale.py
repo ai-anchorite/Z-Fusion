@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 
 import gradio as gr
 import httpx
+import imageio
+from PIL import Image
 
 if TYPE_CHECKING:
     from modules import SharedServices
@@ -447,6 +449,14 @@ def get_upscale_preset(name: str, settings_manager) -> dict:
     return UPSCALE_BUILTIN_DEFAULTS.get(name, UPSCALE_BUILTIN_DEFAULTS["Image Default"])
 
 
+def _build_preset_choices(user_presets: list) -> list:
+    """Build preset dropdown choices, filtering duplicates from built-in list."""
+    builtin_presets = [p for p in UPSCALE_BUILTIN_DEFAULTS.keys() if p not in user_presets]
+    if user_presets and builtin_presets:
+        return user_presets + ["─────────"] + builtin_presets
+    return user_presets + builtin_presets
+
+
 def save_upscale_preset(name: str, preset: dict, settings_manager) -> tuple[str, list]:
     """Save an upscale preset. Returns (status_message, updated_choices)."""
     if not name or not name.strip():
@@ -460,30 +470,33 @@ def save_upscale_preset(name: str, preset: dict, settings_manager) -> tuple[str,
     settings["upscale_presets"][name] = preset
     settings_manager.save(settings)
     
-    # Return updated choices
+    # Return updated choices (filter duplicates from built-in)
     user_presets = list(settings["upscale_presets"].keys())
-    choices = user_presets + ["─────────"] + list(UPSCALE_BUILTIN_DEFAULTS.keys())
-    return f"✓ Saved '{name}'", choices
+    return f"✓ Saved '{name}'", _build_preset_choices(user_presets)
 
 
 def delete_upscale_preset(name: str, settings_manager) -> tuple[str, list, str]:
     """Delete a user preset. Returns (status_message, updated_choices, new_selection)."""
-    if name in UPSCALE_BUILTIN_DEFAULTS or name == "─────────":
-        return f"❌ Cannot delete '{name}'", [], name
+    # Check if it's a separator
+    if name == "─────────":
+        return f"❌ Cannot delete separator", [], name
     
     settings = settings_manager.load()
     user_presets = settings.get("upscale_presets", {})
+    
+    # Check if it's a user preset (can be deleted) or only exists as built-in (cannot delete)
     if name not in user_presets:
+        if name in UPSCALE_BUILTIN_DEFAULTS:
+            return f"❌ Cannot delete built-in preset '{name}'", [], name
         return f"❌ Preset '{name}' not found", [], name
     
     del user_presets[name]
     settings["upscale_presets"] = user_presets
     settings_manager.save(settings)
     
-    # Update dropdown choices
+    # Update dropdown choices (filter duplicates from built-in)
     remaining = list(user_presets.keys())
-    choices = remaining + (["─────────"] if remaining else []) + list(UPSCALE_BUILTIN_DEFAULTS.keys())
-    return f"✓ Deleted '{name}'", choices, "Image Default"
+    return f"✓ Deleted '{name}'", _build_preset_choices(remaining), "Image Default"
 
 
 def open_folder(folder_path: Path):
@@ -496,6 +509,111 @@ def open_folder(folder_path: Path):
     else:
         subprocess.run(["xdg-open", str(folder_path)])
 
+
+# =============================================================================
+# Media Analysis
+# =============================================================================
+
+# Color schemes for analysis panels (dark = left/saturated, light = right/faded)
+ANALYSIS_COLOR_SCHEMES = {
+    "purple": {
+        "dark": "#bbc1f2",
+        "light": "rgba(220, 222, 250, 0.6)",
+        "divider": "#c0c6e8",
+        "text": "#362e54",
+    },
+    "blue": {
+        "dark": "#6586c7",
+        "light": "rgba(230, 245, 248, 0.6)",
+        "divider": "#6586c7",
+        "text": "#12316e",
+    },
+    "coral": {
+        "dark": "#f8d0d4",
+        "light": "rgba(252, 235, 237, 0.6)",
+        "divider": "#f0c0c6",
+        "text": "#8b3a4a",
+    },
+    "teal": {
+        "dark": "#b2dfdb",
+        "light": "rgba(220, 242, 240, 0.6)",
+        "divider": "#a8d8d2",
+        "text": "#00695c",
+    },
+}
+
+
+def _stat_box(label: str, value: str, text_color: str) -> str:
+    """Generate a single stat box HTML (transparent bg, inherits parent gradient)."""
+    return f'''<div style="flex: 1; min-width: 80px; padding: 6px 8px;">
+<div style="font-size: 0.7em; color: #292626; margin-bottom: 1px;">{label}</div>
+<div style="font-size: 0.95em; font-weight: 600; color: {text_color};">{value}</div>
+</div>'''
+
+
+def _stat_pair(label1: str, val1: str, label2: str, val2: str, scheme: dict, reverse: bool = False) -> str:
+    """Generate a pair of stat boxes with gradient. reverse=True for light→dark."""
+    if reverse:
+        bg_start, bg_end = scheme["light"], scheme["dark"]
+    else:
+        bg_start, bg_end = scheme["dark"], scheme["light"]
+    
+    box1 = _stat_box(label1, val1, scheme["text"])
+    box2 = _stat_box(label2, val2, scheme["text"])
+    sep = f'<div style="width: 1px; background: {scheme["divider"]}; margin: 4px 0;"></div>'
+    
+    return f'''<div style="flex: 1; min-width: 160px; display: flex; gap: 0; background: linear-gradient(90deg, {bg_start} 0%, {bg_end} 100%); border-radius: 4px; overflow: hidden;">
+{box1}{sep}{box2}
+</div>'''
+
+
+def analyze_media(file_path: str, is_video: bool = False, color_scheme: str = "purple") -> gr.update:
+    """Unified media analysis. Returns single gr.HTML update with paired stat groups."""
+    if not file_path:
+        return gr.update(value="", visible=False)
+
+    scheme = ANALYSIS_COLOR_SCHEMES.get(color_scheme, ANALYSIS_COLOR_SCHEMES["purple"])
+
+    try:
+        resolved_path = str(Path(file_path).resolve())
+
+        # File size
+        file_size = "N/A"
+        if os.path.exists(resolved_path):
+            size_bytes = os.path.getsize(resolved_path)
+            if size_bytes < 1024**2:
+                file_size = f"{size_bytes/1024:.1f} KB"
+            elif size_bytes < 1024**3:
+                file_size = f"{size_bytes/1024**2:.1f} MB"
+            else:
+                file_size = f"{size_bytes/1024**3:.2f} GB"
+
+        if is_video:
+            reader = imageio.get_reader(resolved_path)
+            meta = reader.get_meta_data()
+            duration, fps = meta.get("duration", 0), meta.get("fps", 30)
+            size = meta.get("size", (0, 0))
+            width, height = (int(size[0]), int(size[1])) if isinstance(size, tuple) else (0, 0)
+            nframes = meta.get("nframes")
+            frames = int(nframes) if nframes and nframes != float("inf") else int(duration * fps) if duration and fps else 0
+            reader.close()
+            # Same gradient direction: dark→light | dark→light
+            pair1 = _stat_pair("RESOLUTION", f"{width}×{height}", "FRAMES", str(frames), scheme)
+            pair2 = _stat_pair("DURATION", f"{duration:.2f}s @ {fps:.1f} FPS", "FILE SIZE", file_size, scheme)
+        else:
+            img = Image.open(resolved_path)
+            width, height = img.size
+            mp = (width * height) / 1_000_000
+            # Same gradient direction: dark→light | dark→light
+            pair1 = _stat_pair("RESOLUTION", f"{width}×{height}", "MEGAPIXELS", f"{mp:.2f} MP", scheme)
+            pair2 = _stat_pair("FORMAT", img.format or "Unknown", "FILE SIZE", file_size, scheme)
+
+        html = f'''<div style="display: flex; flex-wrap: wrap; gap: 4px; margin: -8px 0; font-family: 'Segoe UI', sans-serif;">{pair1}{pair2}</div>'''
+        return gr.update(value=html, visible=True)
+
+    except Exception as e:
+        error_html = f'<div style="padding: 8px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; color: #721c24; font-size: 0.9em;">❌ Error: {str(e)}</div>'
+        return gr.update(value=error_html, visible=True)
 
 
 def create_tab(services: "SharedServices") -> gr.TabItem:
@@ -511,10 +629,12 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
     outputs_dir = services.get_outputs_dir()
     comfyui_output_dir = services.app_dir / "comfyui" / "output"
     
-    # Load existing user presets for dropdown
+    # Load existing user presets for dropdown (user presets override built-in defaults)
     user_presets = list(services.settings.get("upscale_presets", {}).keys())
-    builtin_presets = list(UPSCALE_BUILTIN_DEFAULTS.keys())
-    preset_choices = user_presets + (["─────────"] if user_presets else []) + builtin_presets
+    preset_choices = _build_preset_choices(user_presets)
+    
+    # Load saved "Image Default" preset for initial UI values (or fall back to built-in)
+    initial_preset = get_upscale_preset("Image Default", services.settings)
     
     def apply_upscale_preset(preset: dict):
         """Convert preset dict to tuple of values for UI components."""
@@ -556,11 +676,12 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 # Image/Video input tabs
                 with gr.Tabs() as upscale_input_tabs:
                     with gr.TabItem("🖼️ Image", id="upscale_image_tab"):
-                        upscale_input_image = gr.Image(label="Input Image", type="filepath", height=300)
+                        upscale_input_image = gr.Image(label="Input Image", type="filepath", elem_classes="image-window")
+                        input_image_analysis = gr.HTML(visible=False, elem_classes="analysis-panel")
                         with gr.Row():
                             upscale_resolution = gr.Slider(
                                 label="Resolution",
-                                value=3072,
+                                value=initial_preset.get("image_resolution", 3072),
                                 minimum=1024,
                                 maximum=4096,
                                 step=8,
@@ -568,7 +689,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                             )
                             upscale_max_resolution = gr.Slider(
                                 label="Max Resolution",
-                                value=4096,
+                                value=initial_preset.get("image_max_resolution", 4096),
                                 minimum=1024,
                                 maximum=7680,
                                 step=8,
@@ -577,11 +698,12 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                         upscale_btn = gr.Button("🔍 Upscale Image", variant="primary", size="lg")
                     
                     with gr.TabItem("🎬 Video", id="upscale_video_tab"):
-                        upscale_input_video = gr.Video(label="Input Video", height=300)
+                        upscale_input_video = gr.Video(label="Input Video", elem_classes="video-window")
+                        input_video_analysis = gr.HTML(visible=False, elem_classes="analysis-panel")
                         with gr.Row():
                             upscale_video_resolution = gr.Slider(
                                 label="Resolution",
-                                value=1080,
+                                value=initial_preset.get("video_resolution", 1080),
                                 minimum=640,
                                 maximum=2160,
                                 step=2,
@@ -592,48 +714,50 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                             upscale_video_res_1080_btn = gr.Button("1080", size="sm", scale=0, min_width=50)
                         
                         # Video Export Settings
+                        initial_video_format = initial_preset.get("video_format", "H.264 (MP4)")
+                        initial_is_prores = "ProRes" in initial_video_format
                         with gr.Accordion("📹 Export Settings", open=False):
                             upscale_video_format = gr.Dropdown(
                                 label="Format",
                                 choices=["H.264 (MP4)", "H.265 (MP4)", "ProRes (MOV)"],
-                                value="H.264 (MP4)",
+                                value=initial_video_format,
                                 info="Output video format"
                             )
                             # H.264/H.265 options
                             upscale_video_crf = gr.Slider(
                                 label="Quality (CRF)",
-                                value=19,
+                                value=initial_preset.get("video_crf", 19),
                                 minimum=0,
                                 maximum=51,
                                 step=1,
                                 info="Lower = better quality, larger file. 19 is visually lossless",
-                                visible=True
+                                visible=not initial_is_prores
                             )
                             upscale_video_pix_fmt = gr.Dropdown(
                                 label="Pixel Format",
                                 choices=["yuv420p", "yuv420p10le"],
-                                value="yuv420p",
+                                value=initial_preset.get("video_pix_fmt", "yuv420p"),
                                 info="10-bit (10le) for higher quality, 8-bit for compatibility",
-                                visible=True
+                                visible=not initial_is_prores
                             )
                             # ProRes options
                             upscale_prores_profile = gr.Dropdown(
                                 label="ProRes Profile",
                                 choices=["lt", "standard", "hq", "4444", "4444xq"],
-                                value="hq",
+                                value=initial_preset.get("prores_profile", "hq"),
                                 info="HQ for most uses, 4444/4444XQ for maximum quality",
-                                visible=False
+                                visible=initial_is_prores
                             )
                             # Redundancy options - save to ComfyUI output folder
                             gr.Markdown("**Redundancy Options** *(saves to ComfyUI output)*")
                             upscale_save_png_sequence = gr.Checkbox(
                                 label="Also save PNG sequence (16-bit lossless)",
-                                value=False,
+                                value=initial_preset.get("save_png_sequence", False),
                                 info="Failsafe for long videos - saves frames as individual PNGs"
                             )
                             upscale_save_to_comfyui = gr.Checkbox(
                                 label="Also save video to ComfyUI output folder",
-                                value=True,
+                                value=initial_preset.get("save_to_comfyui", True),
                                 info="Backup copy saved alongside PNG sequence if enabled"
                             )
                             open_comfyui_output_btn = gr.Button("📂 Open ComfyUI Output Folder", size="sm")
@@ -649,25 +773,27 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                         upscale_video_btn = gr.Button("🎬 Upscale Video", variant="primary", size="lg")
                 
                 with gr.Accordion("🔧 SeedVR2 Settings", open=True):
+                    initial_dit_model = initial_preset.get("dit_model", DEFAULT_SEEDVR2_DIT)
+                    initial_max_blocks = get_seedvr2_max_blocks(initial_dit_model)
                     upscale_dit_model = gr.Dropdown(
                         label="DIT Model",
                         choices=SEEDVR2_DIT_MODELS,
-                        value=DEFAULT_SEEDVR2_DIT,
+                        value=initial_dit_model,
                         info="Models auto-download on first use"
                     )
                     with gr.Row():
                         upscale_blocks_to_swap = gr.Slider(
                             label="Block Swap",
-                            value=36,
+                            value=initial_preset.get("blocks_to_swap", initial_max_blocks),
                             minimum=0,
-                            maximum=36,
+                            maximum=initial_max_blocks,
                             step=1,
                             info="Higher = less VRAM, slower"
                         )
                         upscale_attention_mode = gr.Dropdown(
                             label="Attention",
                             choices=["sdpa", "flash_attn"],
-                            value="sdpa",
+                            value=initial_preset.get("attention_mode", "sdpa"),
                             info="flash_attn is faster if available"
                         )
                 
@@ -675,7 +801,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     with gr.Row():
                         upscale_batch_size = gr.Slider(
                             label="Batch Size",
-                            value=1,
+                            value=initial_preset.get("batch_size", 1),
                             minimum=1,
                             maximum=64,
                             step=1,
@@ -683,19 +809,19 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                         )
                         upscale_uniform_batch = gr.Checkbox(
                             label="Uniform Batch",
-                            value=False,
+                            value=initial_preset.get("uniform_batch", False),
                             info="Equal batch sizes"
                         )
                     with gr.Row():
                         upscale_color_correction = gr.Dropdown(
                             label="Color Correction",
                             choices=["none", "lab", "wavelet", "adain"],
-                            value="lab",
+                            value=initial_preset.get("color_correction", "lab"),
                             info="Color matching method"
                         )
                         upscale_temporal_overlap = gr.Slider(
                             label="Temporal Overlap",
-                            value=0,
+                            value=initial_preset.get("temporal_overlap", 0),
                             minimum=0,
                             maximum=16,
                             step=1,
@@ -704,7 +830,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     with gr.Row():
                         upscale_input_noise = gr.Slider(
                             label="Input Noise",
-                            value=0.0,
+                            value=initial_preset.get("input_noise", 0.0),
                             minimum=0.0,
                             maximum=0.2,
                             step=0.001,
@@ -712,7 +838,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                         )
                         upscale_latent_noise = gr.Slider(
                             label="Latent Noise",
-                            value=0.0,
+                            value=initial_preset.get("latent_noise", 0.0),
                             minimum=0.0,
                             maximum=1.0,
                             step=0.001,
@@ -721,19 +847,19 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 
                 with gr.Accordion("🎛️ VAE Tiling", open=False):
                     with gr.Row():
-                        upscale_encode_tiled = gr.Checkbox(label="Encode Tiled", value=True)
-                        upscale_decode_tiled = gr.Checkbox(label="Decode Tiled", value=True)
+                        upscale_encode_tiled = gr.Checkbox(label="Encode Tiled", value=initial_preset.get("encode_tiled", True))
+                        upscale_decode_tiled = gr.Checkbox(label="Decode Tiled", value=initial_preset.get("decode_tiled", True))
                     with gr.Row():
                         upscale_encode_tile_size = gr.Slider(
                             label="Encode Tile Size",
-                            value=1024,
+                            value=initial_preset.get("encode_tile_size", 1024),
                             minimum=256,
                             maximum=2048,
                             step=64
                         )
                         upscale_encode_tile_overlap = gr.Slider(
                             label="Encode Overlap",
-                            value=128,
+                            value=initial_preset.get("encode_tile_overlap", 128),
                             minimum=0,
                             maximum=512,
                             step=16
@@ -741,14 +867,14 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     with gr.Row():
                         upscale_decode_tile_size = gr.Slider(
                             label="Decode Tile Size",
-                            value=1024,
+                            value=initial_preset.get("decode_tile_size", 1024),
                             minimum=256,
                             maximum=2048,
                             step=64
                         )
                         upscale_decode_tile_overlap = gr.Slider(
                             label="Decode Overlap",
-                            value=128,
+                            value=initial_preset.get("decode_tile_overlap", 128),
                             minimum=0,
                             maximum=512,
                             step=16
@@ -758,7 +884,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     # Track which input tab is active for "Save as Default"
                     upscale_active_tab = gr.State(value="Image")
                     
-                    upscale_save_default_btn = gr.Button("⭐ Save current settings as default", size="sm")
+                    upscale_save_default_btn = gr.Button("⭐ Save current settings as default (loads on app start)", size="sm")
                     gr.Markdown("---")
                     with gr.Row():
                         upscale_preset_dropdown = gr.Dropdown(
@@ -789,14 +915,17 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                         upscale_slider = gr.ImageSlider(
                             label="Before / After",
                             type="filepath",
-                            show_download_button=True
+                            elem_classes="image-window",
+                            show_download_button=False
                         )
+                        output_image_analysis = gr.HTML(visible=False, elem_classes="analysis-panel")
                         with gr.Row():                          
                             upscale_save_btn = gr.Button("💾 Save", size="sm")
                         upscale_autosave = gr.Checkbox(label="Auto-save", value=False)
                     
                     with gr.TabItem("🎬 Video Result", id="upscale_video_result"):
-                        upscale_output_video = gr.Video(label="Upscaled Video")
+                        upscale_output_video = gr.Video(label="Upscaled Video", show_download_button=False, elem_classes="video-window")
+                        output_video_analysis = gr.HTML(visible=False, elem_classes="analysis-panel")
                         gr.Markdown(
                             "*All upscaled videos are automatically saved to the output folder. "
                             "Note: Gradio converts H.265/ProRes to MP4 for browser preview — "
@@ -806,6 +935,27 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
 
                 upscale_status = gr.Textbox(label="Status", interactive=False, show_label=False, lines=2)
                 upscale_open_folder_btn = gr.Button("📂 Open Output Folder", size="sm")
+
+                # System monitor
+                with gr.Row():
+                    with gr.Column(scale=1, min_width=200):
+                        gpu_monitor = gr.Textbox(
+                            value="Loading...",
+                            lines=4.5,
+                            container=False,
+                            interactive=False,
+                            show_label=False,
+                            elem_classes="monitor-box gpu-monitor"
+                        )
+                    with gr.Column(scale=1, min_width=200):
+                        cpu_monitor = gr.Textbox(
+                            value="Loading...",
+                            lines=4,
+                            container=False,
+                            interactive=False,
+                            show_label=False,
+                            elem_classes="monitor-box cpu-monitor"
+                        )
 
                 # Hidden state for upscaled paths and original info (for save naming)
                 upscale_result_path = gr.State(value=None)
@@ -831,6 +981,22 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     gr.Button("🎬 SeedVR2 Tutorial Video", size="sm", link="https://www.youtube.com/watch?v=MBtWYXq_r60")
         
         # ===== EVENT HANDLERS =====
+        
+        # Helper to get current color scheme from settings
+        def get_analysis_color():
+            return services.settings.get("analysis_color_scheme", "purple")
+        
+        # Input analysis - triggered when image/video is uploaded
+        upscale_input_image.change(
+            fn=lambda p: analyze_media(p, is_video=False, color_scheme=get_analysis_color()),
+            inputs=[upscale_input_image],
+            outputs=[input_image_analysis]
+        )
+        upscale_input_video.change(
+            fn=lambda p: analyze_media(p, is_video=True, color_scheme=get_analysis_color()),
+            inputs=[upscale_input_video],
+            outputs=[input_video_analysis]
+        )
         
         # All settings components for preset system
         upscale_all_settings = [
@@ -993,7 +1159,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
             upscale_latent_noise,
         ]
         
-        # Image Upscale - wrapper to also switch output tab
+        # Image Upscale - wrapper to also switch output tab and analyze output
         async def upscale_image_and_switch(
             input_image, seed, randomize_seed, resolution, max_resolution,
             dit_model, blocks_to_swap, attention_mode,
@@ -1010,8 +1176,11 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 batch_size, uniform_batch, color_correction, temporal_overlap,
                 input_noise, latent_noise, autosave
             )
-            # Return result + tab switch to image result
-            return result + (gr.Tabs(selected="upscale_image_result"),)
+            # result = (slider_tuple, status, seed, upscaled_path, original_path, resolution)
+            upscaled_path = result[3]
+            analysis = analyze_media(upscaled_path, is_video=False, color_scheme=get_analysis_color())
+            # Return result + output analysis panel + tab switch
+            return result + (analysis, gr.Tabs(selected="upscale_image_result"))
         
         upscale_btn.click(
             fn=upscale_image_and_switch,
@@ -1022,7 +1191,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 upscale_resolution,
                 upscale_max_resolution,
             ] + upscale_common_inputs,
-            outputs=[upscale_slider, upscale_status, upscale_seed, upscale_result_path, upscale_original_path, upscale_result_resolution, upscale_output_tabs]
+            outputs=[upscale_slider, upscale_status, upscale_seed, upscale_result_path, upscale_original_path, upscale_result_resolution, output_image_analysis, upscale_output_tabs]
         )
         
         # Video export inputs (before common inputs)
@@ -1036,7 +1205,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
             upscale_video_filename,
         ]
         
-        # Video Upscale - wrapper to also switch output tab
+        # Video Upscale - wrapper to also switch output tab and analyze output
         async def upscale_video_and_switch(
             input_video, seed, randomize_seed, resolution,
             video_format, video_crf, video_pix_fmt, prores_profile,
@@ -1057,8 +1226,11 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 batch_size, uniform_batch, color_correction, temporal_overlap,
                 input_noise, latent_noise
             )
-            # Return result + tab switch to video result
-            return result + (gr.Tabs(selected="upscale_video_result"),)
+            # result = (video_path, status, seed, output_path)
+            output_path = result[3]
+            analysis = analyze_media(output_path, is_video=True, color_scheme=get_analysis_color())
+            # Return result + output analysis panel + tab switch
+            return result + (analysis, gr.Tabs(selected="upscale_video_result"))
         
         upscale_video_btn.click(
             fn=upscale_video_and_switch,
@@ -1068,7 +1240,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 upscale_randomize_seed,
                 upscale_video_resolution,
             ] + upscale_video_export_inputs + upscale_video_common_inputs,
-            outputs=[upscale_output_video, upscale_status, upscale_seed, upscale_video_result_path, upscale_output_tabs]
+            outputs=[upscale_output_video, upscale_status, upscale_seed, upscale_video_result_path, output_video_analysis, upscale_output_tabs]
         )
         
         # Video format change handler - show/hide format-specific options
@@ -1130,5 +1302,15 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
             fn=services.inter_module.image_transfer.create_tab_select_handler(TAB_ID),
             outputs=[upscale_input_image, upscale_status]
         )
+        
+        # System Monitor
+        def update_monitor():
+            if services.system_monitor:
+                gpu_info, cpu_info = services.system_monitor.get_system_info()
+                return gpu_info, cpu_info
+            return "N/A", "N/A"
+        
+        monitor_timer = gr.Timer(2, active=True)
+        monitor_timer.tick(fn=update_monitor, outputs=[gpu_monitor, cpu_monitor])
     
     return tab

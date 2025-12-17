@@ -129,6 +129,22 @@ def create_interface(services: SharedServices) -> gr.Blocks:
     """
     # CSS for the interface
     css = """
+    
+    .video-window {
+        min-height: 300px !important;
+        height: auto !important;
+    }
+
+    .video-window video, .image-window img {
+        max-height: 60vh !important;
+        object-fit: contain;
+        width: 100%;
+    }
+    .video-window .source-selection,
+    .image-window .source-selection {
+        display: none !important;
+    }    
+
     textarea {
         overflow-y: auto !important;
         resize: vertical;
@@ -190,7 +206,35 @@ def create_interface(services: SharedServices) -> gr.Blocks:
         .cpu-monitor textarea {
             background: linear-gradient(135deg, #f5576c15 0%, #2d3748 100%) !important;
         }
-    }    
+    }
+
+    /* Analysis panels - tight vertical spacing */
+    .analysis-panel {
+        margin-top: -9px !important;
+        margin-bottom: -9px !important;
+    }
+
+    /* Resolution preset radio - inline compact style */
+    .res-radio-compact {
+        min-width: 0 !important;
+    }
+    .res-radio-compact .wrap {
+        gap: 0 !important;
+    }
+    .res-radio-compact .wrap > label {
+        border: none !important;
+        background: transparent !important;
+        padding: 6px 12px !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+    }
+    .res-radio-compact .wrap > label:first-child {
+        border-radius: 8px 0 0 8px !important;
+    }
+    .res-radio-compact .wrap > label:last-child {
+        border-radius: 0 8px 8px 0 !important;
+    }
+
     """
     
     with gr.Blocks(title="Z-Image Turbo", css=css) as interface:

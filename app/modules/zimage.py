@@ -57,6 +57,71 @@ FALLBACK_SCHEDULERS = ["simple", "normal", "karras", "exponential", "sgm_uniform
 PREFERRED_SAMPLER = "euler"
 PREFERRED_SCHEDULER = "simple"
 
+# Resolution presets by base size - format: "WxH ( AR )"
+RES_CHOICES = {
+    "1024": [
+        "1024x1024 ( 1:1 )",
+        "1152x896 ( 9:7 )",
+        "896x1152 ( 7:9 )",
+        "1152x864 ( 4:3 )",
+        "864x1152 ( 3:4 )",
+        "1248x832 ( 3:2 )",
+        "832x1248 ( 2:3 )",
+        "1280x720 ( 16:9 )",
+        "720x1280 ( 9:16 )",
+        "1344x576 ( 21:9 )",
+        "576x1344 ( 9:21 )",
+    ],
+    "1280": [
+        "1280x1280 ( 1:1 )",
+        "1440x1120 ( 9:7 )",
+        "1120x1440 ( 7:9 )",
+        "1472x1104 ( 4:3 )",
+        "1104x1472 ( 3:4 )",
+        "1536x1024 ( 3:2 )",
+        "1024x1536 ( 2:3 )",
+        "1536x864 ( 16:9 )",
+        "864x1536 ( 9:16 )",
+        "1680x720 ( 21:9 )",
+        "720x1680 ( 9:21 )",
+    ],
+    "1536": [
+        "1536x1536 ( 1:1 )",
+        "1728x1344 ( 9:7 )",
+        "1344x1728 ( 7:9 )",
+        "1728x1296 ( 4:3 )",
+        "1296x1728 ( 3:4 )",
+        "1872x1248 ( 3:2 )",
+        "1248x1872 ( 2:3 )",
+        "2048x1152 ( 16:9 )",
+        "1152x2048 ( 9:16 )",
+        "2016x864 ( 21:9 )",
+        "864x2016 ( 9:21 )",
+    ],
+}
+
+def parse_resolution(res_string: str) -> tuple[int, int]:
+    """Parse resolution string like '1024x1024 ( 1:1 )' into (width, height)."""
+    # Extract WxH part before the parenthesis
+    dims = res_string.split("(")[0].strip()
+    w, h = dims.split("x")
+    return int(w), int(h)
+
+def get_resolution_dropdown_choices(base: str) -> list[tuple[str, str]]:
+    """Get formatted dropdown choices with landscape/portrait grouping."""
+    choices = RES_CHOICES.get(base, RES_CHOICES["1024"])
+    # First item is always square
+    result = [choices[0]]  # Square
+    # Add landscape options (indices 1,3,5,7,9 - odd width > height)
+    result.append("── Landscape ──")
+    for i in [1, 3, 5, 7, 9]:
+        result.append(choices[i])
+    # Add portrait options (indices 2,4,6,8,10 - odd height > width)
+    result.append("── Portrait ──")
+    for i in [2, 4, 6, 8, 10]:
+        result.append(choices[i])
+    return result
+
 
 # Model definitions for huggingface_hub downloads
 MODEL_DOWNLOADS = {
@@ -159,6 +224,146 @@ def get_workflow_file(gen_type: str, use_gguf: bool) -> str:
     parts.append(gen_type)
     parts.append("lora")  # Always use lora workflow
     return "_".join(parts) + ".json"
+
+
+def extract_png_metadata(image_path: str) -> dict:
+    """Extract ComfyUI metadata from PNG text chunks.
+    
+    Returns dict with 'prompt', 'workflow', and parsed generation params if available.
+    """
+    from PIL import Image
+    import json
+    
+    result = {
+        "prompt_text": "",
+        "params": {},
+        "raw_prompt": None,
+        "raw_workflow": None,
+        "error": None
+    }
+    
+    try:
+        with Image.open(image_path) as img:
+            # PNG text chunks are in img.info
+            if not hasattr(img, 'info') or not img.info:
+                result["error"] = "No metadata found in image"
+                return result
+            
+            # Get raw metadata
+            raw_prompt = img.info.get("prompt")
+            raw_workflow = img.info.get("workflow")
+            
+            if raw_prompt:
+                result["raw_prompt"] = raw_prompt
+                try:
+                    prompt_data = json.loads(raw_prompt)
+                    # ComfyUI prompt is a dict of node_id -> node_data
+                    # Look for text encoder / CLIP nodes that contain the prompt
+                    for node_id, node_data in prompt_data.items():
+                        if isinstance(node_data, dict):
+                            inputs = node_data.get("inputs", {})
+                            class_type = node_data.get("class_type", "")
+                            
+                            # Extract prompt text from various node types
+                            if "text" in inputs and isinstance(inputs["text"], str):
+                                if len(inputs["text"]) > len(result["prompt_text"]):
+                                    result["prompt_text"] = inputs["text"]
+                            
+                            # Extract generation params from sampler nodes
+                            if "KSampler" in class_type or "sampler" in class_type.lower():
+                                if "seed" in inputs:
+                                    result["params"]["seed"] = inputs["seed"]
+                                if "steps" in inputs:
+                                    result["params"]["steps"] = inputs["steps"]
+                                if "cfg" in inputs:
+                                    result["params"]["cfg"] = inputs["cfg"]
+                                if "sampler_name" in inputs:
+                                    result["params"]["sampler"] = inputs["sampler_name"]
+                                if "scheduler" in inputs:
+                                    result["params"]["scheduler"] = inputs["scheduler"]
+                                if "shift" in inputs:
+                                    result["params"]["shift"] = inputs["shift"]
+                                if "denoise" in inputs:
+                                    result["params"]["denoise"] = inputs["denoise"]
+                            
+                            # Extract dimensions from empty latent or image nodes
+                            if "width" in inputs and "height" in inputs:
+                                result["params"]["width"] = inputs["width"]
+                                result["params"]["height"] = inputs["height"]
+                            
+                            # Extract model names
+                            if "unet_name" in inputs:
+                                result["params"]["diffusion"] = inputs["unet_name"]
+                            if "clip_name" in inputs:
+                                result["params"]["text_encoder"] = inputs["clip_name"]
+                            
+                            # Extract LoRA info from loader nodes
+                            if "LoraLoader" in class_type or "lora" in class_type.lower():
+                                lora_name = inputs.get("lora_name")
+                                strength = inputs.get("strength_model", inputs.get("strength", 1.0))
+                                if lora_name and lora_name != "none.safetensors":
+                                    if "loras" not in result["params"]:
+                                        result["params"]["loras"] = []
+                                    result["params"]["loras"].append({
+                                        "name": lora_name,
+                                        "strength": strength
+                                    })
+                                
+                except json.JSONDecodeError:
+                    result["error"] = "Could not parse prompt metadata"
+            
+            if raw_workflow:
+                result["raw_workflow"] = raw_workflow
+            
+            if not raw_prompt and not raw_workflow:
+                result["error"] = "No ComfyUI metadata found"
+                
+    except Exception as e:
+        result["error"] = f"Error reading image: {str(e)}"
+    
+    return result
+
+
+def format_metadata_display(metadata: dict) -> str:
+    """Format extracted metadata for display."""
+    lines = []
+    
+    if metadata.get("error"):
+        return f"⚠️ {metadata['error']}"
+    
+    if metadata.get("prompt_text"):
+        lines.append(f"📝 Prompt:\n{metadata['prompt_text']}\n")
+    
+    params = metadata.get("params", {})
+    if params:
+        lines.append("⚙️ Settings:")
+        if "seed" in params:
+            lines.append(f"  Seed: {params['seed']}")
+        if "steps" in params:
+            lines.append(f"  Steps: {params['steps']}")
+        if "cfg" in params:
+            lines.append(f"  CFG: {params['cfg']}")
+        if "sampler" in params:
+            lines.append(f"  Sampler: {params['sampler']}")
+        if "scheduler" in params:
+            lines.append(f"  Scheduler: {params['scheduler']}")
+        if "shift" in params:
+            lines.append(f"  Shift: {params['shift']}")
+        if "width" in params and "height" in params:
+            lines.append(f"  Size: {params['width']}x{params['height']}")
+        if "denoise" in params:
+            lines.append(f"  Denoise: {params['denoise']}")
+        if "diffusion" in params:
+            lines.append(f"  Model: {params['diffusion']}")
+        if "loras" in params and params["loras"]:
+            lines.append("\n🎨 LoRAs:")
+            for lora in params["loras"]:
+                lines.append(f"  {lora['name']} (strength: {lora['strength']})")
+    
+    if not lines:
+        return "No generation parameters found in metadata"
+    
+    return "\n".join(lines)
 
 
 def save_image_to_outputs(image_path: str, prompt: str, outputs_dir: Path, subfolder: str = None) -> str:
@@ -463,7 +668,7 @@ async def generate_image(
             params = {
                 "prompt": prompt_text,
                 "steps": int(steps),
-                "seed": current_seed,
+                "seed": int(current_seed),
                 "cfg": cfg,
                 "shift": shift,
                 "sampler_name": sampler_name,
@@ -472,6 +677,9 @@ async def generate_image(
                 "clip_name": clip_name,
                 "vae_name": vae_name,
             }
+            
+            # Debug: log generation params
+            logger.info(f"Generation params: seed={params['seed']}, steps={params['steps']}, cfg={params['cfg']}, shift={params['shift']}, sampler={params['sampler_name']}, scheduler={params['scheduler']}")
             
             # Add type-specific params
             if gen_type == "t2i":
@@ -639,9 +847,29 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 with gr.Tabs():
                     with gr.TabItem("Text → Image"):
                         generate_t2i_btn = gr.Button("⚡ Generate", variant="primary", size="lg")
-                        with gr.Row():
-                            width = gr.Slider(label="Width", value=1024, minimum=512, maximum=2048, step=64)
-                            height = gr.Slider(label="Height", value=1024, minimum=512, maximum=2048, step=64)
+                        with gr.Group():                        
+                            with gr.Row():
+                                width = gr.Slider(label="Width", value=1024, minimum=512, maximum=2048, step=32)
+                                height = gr.Slider(label="Height", value=1024, minimum=512, maximum=2048, step=32)
+                                  
+                            with gr.Row():
+                                res_base = gr.Radio(
+                                    choices=["1024", "1280", "1536"],
+                                    value="1024",
+                                    label="Resolution",
+                                    show_label=False,
+                                    scale=1,
+                                    min_width=180,
+                                    elem_classes=["res-radio-compact"]
+                                )
+                                res_preset = gr.Dropdown(
+                                    choices=get_resolution_dropdown_choices("1024"),
+                                    value="1024x1024 ( 1:1 )",
+                                    label="Aspect Ratio",
+                                    show_label=False,
+                                    scale=1,
+                                    interactive=True
+                                )
                     
                     with gr.TabItem("Image → Image"):
                         input_image = gr.Image(label="Input Image", type="filepath", height=360)
@@ -853,7 +1081,14 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                             dl_diffusion_gguf_btn = gr.Button("⬇️ Diffusion (GGUF)", size="sm")
                             dl_te_gguf_btn = gr.Button("⬇️ Text Encoder (GGUF)", size="sm")
                             dl_vae_gguf_btn = gr.Button("⬇️ VAE", size="sm")
-            
+
+                        gr.Markdown("---")
+
+                        gr.Markdown("*Advanced — Browse repos for other quants*")
+                        with gr.Row():
+                            gr.Button("🔗 Z-Image GGUF Repo", size="sm", link="https://huggingface.co/gguf-org/z-image-gguf/tree/main")
+                            gr.Button("🔗 Qwen3 GGUF Repo", size="sm", link="https://huggingface.co/Qwen/Qwen3-4B-GGUF/tree/main")
+                                    
             # Right column - output
             with gr.Column(scale=1):
                 output_gallery = gr.Gallery(
@@ -884,20 +1119,33 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 
                 # System monitor
                 with gr.Row():
-                    gpu_monitor = gr.Textbox(
-                        label="GPU",
-                        value="Loading...",
-                        interactive=False,
-                        lines=3,
-                        elem_classes=["monitor-box", "gpu-monitor"]
-                    )
-                    cpu_monitor = gr.Textbox(
-                        label="CPU",
-                        value="Loading...",
-                        interactive=False,
-                        lines=3,
-                        elem_classes=["monitor-box", "cpu-monitor"]
-                    )
+                    with gr.Column(scale=1, min_width=200):                            
+                        gpu_monitor = gr.Textbox(
+                            value="Loading...",
+                            lines=4.5,
+                            container=False,
+                            interactive=False,
+                            show_label=False,
+                            elem_classes="monitor-box gpu-monitor"
+                        )
+                    with gr.Column(scale=1, min_width=200):
+                        cpu_monitor = gr.Textbox(
+                            value="Loading...",
+                            lines=4,
+                            container=False,
+                            interactive=False,
+                            show_label=False,
+                            elem_classes="monitor-box cpu-monitor"
+                        )  
+                
+                # Image metadata reader
+                with gr.Accordion("🔍 Read Image Metadata", open=False):
+                    gr.Markdown("*Drop a ComfyUI-generated image to extract prompt & settings*")
+                    meta_image = gr.Image(label="Drop image here", type="filepath", height=250)
+                    meta_output = gr.Textbox(label="Metadata", lines=10, interactive=False, show_copy_button=True)
+                    with gr.Row():
+                        meta_to_prompt_btn = gr.Button("📋 Copy Prompt", size="sm")
+                        meta_to_settings_btn = gr.Button("⚙️ Apply Settings", size="sm")
                 
                 # Camera prompts helper
                 with gr.Accordion("📷 Camera Prompts", open=False):
@@ -944,6 +1192,8 @@ Distilled "turbo" models can produce similar images across different seeds, espe
             generate_t2i_btn=generate_t2i_btn,
             width=width,
             height=height,
+            res_base=res_base,
+            res_preset=res_preset,
             # I2I components
             generate_i2i_btn=generate_i2i_btn,
             input_image=input_image,
@@ -1023,12 +1273,20 @@ Distilled "turbo" models can produce similar images across different seeds, espe
             gen_status=gen_status,
             gpu_monitor=gpu_monitor,
             cpu_monitor=cpu_monitor,
+            # Metadata reader
+            meta_image=meta_image,
+            meta_output=meta_output,
+            meta_to_prompt_btn=meta_to_prompt_btn,
+            meta_to_settings_btn=meta_to_settings_btn,
             open_camera_prompts_btn=open_camera_prompts_btn,
             # Directories
             diffusion_dir=diffusion_dir,
             text_encoders_dir=text_encoders_dir,
             vae_dir=vae_dir,
             loras_dir=loras_dir,
+            # Valid options for metadata apply
+            samplers=samplers,
+            schedulers=schedulers,
         )
     
     return tab
@@ -1050,6 +1308,8 @@ def _setup_event_handlers(
     generate_t2i_btn = components["generate_t2i_btn"]
     width = components["width"]
     height = components["height"]
+    res_base = components["res_base"]
+    res_preset = components["res_preset"]
     generate_i2i_btn = components["generate_i2i_btn"]
     input_image = components["input_image"]
     i2i_describe_btn = components["i2i_describe_btn"]
@@ -1121,11 +1381,17 @@ def _setup_event_handlers(
     gen_status = components["gen_status"]
     gpu_monitor = components["gpu_monitor"]
     cpu_monitor = components["cpu_monitor"]
+    meta_image = components["meta_image"]
+    meta_output = components["meta_output"]
+    meta_to_prompt_btn = components["meta_to_prompt_btn"]
+    meta_to_settings_btn = components["meta_to_settings_btn"]
     open_camera_prompts_btn = components["open_camera_prompts_btn"]
     diffusion_dir = components["diffusion_dir"]
     text_encoders_dir = components["text_encoders_dir"]
     vae_dir = components["vae_dir"]
     loras_dir = components["loras_dir"]
+    samplers = components["samplers"]
+    schedulers = components["schedulers"]
     
     # Prompt Assistant mode toggle
     def toggle_assist_mode(mode):
@@ -1166,6 +1432,34 @@ def _setup_event_handlers(
     clear_prompt_btn.click(
         fn=lambda: "",
         outputs=[prompt]
+    )
+    
+    # Resolution preset handlers
+    def on_res_base_change(base):
+        """Update dropdown choices when resolution base changes, keeping same AR if possible."""
+        new_choices = get_resolution_dropdown_choices(base)
+        # Default to square for the new base
+        default_value = RES_CHOICES[base][0]
+        return gr.update(choices=new_choices, value=default_value), *parse_resolution(default_value)
+    
+    def on_res_preset_change(preset):
+        """Update width/height sliders when preset is selected."""
+        # Skip divider labels
+        if preset.startswith("──"):
+            return gr.update(), gr.update()
+        w, h = parse_resolution(preset)
+        return w, h
+    
+    res_base.change(
+        fn=on_res_base_change,
+        inputs=[res_base],
+        outputs=[res_preset, width, height]
+    )
+    
+    res_preset.change(
+        fn=on_res_preset_change,
+        inputs=[res_preset],
+        outputs=[width, height]
     )
     
     # Status indicator helpers
@@ -1263,6 +1557,130 @@ def _setup_event_handlers(
     refresh_loras_btn.click(
         fn=refresh_loras,
         outputs=[lora1_name, lora2_name, lora3_name]
+    )
+    
+    # Metadata reader handlers
+    # Store extracted metadata for use by buttons
+    extracted_metadata = gr.State(value={})
+    
+    def on_meta_image_change(image_path):
+        """Extract and display metadata when image is uploaded."""
+        if not image_path:
+            return "", {}
+        metadata = extract_png_metadata(image_path)
+        display = format_metadata_display(metadata)
+        return display, metadata
+    
+    meta_image.change(
+        fn=on_meta_image_change,
+        inputs=[meta_image],
+        outputs=[meta_output, extracted_metadata]
+    )
+    
+    def copy_prompt_from_metadata(metadata):
+        """Copy extracted prompt to the main prompt field."""
+        if metadata and metadata.get("prompt_text"):
+            return metadata["prompt_text"]
+        return gr.update()
+    
+    meta_to_prompt_btn.click(
+        fn=copy_prompt_from_metadata,
+        inputs=[extracted_metadata],
+        outputs=[prompt]
+    )
+    
+    # Get current valid options for validation
+    available_loras = scan_models(loras_dir, (".safetensors",))
+    
+    def apply_settings_from_metadata(metadata):
+        """Apply extracted settings to the UI controls including prompt and LoRAs.
+        
+        Only applies values that are valid for the current setup (e.g., installed LoRAs,
+        available samplers/schedulers).
+        """
+        # 19 outputs: prompt, seed, randomize_seed, steps, cfg, shift, sampler, scheduler, width, height,
+        #             lora1 (enabled, name, strength), lora2, lora3
+        no_update = [gr.update()] * 19
+        
+        if not metadata:
+            return no_update
+        
+        params = metadata.get("params", {})
+        prompt_text = metadata.get("prompt_text", "")
+        loras_from_meta = params.get("loras", [])
+        
+        # Build LoRA updates (3 slots) - only apply if LoRA exists locally
+        lora_updates = []
+        for i in range(3):
+            if i < len(loras_from_meta):
+                lora = loras_from_meta[i]
+                lora_name = lora["name"]
+                # Check if this LoRA exists in our collection
+                if lora_name in available_loras:
+                    lora_updates.extend([
+                        gr.update(value=True),  # enabled
+                        gr.update(value=lora_name),  # name
+                        gr.update(value=lora["strength"]),  # strength
+                    ])
+                else:
+                    # LoRA not found - skip it (don't enable, don't change name)
+                    logger.warning(f"LoRA not found locally, skipping: {lora_name}")
+                    lora_updates.extend([
+                        gr.update(value=False),  # disabled
+                        gr.update(),  # keep current name
+                        gr.update(),  # keep current strength
+                    ])
+            else:
+                # Clear unused slots
+                lora_updates.extend([
+                    gr.update(value=False),  # disabled
+                    gr.update(),  # keep name
+                    gr.update(),  # keep strength
+                ])
+        
+        # Only apply sampler/scheduler if they're in our available lists
+        sampler_update = gr.update()
+        if "sampler" in params and params["sampler"] in samplers:
+            sampler_update = gr.update(value=params["sampler"])
+        elif "sampler" in params:
+            logger.warning(f"Sampler not available, skipping: {params['sampler']}")
+        
+        scheduler_update = gr.update()
+        if "scheduler" in params and params["scheduler"] in schedulers:
+            scheduler_update = gr.update(value=params["scheduler"])
+        elif "scheduler" in params:
+            logger.warning(f"Scheduler not available, skipping: {params['scheduler']}")
+        
+        # Helper to check if a value is a usable number (not a node reference like ['67', 0])
+        def is_valid_number(val):
+            return isinstance(val, (int, float)) and not isinstance(val, bool)
+        
+        def is_valid_int(val):
+            return isinstance(val, int) and not isinstance(val, bool)
+        
+        return (
+            gr.update(value=prompt_text) if prompt_text else gr.update(),
+            gr.update(value=int(params["seed"])) if "seed" in params and is_valid_number(params["seed"]) else gr.update(),
+            gr.update(value=False) if "seed" in params and is_valid_number(params["seed"]) else gr.update(),  # Only uncheck if we have a valid seed
+            gr.update(value=int(params["steps"])) if "steps" in params and is_valid_int(params["steps"]) else gr.update(),
+            gr.update(value=params["cfg"]) if "cfg" in params and is_valid_number(params["cfg"]) else gr.update(),
+            gr.update(value=params["shift"]) if "shift" in params and is_valid_number(params["shift"]) else gr.update(),
+            sampler_update,
+            scheduler_update,
+            gr.update(value=int(params["width"])) if "width" in params and is_valid_int(params["width"]) else gr.update(),
+            gr.update(value=int(params["height"])) if "height" in params and is_valid_int(params["height"]) else gr.update(),
+            *lora_updates
+        )
+    
+    meta_to_settings_btn.click(
+        fn=apply_settings_from_metadata,
+        inputs=[extracted_metadata],
+        outputs=[
+            prompt, seed, randomize_seed, steps, cfg, shift, sampler_name, scheduler, width, height,
+            lora1_enabled, lora1_name, lora1_strength,
+            lora2_enabled, lora2_name, lora2_strength,
+            lora3_enabled, lora3_name, lora3_strength,
+        ]
     )
     
     # Shared inputs for both generate buttons
