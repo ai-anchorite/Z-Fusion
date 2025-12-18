@@ -34,7 +34,7 @@ module.exports = {
             default: true,
             icon: "fa-solid fa-rocket",
             text: "Open Web UI",
-            href: local.url,
+            href: local.url + "?ts=" + Date.now(),
           }, {
             icon: "fa-solid fa-terminal",
             text: "Terminal",

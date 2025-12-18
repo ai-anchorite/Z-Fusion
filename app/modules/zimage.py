@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Module metadata
 TAB_ID = "zimage"
-TAB_LABEL = "⚡ Z-Image Turbo"
+TAB_LABEL = "⚡ Z-Image"
 TAB_ORDER = 0
 
 # Default models
