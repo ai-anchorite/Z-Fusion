@@ -57,6 +57,9 @@ FALLBACK_SCHEDULERS = ["simple", "normal", "karras", "exponential", "sgm_uniform
 PREFERRED_SAMPLER = "euler"
 PREFERRED_SCHEDULER = "simple"
 
+# Generation cancellation flag (set by stop button, checked by batch loop)
+_cancel_generation = False
+
 # Resolution presets by base size - format: "WxH ( AR )"
 RES_CHOICES = {
     "1024": [
@@ -657,7 +660,16 @@ async def generate_image(
     total_duration = 0.0
     
     try:
+        global _cancel_generation
+        _cancel_generation = False  # Reset at start of generation
+        
         for i in range(batch_count):
+            # Check for cancellation
+            if _cancel_generation:
+                _cancel_generation = False  # Reset for next run
+                yield generated_images, "⏹️ Generation cancelled", base_seed
+                return
+            
             current_seed = base_seed + i
             
             # Update status for batch progress
@@ -1098,7 +1110,8 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     autosave = gr.Checkbox(label="Auto-save", value=False, elem_classes="checkbox-compact")
                     gen_status = gr.Textbox(label="Status", interactive=False, show_label=False, lines=2)
                 with gr.Row():
-                    unload_btn = gr.Button("🗑️ Unload Comfyui Models", size="sm", variant="stop")
+                    stop_btn = gr.Button("⏹️ Stop Generation", size="sm", variant="stop")
+                    unload_btn = gr.Button("🗑️ Unload Comfyui Models", size="sm")
                 
                 # System monitor
                 with gr.Row():
@@ -1246,6 +1259,7 @@ Distilled "turbo" models can produce similar images across different seeds, espe
             send_to_upscale_btn=send_to_upscale_btn,
             open_folder_btn=open_folder_btn,
             autosave=autosave,
+            stop_btn=stop_btn,
             unload_btn=unload_btn,
             gen_status=gen_status,
             gpu_monitor=gpu_monitor,
@@ -1349,6 +1363,7 @@ def _setup_event_handlers(
     send_to_upscale_btn = components["send_to_upscale_btn"]
     open_folder_btn = components["open_folder_btn"]
     autosave = components["autosave"]
+    stop_btn = components["stop_btn"]
     unload_btn = components["unload_btn"]
     gen_status = components["gen_status"]
     gpu_monitor = components["gpu_monitor"]
@@ -1689,6 +1704,26 @@ def _setup_event_handlers(
     
     unload_btn.click(
         fn=unload_models,
+        outputs=[gen_status]
+    )
+    
+    # Stop generation (interrupt ComfyUI and cancel batch loop)
+    async def stop_generation() -> str:
+        """Interrupt current ComfyUI generation and cancel batch loop."""
+        global _cancel_generation
+        _cancel_generation = True  # Signal batch loop to stop
+        try:
+            async with httpx.AsyncClient() as client:
+                # Interrupt current generation
+                response = await client.post(f"{services.kit.comfyui_url}/interrupt")
+                if response.status_code == 200:
+                    return "⏹️ Stopping generation..."
+                return f"❌ Failed: {response.status_code}"
+        except Exception as e:
+            return f"❌ Error: {e}"
+    
+    stop_btn.click(
+        fn=stop_generation,
         outputs=[gen_status]
     )
     
