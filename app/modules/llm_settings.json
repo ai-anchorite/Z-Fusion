@@ -12,9 +12,10 @@
     },
     "active_enhancer": "Z-Image (Visionary Artist)",
     "active_describer": "Detailed Analysis",
-    "model_for_enhancer": "Qwen/Qwen3-4B-Instruct-2507",
+    "model_for_enhancer": "Qwen/Qwen3-VL-2B-Instruct",
     "model_for_describer": "Qwen/Qwen3-VL-2B-Instruct",
     "custom_models": [],
     "temperature": 0.7,
-    "max_tokens": 2048
+    "max_tokens": 2048,
+    "keep_model_loaded": false
 }
