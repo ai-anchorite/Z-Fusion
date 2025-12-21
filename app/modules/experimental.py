@@ -216,7 +216,7 @@ async def download_image_from_url(url: str) -> str:
 
 
 def save_experimental_output(image_path: str, original_path: str, outputs_dir: Path) -> str:
-    """Save upscaled image to outputs/experimental folder."""
+    """Save enhanced image to outputs/experimental folder."""
     timestamp = datetime.now().strftime("%H%M%S")
     if original_path:
         original_stem = Path(original_path).stem[:30]
@@ -225,7 +225,7 @@ def save_experimental_output(image_path: str, original_path: str, outputs_dir: P
         safe_stem = "image"
     target_dir = outputs_dir / "experimental"
     target_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{safe_stem}_upscaled_{timestamp}.png"
+    filename = f"{safe_stem}_enhanced_{timestamp}.png"
     output_path = target_dir / filename
     shutil.copy2(image_path, output_path)
     logger.info(f"Saved experimental output to: {output_path}")
@@ -313,11 +313,13 @@ async def experimental_upscale_single(
             image_path = await download_image_from_url(image_path)
         
         duration = time.time() - start_time
-        result_path = image_path
-        if autosave:
-            result_path = save_experimental_output(image_path, input_image, outputs_dir)
         
-        return result_path, "success", duration
+        # Autosave as side effect, but always return original path for Gradio display
+        # (Gradio can't display files from arbitrary directories)
+        if autosave:
+            save_experimental_output(image_path, input_image, outputs_dir)
+        
+        return image_path, "success", duration
     except Exception as e:
         return None, str(e), 0
 
@@ -514,6 +516,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
     
     with gr.TabItem(TAB_LABEL, id=TAB_ID) as tab:
         gr.Markdown("## 🧪 Experimental Workflows")
+        gr.Markdown("*Sandbox for testing new workflows before production integration.*")
         
         with gr.Tabs():
             with gr.TabItem("🔍 UpscaleAny", id="upscale_any"):
@@ -743,19 +746,40 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
             return None
         output_gallery.select(fn=on_gallery_select, inputs=[output_gallery], outputs=[selected_gallery_image])
         
-        # Save button
-        def on_save(res_path, orig_path):
-            if res_path is None:
+        # Save button - uses selected gallery image if available, falls back to single result
+        def on_save(selected_img, gallery_data, res_path, orig_path):
+            image_to_save = None
+            original_for_naming = orig_path
+            
+            # Prefer explicitly selected gallery image
+            if selected_img:
+                image_to_save = selected_img
+                original_for_naming = selected_img  # Use selected image name for output
+            # Fall back to first gallery image if gallery has items
+            elif gallery_data:
+                item = gallery_data[0]
+                image_to_save = item[0] if isinstance(item, (list, tuple)) else item
+                original_for_naming = image_to_save
+            # Fall back to single result state
+            elif res_path:
+                image_to_save = res_path
+            
+            if image_to_save is None:
                 return "❌ No image to save"
             try:
-                saved = save_experimental_output(res_path, orig_path, outputs_dir)
+                # Get outputs_dir dynamically to respect settings changes
+                current_outputs_dir = services.get_outputs_dir()
+                saved = save_experimental_output(image_to_save, original_for_naming, current_outputs_dir)
                 return f"✓ Saved: {Path(saved).name}"
             except Exception as e:
                 return f"❌ Save failed: {e}"
-        save_btn.click(fn=on_save, inputs=[result_path_state, original_path_state], outputs=[status])
+        save_btn.click(fn=on_save, inputs=[selected_gallery_image, output_gallery, result_path_state, original_path_state], outputs=[status])
         
-        # Open folder
-        open_folder_btn.click(fn=lambda: open_folder(experimental_dir))
+        # Open folder - get path dynamically to respect settings changes
+        def on_open_folder():
+            current_outputs_dir = services.get_outputs_dir()
+            open_folder(current_outputs_dir / "experimental")
+        open_folder_btn.click(fn=on_open_folder)
         
         # Register components for inter-module transfer
         services.inter_module.register_component("experimental_send_to_upscale_btn", send_to_upscale_btn)
