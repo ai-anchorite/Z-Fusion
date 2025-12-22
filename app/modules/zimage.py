@@ -60,6 +60,10 @@ PREFERRED_SCHEDULER = "simple"
 # Generation cancellation flag (set by stop button, checked by batch loop)
 _cancel_generation = False
 
+# Session temp directory for results (auto-cleaned on exit)
+# Using a persistent TemporaryDirectory so files have nice names for Gradio download
+_results_temp_dir = tempfile.TemporaryDirectory(prefix="zimage_results_")
+
 # Resolution presets by base size - format: "WxH ( AR )"
 RES_CHOICES = {
     "1024": [
@@ -408,6 +412,17 @@ async def download_image_from_url(url: str) -> str:
             return f.name
 
 
+def copy_to_temp_with_name(image_path: str, prompt: str, seed: int) -> str:
+    """Copy image to session temp dir with a meaningful name for Gradio download."""
+    timestamp = datetime.now().strftime("%H%M%S")
+    safe_prompt = "".join(c if c.isalnum() or c in " -_" else "" for c in prompt[:30]).strip()
+    safe_prompt = safe_prompt.replace(" ", "_") if safe_prompt else "image"
+    filename = f"{safe_prompt}_{seed}_{timestamp}.png"
+    temp_path = Path(_results_temp_dir.name) / filename
+    shutil.copy2(image_path, temp_path)
+    return str(temp_path)
+
+
 def check_models_installed(diffusion_dir: Path, text_encoders_dir: Path, vae_dir: Path) -> dict:
     """Check which model sets are installed and return status info."""
     # Check for Z-Image compatible models
@@ -747,6 +762,9 @@ async def generate_image(
             image_path = result.images[0]
             if image_path.startswith("http"):
                 image_path = await download_image_from_url(image_path)
+            
+            # Copy to temp with meaningful name so Gradio download button works nicely
+            image_path = copy_to_temp_with_name(image_path, prompt_text or "image", current_seed)
             
             # Track duration
             if result.duration:
@@ -1092,7 +1110,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     rows=2,
                     height=400,
                     object_fit="contain",
-                    show_download_button=False,
+                    show_download_button=True,
                     show_share_button=False,
                     preview=True,
                     elem_id="output-gallery"

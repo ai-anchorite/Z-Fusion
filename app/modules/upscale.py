@@ -30,6 +30,10 @@ TAB_ID = "upscale"
 TAB_LABEL = "🔍 Upscale"
 TAB_ORDER = 1
 
+# Session temp directory for results (auto-cleaned on exit)
+# Using a persistent TemporaryDirectory so files have nice names for Gradio download
+_results_temp_dir = tempfile.TemporaryDirectory(prefix="upscale_results_")
+
 # SeedVR2 Upscaler models (auto-download on demand by node)
 SEEDVR2_DIT_MODELS = [
     "seedvr2_ema_3b-Q4_K_M.gguf",
@@ -181,6 +185,17 @@ async def download_image_from_url(url: str) -> str:
             return f.name
 
 
+def copy_to_temp_with_name(image_path: str, original_path: str, resolution: int) -> str:
+    """Copy image to session temp dir with a meaningful name for Gradio download."""
+    timestamp = datetime.now().strftime("%H%M%S")
+    original_name = extract_meaningful_filename(original_path)
+    res_label = f"{resolution // 1000}K" if resolution >= 1000 else f"{resolution}p"
+    filename = f"{original_name}_{res_label}up_{timestamp}.png"
+    temp_path = Path(_results_temp_dir.name) / filename
+    shutil.copy2(image_path, temp_path)
+    return str(temp_path)
+
+
 async def upscale_image(
     services: "SharedServices",
     input_image,
@@ -258,6 +273,9 @@ async def upscale_image(
         image_path = result.images[0]
         if image_path.startswith("http"):
             image_path = await download_image_from_url(image_path)
+        
+        # Copy to temp with meaningful name so Gradio download button works nicely
+        image_path = copy_to_temp_with_name(image_path, input_image, resolution)
         
         # Autosave
         if autosave:

@@ -49,6 +49,10 @@ DEFAULT_SAMPLERS = ["euler", "euler_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "dpm
 # Batch processing cancellation flag
 _cancel_batch = False
 
+# Session temp directory for batch results (auto-cleaned on exit)
+# Using a persistent TemporaryDirectory so files have nice names for Gradio download
+_batch_temp_dir = tempfile.TemporaryDirectory(prefix="experimental_batch_")
+
 # Model defaults - Standard
 DEFAULT_DIFFUSION = "z_image_turbo_bf16.safetensors"
 DEFAULT_CLIP = "qwen_3_4b.safetensors"
@@ -215,6 +219,20 @@ async def download_image_from_url(url: str) -> str:
             return f.name
 
 
+def copy_to_temp_with_name(image_path: str, original_path: str) -> str:
+    """Copy image to session temp dir with a meaningful name for Gradio download."""
+    timestamp = datetime.now().strftime("%H%M%S")
+    if original_path:
+        original_stem = Path(original_path).stem[:30]
+        safe_stem = "".join(c if c.isalnum() or c in "-_" else "_" for c in original_stem)
+    else:
+        safe_stem = "image"
+    filename = f"{safe_stem}_enhanced_{timestamp}.png"
+    temp_path = Path(_batch_temp_dir.name) / filename
+    shutil.copy2(image_path, temp_path)
+    return str(temp_path)
+
+
 def save_experimental_output(image_path: str, original_path: str, outputs_dir: Path) -> str:
     """Save enhanced image to outputs/experimental folder."""
     timestamp = datetime.now().strftime("%H%M%S")
@@ -312,10 +330,11 @@ async def experimental_upscale_single(
         if image_path.startswith("http"):
             image_path = await download_image_from_url(image_path)
         
+        # Copy to temp with meaningful name so Gradio download button works nicely
+        image_path = copy_to_temp_with_name(image_path, input_image)
+        
         duration = time.time() - start_time
         
-        # Autosave as side effect, but always return original path for Gradio display
-        # (Gradio can't display files from arbitrary directories)
         if autosave:
             save_experimental_output(image_path, input_image, outputs_dir)
         
@@ -516,7 +535,6 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
     
     with gr.TabItem(TAB_LABEL, id=TAB_ID) as tab:
         gr.Markdown("## 🧪 Experimental Workflows")
-        gr.Markdown("*Sandbox for testing new workflows before production integration.*")
         
         with gr.Tabs():
             with gr.TabItem("🔍 UpscaleAny", id="upscale_any"):
@@ -577,25 +595,52 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                         with gr.Accordion("⚙️ Advanced Settings", open=False):
                             with gr.Group():
                                 with gr.Row():
-                                    steps = gr.Slider(label="Steps", value=10, minimum=5, maximum=20, step=1)
-                                    cfg = gr.Slider(label="CFG", value=1.0, minimum=1.0, maximum=5.0, step=0.1)
+                                    steps = gr.Slider(
+                                        label="Steps", value=10, minimum=5, maximum=20, step=1,
+                                        info="Total diffusion steps for the sigma schedule"
+                                    )
+                                    cfg = gr.Slider(
+                                        label="CFG", value=1.0, minimum=1.0, maximum=5.0, step=0.1,
+                                        info="Classifier-free guidance scale"
+                                    )
                             with gr.Group():
                                 with gr.Row():
-                                    start_at_step = gr.Slider(label="Start Step", value=5, minimum=0, maximum=20, step=1)
-                                    end_at_step = gr.Slider(label="End Step", value=10, minimum=0, maximum=20, step=1)
+                                    start_at_step = gr.Slider(
+                                        label="Start Step", value=5, minimum=0, maximum=20, step=1,
+                                        info="Starting step index (0 = beginning)"
+                                    )
+                                    end_at_step = gr.Slider(
+                                        label="End Step", value=10, minimum=0, maximum=20, step=1,
+                                        info="Ending step index (set higher than steps to use all)"
+                                    )
                             with gr.Group():
                                 with gr.Row():
-                                    shift = gr.Slider(label="Shift", value=3.0, minimum=1.0, maximum=10.0, step=0.5)
+                                    shift = gr.Slider(
+                                        label="Shift", value=3.0, minimum=1.0, maximum=10.0, step=0.5,
+                                        info="Global timestep shift. Z-Image-Turbo optimal: 3.0"
+                                    )
                                     sampler_name = gr.Dropdown(label="Sampler", choices=samplers, value="dpmpp_sde" if "dpmpp_sde" in samplers else samplers[0])
                             gr.Markdown("##### Scheduler Fine-Tuning")
                             with gr.Group():
                                 with gr.Row():
-                                    base_shift = gr.Slider(label="Base Shift", value=0.5, minimum=0.0, maximum=2.0, step=0.01)
-                                    max_shift = gr.Slider(label="Max Shift", value=1.15, minimum=0.5, maximum=3.0, step=0.01)
+                                    base_shift = gr.Slider(
+                                        label="Base Shift", value=0.5, minimum=0.0, maximum=2.0, step=0.01,
+                                        info="Stabilizes generation. Higher = more consistent outputs"
+                                    )
+                                    max_shift = gr.Slider(
+                                        label="Max Shift", value=1.15, minimum=0.5, maximum=3.0, step=0.01,
+                                        info="Max variation. Higher = more stylized results"
+                                    )
                             with gr.Group():
                                 with gr.Row():
-                                    use_karras_sigmas = gr.Dropdown(label="Karras Sigmas", choices=["disable", "enable"], value="disable")
-                                    stochastic_sampling = gr.Dropdown(label="Stochastic Sampling", choices=["disable", "enable"], value="disable")
+                                    use_karras_sigmas = gr.Dropdown(
+                                        label="Karras Sigmas", choices=["disable", "enable"], value="disable",
+                                        info="Uses Karras noise schedule for smoother results. (doesn't seem viable here)"
+                                    )
+                                    stochastic_sampling = gr.Dropdown(
+                                        label="Stochastic Sampling", choices=["disable", "enable"], value="disable",
+                                        info="Adds randomness for more varied outputs"
+                                    )
 
                         # Model Selection
                         with gr.Accordion("Model Selection", open=True):
@@ -621,19 +666,24 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     
                     # ===== RIGHT COLUMN =====
                     with gr.Column(scale=1):
-                        # Output tabs: Single / Batch
+                        # Output tabs: Single / Batch (each with its own save/send buttons)
                         with gr.Tabs() as output_tabs:
                             with gr.TabItem("📷 Single Result", id="single_output"):
-                                output_slider = gr.ImageSlider(label="Before / After", type="filepath", elem_classes="image-window", show_download_button=False)
+                                output_slider = gr.ImageSlider(label="Before / After", type="filepath", elem_classes="image-window", show_download_button=True)
+                                with gr.Row():
+                                    single_save_btn = gr.Button("💾 Save", size="sm", variant="primary")
+                                    single_send_btn = gr.Button("🔍 Send to SeedVR2", size="sm", variant="huggingface")
                             with gr.TabItem("📁 Batch Results", id="batch_output"):
-                                output_gallery = gr.Gallery(label="Results", columns=4, rows=2, height=400, object_fit="contain", preview=True, elem_id="output-gallery")
+                                output_gallery = gr.Gallery(label="Results", columns=4, rows=2, height=400, object_fit="contain", preview=True, elem_id="output-gallery", show_download_button=True)
+                                with gr.Row():
+                                    batch_save_btn = gr.Button("💾 Save Selected", size="sm", variant="primary")
+                                    batch_save_all_btn = gr.Button("💾 Save All", size="sm", variant="secondary")
+                                    batch_send_btn = gr.Button("🔍 Send to SeedVR2", size="sm", variant="huggingface")
                         
-                        # Output controls
+                        # Shared output controls
                         with gr.Row():
-                            save_btn = gr.Button("💾 Save", size="sm", variant="primary")
-                            send_to_upscale_btn = gr.Button("🔍 Send to SeedVR2", size="sm", variant="huggingface")
-                            open_folder_btn = gr.Button("📂 Open Folder", size="sm")
                             autosave = gr.Checkbox(label="Auto-save", container=False, value=False)
+                            open_folder_btn = gr.Button("📂 Open Folder", size="sm")                            
                         
                         status = gr.Textbox(label="Status", interactive=False, show_label=False, lines=1)
                         
@@ -644,9 +694,9 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                             with gr.Column(scale=1, min_width=200):
                                 cpu_monitor = gr.Textbox(value="Loading...", lines=4, container=False, interactive=False, show_label=False, elem_classes="monitor-box cpu-monitor")
                         
-                        # Hidden states
-                        result_path_state = gr.State(value=None)
-                        original_path_state = gr.State(value=None)
+                        # Hidden states (separate for single vs batch to avoid cross-contamination)
+                        single_result_state = gr.State(value=None)
+                        single_original_state = gr.State(value=None)
                         selected_gallery_image = gr.State(value=None)
 
         # ===== EVENT HANDLERS =====
@@ -710,8 +760,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 *lora_args
             ):
                 gallery, status_msg, actual_seed = result
-                last_result = gallery[-1] if gallery else None
-                yield gallery, status_msg, actual_seed, last_result
+                yield gallery, status_msg, actual_seed
 
         # Common inputs for both buttons (excluding image sources)
         common_inputs = [
@@ -725,14 +774,14 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
         single_enhance_btn.click(
             fn=run_single_upscale,
             inputs=[input_image] + common_inputs,
-            outputs=[output_slider, status, seed, result_path_state, original_path_state]
+            outputs=[output_slider, status, seed, single_result_state, single_original_state]
         )
         
-        # Wire batch enhance button
+        # Wire batch enhance button (no longer touches single result state)
         batch_enhance_btn.click(
             fn=run_batch_upscale,
             inputs=[batch_files, batch_folder] + common_inputs,
-            outputs=[output_gallery, status, seed, result_path_state]
+            outputs=[output_gallery, status, seed]
         )
         
         # Gallery selection handler
@@ -746,34 +795,51 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
             return None
         output_gallery.select(fn=on_gallery_select, inputs=[output_gallery], outputs=[selected_gallery_image])
         
-        # Save button - uses selected gallery image if available, falls back to single result
-        def on_save(selected_img, gallery_data, res_path, orig_path):
-            image_to_save = None
-            original_for_naming = orig_path
-            
-            # Prefer explicitly selected gallery image
-            if selected_img:
-                image_to_save = selected_img
-                original_for_naming = selected_img  # Use selected image name for output
-            # Fall back to first gallery image if gallery has items
-            elif gallery_data:
-                item = gallery_data[0]
-                image_to_save = item[0] if isinstance(item, (list, tuple)) else item
-                original_for_naming = image_to_save
-            # Fall back to single result state
-            elif res_path:
-                image_to_save = res_path
-            
-            if image_to_save is None:
+        # Single save button - only saves from single result state
+        def on_save_single(res_path, orig_path):
+            if res_path is None:
                 return "❌ No image to save"
             try:
-                # Get outputs_dir dynamically to respect settings changes
                 current_outputs_dir = services.get_outputs_dir()
-                saved = save_experimental_output(image_to_save, original_for_naming, current_outputs_dir)
+                saved = save_experimental_output(res_path, orig_path, current_outputs_dir)
                 return f"✓ Saved: {Path(saved).name}"
             except Exception as e:
                 return f"❌ Save failed: {e}"
-        save_btn.click(fn=on_save, inputs=[selected_gallery_image, output_gallery, result_path_state, original_path_state], outputs=[status])
+        single_save_btn.click(fn=on_save_single, inputs=[single_result_state, single_original_state], outputs=[status])
+        
+        # Batch save selected button - saves currently selected gallery image
+        def on_save_batch_selected(selected_img, gallery_data):
+            # Use selected image, or fall back to first gallery image
+            image_to_save = selected_img
+            if not image_to_save and gallery_data:
+                item = gallery_data[0]
+                image_to_save = item[0] if isinstance(item, (list, tuple)) else item
+            
+            if image_to_save is None:
+                return "❌ No image selected"
+            try:
+                current_outputs_dir = services.get_outputs_dir()
+                saved = save_experimental_output(image_to_save, image_to_save, current_outputs_dir)
+                return f"✓ Saved: {Path(saved).name}"
+            except Exception as e:
+                return f"❌ Save failed: {e}"
+        batch_save_btn.click(fn=on_save_batch_selected, inputs=[selected_gallery_image, output_gallery], outputs=[status])
+        
+        # Batch save all button - saves all images in gallery
+        def on_save_batch_all(gallery_data):
+            if not gallery_data:
+                return "❌ No images to save"
+            try:
+                current_outputs_dir = services.get_outputs_dir()
+                saved_count = 0
+                for item in gallery_data:
+                    img_path = item[0] if isinstance(item, (list, tuple)) else item
+                    save_experimental_output(img_path, img_path, current_outputs_dir)
+                    saved_count += 1
+                return f"✓ Saved {saved_count} images"
+            except Exception as e:
+                return f"❌ Save failed: {e}"
+        batch_save_all_btn.click(fn=on_save_batch_all, inputs=[output_gallery], outputs=[status])
         
         # Open folder - get path dynamically to respect settings changes
         def on_open_folder():
@@ -781,10 +847,11 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
             open_folder(current_outputs_dir / "experimental")
         open_folder_btn.click(fn=on_open_folder)
         
-        # Register components for inter-module transfer
-        services.inter_module.register_component("experimental_send_to_upscale_btn", send_to_upscale_btn)
+        # Register components for inter-module transfer (separate buttons for single vs batch)
+        services.inter_module.register_component("experimental_single_send_btn", single_send_btn)
+        services.inter_module.register_component("experimental_batch_send_btn", batch_send_btn)
         services.inter_module.register_component("experimental_selected_image", selected_gallery_image)
-        services.inter_module.register_component("experimental_result_path", result_path_state)
+        services.inter_module.register_component("experimental_single_result", single_result_state)
         services.inter_module.register_component("experimental_status", status)
         
         # System Monitor

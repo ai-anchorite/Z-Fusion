@@ -291,6 +291,11 @@ def create_interface(services: SharedServices, theme: Any = None) -> gr.Blocks:
         gap: 6px !important;
     }
 
+    /* Fix fullscreen/lightbox image toolbar being covered by scrollbar */
+    .icon-button-wrapper {
+        right: 28px !important;
+    }
+
     """
     
     with gr.Blocks(title="Z-Image Turbo", css=css, theme=theme) as interface:
@@ -359,49 +364,77 @@ def _wire_image_transfers(services: SharedServices):
     else:
         logger.warning("Could not wire Z-Image -> Upscale - some components not registered")
     
-    # Wire Experimental "Send to SeedVR2" button
-    exp_send_btn = services.inter_module.get_component("experimental_send_to_upscale_btn")
+    # Wire Experimental "Send to SeedVR2" buttons (separate for single vs batch)
+    exp_single_send_btn = services.inter_module.get_component("experimental_single_send_btn")
+    exp_batch_send_btn = services.inter_module.get_component("experimental_batch_send_btn")
     exp_selected = services.inter_module.get_component("experimental_selected_image")
-    exp_result = services.inter_module.get_component("experimental_result_path")
+    exp_single_result = services.inter_module.get_component("experimental_single_result")
     exp_status = services.inter_module.get_component("experimental_status")
     
-    if all([exp_send_btn, exp_result, exp_status]):
-        # Create a simple handler that uses result_path directly (not gallery)
-        def exp_send_handler(result_path, selected_img):
+    receiver = image_transfer.get_receiver("upscale")
+    if receiver:
+        # Single result send handler - only uses single_result_state
+        def exp_single_send_handler(result_path):
             import gradio as gr
-            image_to_send = selected_img or result_path
-            if not image_to_send:
+            if not result_path:
                 return "❌ No image to send", gr.update(), gr.update(), gr.update()
             
             receiver = image_transfer.get_receiver("upscale")
             if receiver:
-                image_transfer.set_pending("upscale", image_to_send)
+                image_transfer.set_pending("upscale", result_path)
                 return (
                     f"✓ Sent to {receiver.label}",
-                    image_to_send,
+                    result_path,
                     f"✓ Received image",
                     gr.Tabs(selected="upscale")
                 )
             return "❌ Upscale tab not available", gr.update(), gr.update(), gr.update()
         
-        receiver = image_transfer.get_receiver("upscale")
-        if receiver:
-            outputs = [exp_status, receiver.input_component]
-            if receiver.status_component:
-                outputs.append(receiver.status_component)
-            else:
-                import gradio as gr
-                outputs.append(gr.State())
-            outputs.append(services.inter_module.main_tabs)
+        # Batch result send handler - only uses selected_gallery_image
+        def exp_batch_send_handler(selected_img):
+            import gradio as gr
+            if not selected_img:
+                return "❌ No image selected", gr.update(), gr.update(), gr.update()
             
-            exp_send_btn.click(
-                fn=exp_send_handler,
-                inputs=[exp_result, exp_selected],
+            receiver = image_transfer.get_receiver("upscale")
+            if receiver:
+                image_transfer.set_pending("upscale", selected_img)
+                return (
+                    f"✓ Sent to {receiver.label}",
+                    selected_img,
+                    f"✓ Received image",
+                    gr.Tabs(selected="upscale")
+                )
+            return "❌ Upscale tab not available", gr.update(), gr.update(), gr.update()
+        
+        # Build outputs list
+        outputs = [exp_status, receiver.input_component]
+        if receiver.status_component:
+            outputs.append(receiver.status_component)
+        else:
+            import gradio as gr
+            outputs.append(gr.State())
+        outputs.append(services.inter_module.main_tabs)
+        
+        # Wire single send button
+        if exp_single_send_btn and exp_single_result:
+            exp_single_send_btn.click(
+                fn=exp_single_send_handler,
+                inputs=[exp_single_result],
                 outputs=outputs
             )
-            logger.info("Wired Experimental -> Upscale image transfer")
-        else:
-            logger.warning("Failed to wire Experimental -> Upscale (receiver not ready)")
+            logger.info("Wired Experimental Single -> Upscale image transfer")
+        
+        # Wire batch send button
+        if exp_batch_send_btn and exp_selected:
+            exp_batch_send_btn.click(
+                fn=exp_batch_send_handler,
+                inputs=[exp_selected],
+                outputs=outputs
+            )
+            logger.info("Wired Experimental Batch -> Upscale image transfer")
+    else:
+        logger.warning("Failed to wire Experimental -> Upscale (receiver not ready)")
 
 
 # =============================================================================
