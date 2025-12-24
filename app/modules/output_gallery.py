@@ -61,10 +61,12 @@ def create_output_gallery(services: "SharedServices") -> dict:
         Dict with gallery component and related UI elements
     """
     outputs_dir = services.get_outputs_dir()
-    initial_images = scan_output_images(outputs_dir)
     
-    # Get configurable gallery height from settings (default 400)
+    # Get configurable settings (with defaults)
     gallery_height = services.settings.get("output_gallery_height", 600)
+    max_images = services.settings.get("output_gallery_max_images", 100)
+    
+    initial_images = scan_output_images(outputs_dir, max_images)
     
     # Initialize change detection state
     global _last_image_count, _last_newest_mtime
@@ -128,7 +130,8 @@ def create_output_gallery(services: "SharedServices") -> dict:
     def refresh_gallery():
         """Refresh gallery with current outputs."""
         current_outputs_dir = services.get_outputs_dir()
-        images = scan_output_images(current_outputs_dir)
+        current_max = services.settings.get("output_gallery_max_images", 100)
+        images = scan_output_images(current_outputs_dir, current_max)
         count_msg = f"{len(images)} images" if images else "No images"
         return images, count_msg, "", "", images  # Clear selection
     
@@ -251,14 +254,19 @@ def create_output_gallery(services: "SharedServices") -> dict:
         # Check if anything changed
         current_count = len(images)
         current_newest_mtime = 0.0
+        newest_file = None
         if images:
             try:
+                newest_file = Path(images[0]).name
                 current_newest_mtime = Path(images[0]).stat().st_mtime
             except:
                 pass
         
+        logger.debug(f"Auto-refresh check: count={current_count} (was {_last_image_count}), newest={newest_file}, mtime={current_newest_mtime:.0f} (was {_last_newest_mtime:.0f})")
+        
         # Only update if count changed or newest file is different
         if current_count != _last_image_count or current_newest_mtime != _last_newest_mtime:
+            logger.info(f"Auto-refresh triggered: count {_last_image_count}->{current_count}, mtime changed={current_newest_mtime != _last_newest_mtime}")
             _last_image_count = current_count
             _last_newest_mtime = current_newest_mtime
             count_msg = f"{current_count} images" if images else "No images"
@@ -267,7 +275,7 @@ def create_output_gallery(services: "SharedServices") -> dict:
         # No change - return gr.update() to avoid unnecessary UI updates
         return gr.update(), gr.update(), gr.update()
     
-    auto_refresh_timer = gr.Timer(5, active=True)
+    auto_refresh_timer = gr.Timer(4, active=True)
     auto_refresh_timer.tick(
         fn=auto_refresh_check,
         inputs=[current_image_paths],

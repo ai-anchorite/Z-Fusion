@@ -131,7 +131,16 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                     info="Requires app restart",
                     scale=1
                 )
-                gallery_height_apply_btn = gr.Button("💾 Save", size="sm", scale=0)
+                gallery_max_images = gr.Slider(
+                    label="Max Images",
+                    value=services.settings.get("output_gallery_max_images", 100),
+                    minimum=20,
+                    maximum=100,
+                    step=10,
+                    info="Requires app restart",
+                    scale=1
+                )
+                gallery_settings_apply_btn = gr.Button("💾 Save", size="sm", scale=0)
         
         # === Storage Accordion (Output Dir + Temp) ===
         with gr.Accordion("📁 Storage", open=False):
@@ -245,14 +254,15 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
             outputs=[app_settings_status]
         )
         
-        # Gallery height handler
-        def on_gallery_height_apply(height):
+        # Gallery settings handler
+        def on_gallery_settings_apply(height, max_imgs):
             services.settings.set("output_gallery_height", int(height))
-            return f"✓ Gallery height set to {int(height)}px. Restart app to apply."
+            services.settings.set("output_gallery_max_images", int(max_imgs))
+            return f"✓ Gallery: {int(height)}px height, {int(max_imgs)} max images. Restart to apply."
         
-        gallery_height_apply_btn.click(
-            fn=on_gallery_height_apply,
-            inputs=[gallery_height],
+        gallery_settings_apply_btn.click(
+            fn=on_gallery_settings_apply,
+            inputs=[gallery_height, gallery_max_images],
             outputs=[app_settings_status]
         )
         

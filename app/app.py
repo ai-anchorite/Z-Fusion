@@ -600,7 +600,11 @@ def main():
     
     # Create and launch interface
     interface = create_interface(services, theme=theme)
-    interface.launch(server_name="127.0.0.1", share=False)
+    
+    # Build allowed_paths for Gradio (custom output dirs need explicit permission)
+    allowed_paths = [str(outputs_dir)]
+    
+    interface.launch(server_name="127.0.0.1", share=False, allowed_paths=allowed_paths)
 
 
 if __name__ == "__main__":

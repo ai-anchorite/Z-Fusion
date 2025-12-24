@@ -713,7 +713,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                                 step=8,
                                 info="Maximum long-side resolution"
                             )
-                        upscale_btn = gr.Button("🔍 Upscale Image", variant="primary", size="lg")
+                        upscale_btn = gr.Button("🔍 Upscale Image", variant="primary", size="sm")
                     
                     with gr.TabItem("🎬 Video", id="upscale_video_tab"):
                         upscale_input_video = gr.Video(label="Input Video", elem_classes="video-window")
@@ -938,7 +938,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                         )
                         output_image_analysis = gr.HTML(visible=False, elem_classes="analysis-panel")
                         with gr.Row():                          
-                            upscale_save_btn = gr.Button("💾 Save", size="sm")
+                            upscale_save_btn = gr.Button("💾 Save", size="sm", variant="primary")
                         upscale_autosave = gr.Checkbox(label="Auto-save", value=False)
                     
                     with gr.TabItem("🎬 Video Result", id="upscale_video_result"):
