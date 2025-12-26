@@ -1,6 +1,6 @@
 module.exports = {
   version: "3.7",
-  title: "Z-Image Fusion",
+  title: "Z-Fusion",
   description: "Fast, high-quality image generation using comfyui via a Gradio UI",
   icon: "icon.png",
   menu: async (kernel, info) => {

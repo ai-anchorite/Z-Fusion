@@ -735,7 +735,7 @@ async def generate_image(
             params["lora6_strength"] = lora6_strength if (lora6_enabled and lora6_name) else 0
             
             # Debug: log lora params (first 3 for brevity)
-            logger.info(f"LoRA params: lora1={params['lora1_name']} ({params['lora1_strength']}), lora2={params['lora2_name']} ({params['lora2_strength']}), lora3={params['lora3_name']} ({params['lora3_strength']})")
+            # logger.info(f"LoRA params: lora1={params['lora1_name']} ({params['lora1_strength']}), lora2={params['lora2_name']} ({params['lora2_strength']}), lora3={params['lora3_name']} ({params['lora3_strength']})")
             
             # Add seed variance params
             # When disabled, pass "disabled" to make the node a passthrough
