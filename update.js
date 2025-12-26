@@ -1,15 +1,13 @@
 module.exports = {
   run: [
-    // 1. Update Launcher Repository
+
     {
       method: "shell.run",
       params: {
         message: "git pull"
       }
     },
-    // 2. Update App and Custom Nodes (Consolidated Shell)
-    // We use a single shell session to perform all Git operations.
-    // This uses a robust "if exists pull, else clone" pattern.
+
     {
       method: "shell.run",
       params: {
@@ -25,9 +23,7 @@ module.exports = {
         ]
       }
     },
-    // 3. Update Python Dependencies (Consolidated UV Pip)
-    // We run one UV session to handle all requirements. 
-    // This is faster as UV resolves the environment once.
+
     {
       method: "shell.run",
       params: {
@@ -41,7 +37,7 @@ module.exports = {
         ]
       }
     },
-    // 4. Maintenance: Ensure Torch is correct
+
     {
       method: "script.start",
       params: {
