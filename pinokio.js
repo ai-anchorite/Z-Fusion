@@ -4,18 +4,15 @@ module.exports = {
   description: "Fast, high-quality image generation using comfyui via a Gradio UI",
   icon: "icon.png",
   menu: async (kernel, info) => {
-    // Check installation state
     let installed = info.exists("app/env")
-    
-    // Check running states
     let running = {
       install: info.running("install.js"),
       start: info.running("start.js"),
       update: info.running("update.js"),
+      quick_update: info.running("quick_update.js"), // Added tracking
       reset: info.running("reset.js"),
     }
 
-    // Installing state
     if (running.install) {
       return [{
         default: true,
@@ -24,9 +21,7 @@ module.exports = {
         href: "install.js",
       }]
     } 
-    // Installed states
     else if (installed) {
-      // Running state
       if (running.start) {
         let local = info.local("start.js")
         if (local && local.url) {
@@ -49,16 +44,15 @@ module.exports = {
           }]
         }
       } 
-      // Updating state
-      else if (running.update) {
+      // Handle either update script running
+      else if (running.update || running.quick_update) {
         return [{
           default: true,
           icon: "fa-solid fa-terminal",
           text: "Updating",
-          href: "update.js",
+          href: running.update ? "update.js" : "quick_update.js",
         }]
       } 
-      // Resetting state
       else if (running.reset) {
         return [{
           default: true,
@@ -67,7 +61,6 @@ module.exports = {
           href: "reset.js",
         }]
       } 
-      // Installed but not running
       else {
         return [{
           default: true,
@@ -87,9 +80,18 @@ module.exports = {
             href: "start.js?flash=true&ts=" + Date.now(),
           }],  
         }, {
+          // Consolidated Update Menu
           icon: "fa-solid fa-plug",
           text: "Update",
-          href: "update.js",
+          menu: [{
+            icon: "fa-solid fa-bolt",
+            text: "Quick Update (Git Pull only)",
+            href: "quick_update.js",
+          }, {
+            icon: "fa-solid fa-plug",
+            text: "Full Update (Everything)",
+            href: "update.js",
+          }]
         }, {
           icon: "fa-solid fa-plug",
           text: "Install",
@@ -101,7 +103,6 @@ module.exports = {
           confirm: "Are you sure you wish to reset the app?"
         }]
       }
-    // Not installed state
    } else {
       return [{
         default: true,

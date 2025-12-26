@@ -1,69 +1,20 @@
 module.exports = {
   run: [
-    // Clone ComfyUI into app/comfyui
     {
       method: "shell.run",
       params: {
         message: [
           "git clone https://github.com/comfyanonymous/ComfyUI app/comfyui",
-        ],
-      }
-    },
-    // Clone ComfyUI-Manager for custom node management
-    {
-      method: "shell.run",
-      params: {
-        message: [
           "git clone https://github.com/ltdrdata/ComfyUI-Manager app/comfyui/custom_nodes/ComfyUI-Manager",
-        ],
-      }
-    },
-    // Clone ComfyUI-GGUF for quantized model support
-    {
-      method: "shell.run",
-      params: {
-        message: [
           "git clone https://github.com/city96/ComfyUI-GGUF app/comfyui/custom_nodes/ComfyUI-GGUF",
-        ],
-      }
-    },
-    // Clone ComfyUI-SeedVR2_VideoUpscaler for upscaling
-    {
-      method: "shell.run",
-      params: {
-        message: [
           "git clone https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler app/comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler",
-        ],
-      }
-    },
-    // Clone ComfyUI-VideoHelperSuite for advanced video export
-    {
-      method: "shell.run",
-      params: {
-        message: [
           "git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git app/comfyui/custom_nodes/ComfyUI-VideoHelperSuite",
-        ],
-      }
-    },
-    // Clone SeedVarianceEnhancer for more variation across seeds
-    {
-      method: "shell.run",
-      params: {
-        message: [
           "git clone https://github.com/ChangeTheConstants/SeedVarianceEnhancer.git app/comfyui/custom_nodes/SeedVarianceEnhancer",
-        ],
+          "git clone https://github.com/demon4932/CameraPromptsGenerator.git app/CameraPromptsGenerator"
+        ]
       }
     },
-    // Clone Camera Prompts Project
-    {
-      method: "shell.run",
-      params: {
-        message: [
-          "git clone https://github.com/demon4932/CameraPromptsGenerator.git app/CameraPromptsGenerator",
-        ],
-      }
-    },    
-    // Install ComfyUI requirements
+
     {
       method: "shell.run",
       params: {
@@ -71,66 +22,24 @@ module.exports = {
         path: "app",
         message: [
           "uv pip install -r comfyui/requirements.txt",
-        ],
-      }
-    },
-    // Install ComfyUI-GGUF requirements
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        path: "app",
-        message: [
-          "uv pip install gguf>=0.13.0 sentencepiece protobuf",
-        ],
-      }
-    },
-    // Install ComfyUI-SeedVR2_VideoUpscaler requirements
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        path: "app",
-        message: [
-          "uv pip install einops omegaconf>=2.3.0 diffusers>=0.33.1 peft>=0.17.0 rotary_embedding_torch>=0.5.3 opencv-python matplotlib",
-        ],
-      }
-    },
-    // Install ComfyUI-VideoHelperSuite requirements
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        path: "app",
-        message: [
-          "uv pip install opencv-python imageio-ffmpeg",
-        ],
-      }
-    },
-    // Install Gradio app requirements (includes transformers, qwen-vl-utils, accelerate for LLM prompter)
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        path: "app",
-        message: [
           "uv pip install -r requirements.txt",
-        ],
+          "uv pip install gguf>=0.13.0 sentencepiece protobuf",
+          "uv pip install einops omegaconf>=2.3.0 diffusers>=0.33.1 peft>=0.17.0 rotary_embedding_torch>=0.5.3 opencv-python matplotlib imageio-ffmpeg"
+        ]
       }
     },
-    // Install PyTorch (handles CUDA/ROCm/CPU automatically)
+
     {
       method: "script.start",
       params: {
         uri: "torch.js",
         params: {
           venv: "env",
-          path: "app",
+          path: "app"
         }
       }
     },
-    
-    // Link models to Pinokio shared drive (cross-app model sharing)
+
     {
       method: "fs.link",
       params: {
@@ -156,6 +65,7 @@ module.exports = {
           "upscale_models": "app/comfyui/models/upscale_models",
           "vae": "app/comfyui/models/vae",
           "vae_approx": "app/comfyui/models/VAE-approx",
+          "output": "app/comfyui/output"
         },
         peers: [
           "https://github.com/cocktailpeanut/fluxgym.git",
@@ -163,19 +73,9 @@ module.exports = {
           "https://github.com/cocktailpeanutlabs/fooocus.git",
           "https://github.com/cocktailpeanutlabs/comfyui.git",
           "https://github.com/pinokiofactory/comfy.git",
-          "https://github.com/pinokiofactory/stable-diffusion-webui-forge.git",
-          
+          "https://github.com/pinokiofactory/stable-diffusion-webui-forge.git"
         ]
       }
-    },
-    // Link outputs folder
-    {
-      method: "fs.link",
-      params: {
-        drive: {
-          "output": "app/comfyui/output"
-        }
-      }
-    },
+    }
   ]
 }

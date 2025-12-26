@@ -1,135 +1,47 @@
 module.exports = {
   run: [
-    // Pull latest changes for launcher repository
+    // 1. Update Launcher Repository
     {
       method: "shell.run",
       params: {
         message: "git pull"
       }
     },
-    // Pull latest changes for ComfyUI
+    // 2. Update App and Custom Nodes (Consolidated Shell)
+    // We use a single shell session to perform all Git operations.
+    // This uses a robust "if exists pull, else clone" pattern.
     {
       method: "shell.run",
       params: {
-        path: "app/comfyui",
-        message: "git pull"
+        path: "app",
+        message: [
+          "git -C comfyui pull || git clone https://github.com/comfyanonymous/ComfyUI.git comfyui",
+          "git -C comfyui/custom_nodes/ComfyUI-Manager pull || git clone https://github.com/ltdrdata/ComfyUI-Manager.git comfyui/custom_nodes/ComfyUI-Manager",
+          "git -C comfyui/custom_nodes/ComfyUI-GGUF pull || git clone https://github.com/city96/ComfyUI-GGUF.git comfyui/custom_nodes/ComfyUI-GGUF",
+          "git -C comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler pull || git clone https://github.com/SeedVR2/ComfyUI-SeedVR2_VideoUpscaler.git comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler",
+          "git -C comfyui/custom_nodes/ComfyUI-VideoHelperSuite pull || git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git comfyui/custom_nodes/ComfyUI-VideoHelperSuite",
+          "git -C comfyui/custom_nodes/SeedVarianceEnhancer pull || git clone https://github.com/ChangeTheConstants/SeedVarianceEnhancer.git comfyui/custom_nodes/SeedVarianceEnhancer",
+          "git -C CameraPromptsGenerator pull || git clone https://github.com/demon4932/CameraPromptsGenerator.git CameraPromptsGenerator"
+        ]
       }
     },
-    // Pull latest changes for ComfyUI-Manager
-    {
-      method: "shell.run",
-      params: {
-        path: "app/comfyui/custom_nodes/ComfyUI-Manager",
-        message: "git pull"
-      }
-    },
-    // Pull latest changes for ComfyUI-GGUF
-    {
-      method: "shell.run",
-      params: {
-        path: "app/comfyui/custom_nodes/ComfyUI-GGUF",
-        message: "git pull"
-      }
-    },
-    // Pull latest changes for ComfyUI-SeedVR2_VideoUpscaler
-    {
-      method: "shell.run",
-      params: {
-        path: "app/comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler",
-        message: "git pull"
-      }
-    },
-    // Clone ComfyUI-VideoHelperSuite if not exists (for existing installs)
-    {
-      method: "shell.run",
-      params: {
-        message: "git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git app/comfyui/custom_nodes/ComfyUI-VideoHelperSuite"
-      }
-    },
-    // Pull latest changes for ComfyUI-VideoHelperSuite
-    {
-      method: "shell.run",
-      params: {
-        path: "app/comfyui/custom_nodes/ComfyUI-VideoHelperSuite",
-        message: "git pull"
-      }
-    },
-    // Clone SeedVarianceEnhancer if not exists (for existing installs)
-    {
-      method: "shell.run",
-      params: {
-        message: "git clone https://github.com/ChangeTheConstants/SeedVarianceEnhancer.git app/comfyui/custom_nodes/SeedVarianceEnhancer"
-      }
-    },
-    // Pull latest changes for SeedVarianceEnhancer
-    {
-      method: "shell.run",
-      params: {
-        path: "app/comfyui/custom_nodes/SeedVarianceEnhancer",
-        message: "git pull"
-      }
-    },
-    // Clone CameraPromptsGenerator if not exists (for existing installs)
-    {
-      method: "shell.run",
-      params: {
-        message: "git clone https://github.com/demon4932/CameraPromptsGenerator.git app/CameraPromptsGenerator"
-      }
-    },
-    // Update CameraPromptsGenerator
-    {
-      method: "shell.run",
-      params: {
-        path: "app/CameraPromptsGenerator",
-        message: "git pull"
-      }
-    },       
-    // Reinstall ComfyUI requirements (in case of changes)
+    // 3. Update Python Dependencies (Consolidated UV Pip)
+    // We run one UV session to handle all requirements. 
+    // This is faster as UV resolves the environment once.
     {
       method: "shell.run",
       params: {
         venv: "env",
         path: "app",
-        message: "uv pip install -r comfyui/requirements.txt",
+        message: [
+          "uv pip install -r comfyui/requirements.txt",
+          "uv pip install -r requirements.txt",
+          "uv pip install gguf>=0.13.0 sentencepiece protobuf",
+          "uv pip install einops omegaconf>=2.3.0 diffusers>=0.33.1 peft>=0.17.0 rotary_embedding_torch>=0.5.3 opencv-python matplotlib imageio-ffmpeg"
+        ]
       }
     },
-    // Reinstall ComfyUI-GGUF requirements
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        path: "app",
-        message: "uv pip install gguf>=0.13.0 sentencepiece protobuf",
-      }
-    },
-    // Reinstall ComfyUI-SeedVR2_VideoUpscaler requirements
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        path: "app",
-        message: "uv pip install einops omegaconf>=2.3.0 diffusers>=0.33.1 peft>=0.17.0 rotary_embedding_torch>=0.5.3 opencv-python matplotlib",
-      }
-    },
-    // Reinstall ComfyUI-VideoHelperSuite requirements
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        path: "app",
-        message: "uv pip install opencv-python imageio-ffmpeg",
-      }
-    },
-    // Reinstall Gradio app requirements
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        path: "app",
-        message: "uv pip install -r requirements.txt",
-      }
-    },
-    // Reinstall PyTorch
+    // 4. Maintenance: Ensure Torch is correct
     {
       method: "script.start",
       params: {
@@ -139,6 +51,6 @@ module.exports = {
           path: "app",
         }
       }
-    },
+    }
   ]
 }
