@@ -517,18 +517,16 @@ def _wire_image_transfers(services: SharedServices):
     zimage_randomize_seed = services.inter_module.get_component("zimage_randomize_seed")
     
     if all([wildcard_send_btn, wildcard_test_input, wildcard_test_seed, zimage_prompt, zimage_seed, zimage_randomize_seed]):
-        import gradio as gr
-        
         def send_wildcard_to_zimage(prompt, seed):
             if not prompt:
-                return gr.update(), gr.update(), gr.update(), gr.update()
-            # Return: prompt, seed, randomize=False, switch to zimage tab
-            return prompt, int(seed), False, gr.Tabs(selected="zimage")
+                return gr.update(), gr.update(), gr.update()
+            # Return: prompt, seed, randomize=False (no tab switch to avoid gallery issues)
+            return prompt, int(seed), False
         
         wildcard_send_btn.click(
             fn=send_wildcard_to_zimage,
             inputs=[wildcard_test_input, wildcard_test_seed],
-            outputs=[zimage_prompt, zimage_seed, zimage_randomize_seed, services.inter_module.main_tabs]
+            outputs=[zimage_prompt, zimage_seed, zimage_randomize_seed]
         )
         logger.info("Wired Wildcards -> Z-Image prompt transfer")
 
