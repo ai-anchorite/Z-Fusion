@@ -8,6 +8,7 @@ module.exports = {
     let running = {
       install: info.running("install.js"),
       start: info.running("start.js"),
+      start_pf: info.running("start_pf.js"),
       update: info.running("update.js") || info.running("_update_steps.js"),
       reset: info.running("reset.js"),
     }
@@ -47,6 +48,32 @@ module.exports = {
           }]
         }
       } 
+      else if (running.start_pf) {
+        let local = info.local("start_pf.js")
+        if (local && local.url) {
+          return [{
+            default: true,
+            icon: "fa-solid fa-wand-magic-sparkles",
+            text: "Open Senzu",
+            href: local.url + "?ts=" + Date.now(),
+          }, {
+            icon: "fa-solid fa-diagram-project",
+            text: "Open ComfyUI",
+            href: "http://localhost:8188",
+          }, {
+            icon: "fa-solid fa-terminal",
+            text: "Terminal",
+            href: "start_pf.js",
+          }]
+        } else {
+          return [{
+            default: true,
+            icon: "fa-solid fa-terminal",
+            text: "Terminal",
+            href: "start_pf.js",
+          }]
+        }
+      }
       // Handle update running
       else if (running.update) {
         return [{
@@ -67,12 +94,16 @@ module.exports = {
       else {
         return [{
           default: true,
+          icon: "fa-solid fa-wand-magic-sparkles",
+          text: "Start Senzu",
+          href: "start_senzu.js?ts=" + Date.now(),
+        }, {
           icon: "fa-solid fa-power-off",
-          text: "Start",
+          text: "Start Z-Fusion",
           href: "start.js?ts=" + Date.now(),
         }, {
           icon: "fa-solid fa-power-off",
-          text: "Start -w Optimization flags",
+          text: "Start Z-Fusion -w Optimization flags",
           menu: [{
             icon: "fa-solid fa-power-off",
             text: "<div><strong>Start</strong><br><div>+SageAttention2</div></div>",
