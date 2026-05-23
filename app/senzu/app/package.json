@@ -1,0 +1,16 @@
+{
+  "name": "senzu-server",
+  "version": "1.0.0",
+  "description": "Backend API server for Senzu image enhancer & upscaler",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "form-data": "^4.0.0",
+    "multer": "^1.4.5-lts.1"
+  },
+  "private": true
+}

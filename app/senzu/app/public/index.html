@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Senzu — Image Enhancer & Upscaler</title>
+  
+  <!-- Font Awesome (self-hosted) -->
+  <link rel="stylesheet" href="css/fontawesome/all.min.css">
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="css/senzu.css">
+  
+  <!-- Alpine.js (self-hosted) -->
+  <script defer src="js/alpine.min.js"></script>
+  
+  <!-- Client API & App Core -->
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body x-data="senzu">
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="logo-section">
+        <button class="sidebar-toggle" @click="toggleSidebar()" :class="sidebarOpen ? 'active' : ''">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div class="conn-indicator" :class="comfyOnline ? 'online' : 'offline'">
+          <div class="indicator-dot"></div>
+          <span x-text="comfyOnline ? 'ComfyUI Online' : 'ComfyUI Offline'">ComfyUI Checking...</span>
+        </div>
+      </div>
+      
+      <div class="logo-section">
+        <nav>
+          <button class="nav-btn" :class="activeTab === 'enhance' ? 'active' : ''" @click="activeTab = 'enhance'">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Enhancer
+          </button>
+          <button class="nav-btn" :class="activeTab === 'presets' ? 'active' : ''" @click="activeTab = 'presets'">
+            <i class="fa-solid fa-sliders"></i> Presets
+          </button>
+          <button class="nav-btn" :class="activeTab === 'prompts' ? 'active' : ''" @click="activeTab = 'prompts'">
+            <i class="fa-solid fa-paragraph"></i> Prompts
+          </button>
+          <button class="nav-btn" :class="activeTab === 'models' ? 'active' : ''" @click="activeTab = 'models'; loadModels()">
+            <i class="fa-solid fa-download"></i> Models
+            <span x-show="downloadState.status === 'downloading'" class="indicator-dot" style="background-color: var(--warning); margin-left: 5px;"></span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Enhancer View -->
+    <div x-show="activeTab === 'enhance'" class="main-grid" :class="{'sidebar-collapsed': !sidebarOpen}">
+      
+      <!-- Left Sidebar -->
+      <div class="sidebar-panel">
+        
+        <!-- Panel 1: Input image + Mode + Enhance -->
+        <div class="glass-card" style="display: flex; flex-direction: column; gap: 1rem;">
+          
+          <!-- Input Image Component -->
+          <div class="input-image-card">
+            <template x-if="!inputPreview">
+              <div class="compact-upload" @click="triggerFileSelect()"
+                   @dragover.prevent="() => {}" @drop.prevent="handleDrop($event)">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <span>Drop image or click</span>
+                <input type="file" x-ref="fileInput" @change="handleFileChange($event)" style="display: none;" accept="image/*">
+              </div>
+            </template>
+            <template x-if="inputPreview">
+              <div class="input-preview-thumb">
+                <img :src="inputPreview" alt="Input">
+                <button class="btn-change" @click="removeInput()" title="Remove image"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+            </template>
+          </div>
+          
+          <!-- Enhancement Mode -->
+          <div class="mode-toggles">
+            <button class="mode-toggle-btn" :class="params.mode === 'full' ? 'active' : ''" @click="params.mode = 'full'">
+              Full Chain
+            </button>
+            <button class="mode-toggle-btn" :class="params.mode === 'edit' ? 'active' : ''" @click="params.mode = 'edit'">
+              Edit Only
+            </button>
+            <button class="mode-toggle-btn" :class="params.mode === 'upscale' ? 'active' : ''" @click="params.mode = 'upscale'">
+              Upscale Only
+            </button>
+          </div>
+          
+          <!-- Enhance Button -->
+          <button class="btn btn-primary" :disabled="isProcessing || !inputFile || !comfyOnline" @click="enhanceImage()" style="padding: 14px 20px; font-size: 1.05rem;">
+            <span x-show="!isProcessing"><i class="fa-solid fa-wand-magic-sparkles"></i> Senzu Enhance</span>
+            <span x-show="isProcessing"><i class="fa-solid fa-circle-notch fa-spin"></i> Processing...</span>
+          </button>
+          
+          <div x-show="!comfyOnline" style="color: var(--danger); font-size: 0.8rem; text-align: center; font-weight: 500;">
+            <i class="fa-solid fa-circle-exclamation"></i> ComfyUI offline
+          </div>
+          
+        </div>
+        
+        <!-- Panel 2: Quick Preset + Settings Accordions -->
+        <div>
+          
+          <!-- Preset Dropdown Selector -->
+          <div class="input-group">
+            <label class="input-label">Load Preset</label>
+            <select class="input-control" @change="applyPreset($event.target.value)">
+              <option value="">-- Choose Preset --</option>
+              <template x-for="(data, name) in presetsList" :key="name">
+                <option :value="name" :selected="name === 'Senzu Detail'" x-text="name"></option>
+              </template>
+            </select>
+          </div>
+          
+          <!-- Edit Settings Accordion -->
+          <div x-show="params.mode === 'full' || params.mode === 'edit'" class="accordion" :class="activeAccordion === 'edit' ? 'active' : ''">
+            <div class="accordion-header" @click="toggleAccordion('edit')">
+              <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Edit Settings</h3>
+              <i class="fa-solid fa-chevron-down accordion-icon"></i>
+            </div>
+            
+            <div x-show="activeAccordion === 'edit'" class="accordion-content">
+              <div class="flex-switch" style="margin-bottom: 12px;">
+                <span class="switch-label">Low VRAM GGUF Mode</span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="params.use_gguf">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              
+              <div class="form-row">
+                <div class="input-group">
+                  <label class="input-label">UNet Model</label>
+                  <select class="input-control" x-model="params.unet_name">
+                    <template x-for="m in (params.use_gguf ? models.diffusion_models.filter(f => f.indexOf('.gguf') !== -1) : models.diffusion_models.filter(f => f.indexOf('.safetensors') !== -1))" :key="m">
+                      <option :value="m" x-text="m"></option>
+                    </template>
+                    <option value="flux-2-klein-9b-kv-fp8.safetensors" x-show="!params.use_gguf">flux-2-klein-9b-kv-fp8.safetensors (Default)</option>
+                    <option value="flux-2-klein-9b-Q4_K_M.gguf" x-show="params.use_gguf">flux-2-klein-9b-Q4_K_M.gguf (Default)</option>
+                  </select>
+                </div>
+                
+                <div class="input-group">
+                  <label class="input-label">CLIP Text Encoder</label>
+                  <select class="input-control" x-model="params.clip_name">
+                    <template x-for="m in (params.use_gguf ? models.text_encoders.filter(f => f.indexOf('.gguf') !== -1) : models.text_encoders.filter(f => f.indexOf('.safetensors') !== -1))" :key="m">
+                      <option :value="m" x-text="m"></option>
+                    </template>
+                    <option value="qwen_3_8b_fp8mixed.safetensors" x-show="!params.use_gguf">qwen_3_8b_fp8mixed.safetensors (Default)</option>
+                    <option value="Qwen3-4B-Q8_0.gguf" x-show="params.use_gguf">Qwen3-4B-Q8_0.gguf (Default)</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="input-group">
+                <label class="input-label">VAE Model</label>
+                <select class="input-control" x-model="params.vae_name">
+                  <template x-for="m in models.vae" :key="m">
+                    <option :value="m" x-text="m"></option>
+                  </template>
+                  <option value="flux2-vae.safetensors">flux2-vae.safetensors (Default)</option>
+                </select>
+              </div>
+              
+              <div class="input-group">
+                <label class="input-label">Load Prompt Template</label>
+                <select class="input-control" @change="applyPrompt($event.target.value)">
+                  <option value="">-- Choose Prompt Template --</option>
+                  <template x-for="(content, name) in promptsList" :key="name">
+                    <option :value="name" x-text="name"></option>
+                  </template>
+                </select>
+              </div>
+              
+              <div class="input-group">
+                <label class="input-label">Enhancement Instructions</label>
+                <textarea class="input-control" x-model="params.prompt" placeholder="Describe the enhancements you want to apply..."></textarea>
+              </div>
+              
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div class="input-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <span class="input-label">Sampling Steps</span>
+                    <span class="range-val" x-text="params.steps"></span>
+                  </div>
+                  <div class="range-group">
+                    <input type="range" class="range-slider" min="1" max="20" step="1" x-model="params.steps">
+                  </div>
+                </div>
+                
+                <div class="form-row">
+                  <div class="input-group">
+                    <div style="display: flex; justify-content: space-between;">
+                      <span class="input-label">CFG scale</span>
+                      <span class="range-val" x-text="parseFloat(params.cfg).toFixed(1)"></span>
+                    </div>
+                    <div class="range-group">
+                      <input type="range" class="range-slider" min="0.5" max="3.0" step="0.1" x-model="params.cfg">
+                    </div>
+                  </div>
+                  
+                  <div class="input-group">
+                    <div style="display: flex; justify-content: space-between;">
+                      <span class="input-label">Megapixels</span>
+                      <span class="range-val" x-text="parseFloat(params.megapixels).toFixed(1) + 'MP'"></span>
+                    </div>
+                    <div class="range-group">
+                      <input type="range" class="range-slider" min="0.5" max="3.0" step="0.1" x-model="params.megapixels">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- LoRA Accordion -->
+          <div x-show="params.mode === 'full' || params.mode === 'edit'" class="accordion" :class="activeAccordion === 'lora' ? 'active' : ''">
+            <div class="accordion-header" @click="toggleAccordion('lora')">
+              <h3><i class="fa-solid fa-layer-group"></i> LoRA Configuration</h3>
+              <i class="fa-solid fa-chevron-down accordion-icon"></i>
+            </div>
+            
+            <div x-show="activeAccordion === 'lora'" class="accordion-content" style="display: flex; flex-direction: column; gap: 15px;">
+              <div style="padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <div class="flex-switch">
+                  <span class="switch-label" style="font-size: 0.85rem; font-weight: 600;">LoRA Refiner 1</span>
+                  <label class="switch-control">
+                    <input type="checkbox" x-model="params.lora1_enabled">
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+                <div x-show="params.lora1_enabled" style="margin-top: 8px;">
+                  <select class="input-control" x-model="params.lora1_name" style="font-size: 0.85rem; padding: 6px 10px; margin-bottom: 8px;">
+                    <template x-for="m in models.loras" :key="m">
+                      <option :value="m" x-text="m"></option>
+                    </template>
+                    <option value="_Flux_LoRA/Flux2_klein/klein9B_adonis_refine.safetensors">adonis_refine (Default)</option>
+                  </select>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="input-label" style="font-size: 0.75rem;">Strength</span>
+                    <span class="range-val" style="font-size: 0.8rem;" x-text="parseFloat(params.lora1_strength).toFixed(1)"></span>
+                  </div>
+                  <input type="range" class="range-slider" min="0.0" max="2.0" step="0.1" x-model="params.lora1_strength" style="height: 4px;">
+                </div>
+              </div>
+
+              <div style="padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <div class="flex-switch">
+                  <span class="switch-label" style="font-size: 0.85rem; font-weight: 600;">LoRA Refiner 2</span>
+                  <label class="switch-control">
+                    <input type="checkbox" x-model="params.lora2_enabled">
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+                <div x-show="params.lora2_enabled" style="margin-top: 8px;">
+                  <select class="input-control" x-model="params.lora2_name" style="font-size: 0.85rem; padding: 6px 10px; margin-bottom: 8px;">
+                    <template x-for="m in models.loras" :key="m">
+                      <option :value="m" x-text="m"></option>
+                    </template>
+                    <option value="_Flux_LoRA/Flux2_klein/Flux2-Klein-9B-consistency-V2.safetensors">consistency-V2 (Default)</option>
+                  </select>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="input-label" style="font-size: 0.75rem;">Strength</span>
+                    <span class="range-val" style="font-size: 0.8rem;" x-text="parseFloat(params.lora2_strength).toFixed(1)"></span>
+                  </div>
+                  <input type="range" class="range-slider" min="0.0" max="2.0" step="0.1" x-model="params.lora2_strength" style="height: 4px;">
+                </div>
+              </div>
+
+              <div style="text-align: center; font-size: 0.75rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px;">
+                <i class="fa-solid fa-circle-info"></i> Up to 6 LoRA slots. Place LoRAs in <code>comfyui/models/loras/</code>.
+              </div>
+            </div>
+          </div>
+          
+          <!-- Upscale Settings Accordion -->
+          <div x-show="params.mode === 'full' || params.mode === 'upscale'" class="accordion" :class="activeAccordion === 'upscale' ? 'active' : ''">
+            <div class="accordion-header" @click="toggleAccordion('upscale')">
+              <h3><i class="fa-solid fa-arrows-up-to-line"></i> Upscale Settings</h3>
+              <i class="fa-solid fa-chevron-down accordion-icon"></i>
+            </div>
+            
+            <div x-show="activeAccordion === 'upscale'" class="accordion-content">
+              <div class="input-group">
+                <label class="input-label">SeedVR2 DiT Model</label>
+                <select class="input-control" x-model="params.dit_model">
+                  <template x-for="m in models.seedvr2" :key="m">
+                    <option :value="m" x-text="m"></option>
+                  </template>
+                  <option value="seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors">seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors (Default)</option>
+                </select>
+              </div>
+              
+              <div class="form-row">
+                <div class="input-group">
+                  <label class="input-label">Target Resolution</label>
+                  <select class="input-control" x-model="params.resolution">
+                    <option value="1024">1024 px</option>
+                    <option value="2048">2048 px (HD)</option>
+                    <option value="3072">3072 px (3K)</option>
+                    <option value="4096">4096 px (4K)</option>
+                  </select>
+                </div>
+                
+                <div class="input-group">
+                  <label class="input-label">Max Limit Bounds</label>
+                  <select class="input-control" x-model="params.max_resolution">
+                    <option value="2048">2048 px</option>
+                    <option value="4096">4096 px (Default)</option>
+                    <option value="8192">8192 px (Ultra)</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="input-group">
+                  <label class="input-label">Offload Device</label>
+                  <select class="input-control" x-model="params.offload_device">
+                    <option value="cpu">CPU (Recommended)</option>
+                    <option value="none">None (Strict VRAM)</option>
+                  </select>
+                </div>
+                
+                <div class="input-group">
+                  <label class="input-label">Attention Mode</label>
+                  <select class="input-control" x-model="params.attention_mode">
+                    <option value="flash_attn_2">Flash Attention 2</option>
+                    <option value="sdpa">SDPA</option>
+                    <option value="math">Math (CPU fallback)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="input-group">
+                  <label class="input-label">Color Correction</label>
+                  <select class="input-control" x-model="params.color_correction">
+                    <option value="lab">LAB Match (Recommended)</option>
+                    <option value="wavelet">Wavelet</option>
+                    <option value="none">None</option>
+                  </select>
+                </div>
+                
+                <div class="input-group">
+                  <label class="input-label">Blocks to Swap</label>
+                  <select class="input-control" x-model="params.blocks_to_swap">
+                    <option value="0">0 (Max VRAM Speed)</option>
+                    <option value="18">18 (Balanced)</option>
+                    <option value="36">36 (Low VRAM Offload)</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="flex-switch" style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px;">
+                <span class="switch-label">Tiled Encoding</span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="params.encode_tiled">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              
+              <div class="flex-switch">
+                <span class="switch-label">Tiled Decoding</span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="params.decode_tiled">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+      
+      <!-- Right Output Panel -->
+      <div class="output-panel">
+        
+        <!-- Output Image Viewer -->
+        <div class="glass-card output-viewer-card">
+          <div class="output-viewer-toolbar">
+            <span class="viewer-label" x-text="outputImage ? 'Enhanced Result' : 'Preview'"></span>
+            <div class="viewer-actions">
+              <button class="btn-icon" @click="zoomIn()" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+              <button class="btn-icon" @click="zoomOut()" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+              <button class="btn-icon" @click="resetZoom()" title="Fit to View"><i class="fa-solid fa-expand"></i></button>
+              <button class="btn-icon" @click="toggleFullscreen()" title="Full Screen"><i class="fa-solid fa-expand-arrows-alt"></i></button>
+            </div>
+          </div>
+          
+          <div class="compare-container" x-ref="sliderContainer"
+               @mousedown="startPan($event)"
+               @mousemove="onMouseMove($event)"
+               @mouseup="stopPan(); stopSliderDrag()"
+               @mouseleave="stopPan(); stopSliderDrag()">
+            
+            <div class="slider-badge slider-badge-before">Original</div>
+            <div class="slider-badge slider-badge-after" x-text="outputImage ? 'Enhanced' : 'Preview'">Preview</div>
+            
+            <!-- Drop zone when no image -->
+            <div x-show="!inputPreview" class="upload-container" @click="triggerFileSelect()"
+                 @dragover.prevent="() => {}" @drop.prevent="handleDrop($event)" style="position: absolute; inset: 15px; z-index: 10;">
+              <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+              <div class="upload-text">Drag & Drop Image Here</div>
+              <div class="upload-sub">or click to browse</div>
+            </div>
+            
+            <!-- Slider Images with zoom -->
+            <div class="zoom-wrapper" :style="getZoomStyle()">
+              <template x-if="inputPreview">
+                <img :src="inputPreview" class="slider-img" alt="Input source">
+              </template>
+              <template x-if="inputPreview">
+                <img :src="outputImage || inputPreview" class="slider-img slider-img-after" :style="getAfterClipStyle()" alt="Enhanced result">
+              </template>
+            </div>
+            
+            <div x-show="inputPreview" class="slider-bar" :style="getSliderStyle()"
+                 @mousedown="startSliderDrag($event); $event.stopPropagation()"
+                 @touchstart="startSliderDrag($event); $event.stopPropagation()">
+              <div class="slider-handle">
+                <i class="fa-solid fa-arrows-left-right"></i>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <!-- Status + Controls -->
+        <div x-show="isProcessing || outputImage" class="glass-card">
+          <div class="progress-panel">
+            <div class="progress-header">
+              <div class="progress-title">
+                <div x-show="isProcessing" class="spinner"></div>
+                <i x-show="!isProcessing && outputImage" class="fa-solid fa-circle-check" style="color: var(--success); font-size: 1.2rem;"></i>
+                <span x-text="statusText">Idle</span>
+              </div>
+              <div class="process-time" x-text="formatTime(processTime)">0:00</div>
+            </div>
+            
+            <!-- Result actions -->
+            <div x-show="!isProcessing && outputImage" class="result-actions">
+              
+              <div class="result-action-row">
+                <template x-if="outputMode === 'full' || outputMode === 'edit'">
+                  <div class="result-item">
+                    <span class="result-label">Edit Output</span>
+                    <div class="result-btns">
+                      <button class="btn btn-sm" :class="displayedImage === 'edit' ? 'btn-primary' : ''" @click="showOutput('edit')">
+                        <i class="fa-regular fa-eye"></i> View
+                      </button>
+                      <button class="btn btn-sm" @click="downloadOutput('edit')">
+                        <i class="fa-solid fa-download"></i> Save
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                
+                <template x-if="outputMode === 'full' || outputMode === 'upscale'">
+                  <div class="result-item">
+                    <span class="result-label">Final Upscaled</span>
+                    <div class="result-btns">
+                      <button class="btn btn-sm" :class="displayedImage === 'final' ? 'btn-primary' : ''" @click="showOutput('final')">
+                        <i class="fa-regular fa-eye"></i> View
+                      </button>
+                      <button class="btn btn-sm" @click="downloadOutput('final')">
+                        <i class="fa-solid fa-download"></i> Save
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                
+                <template x-if="outputMode === 'full'">
+                  <div class="result-item">
+                    <span class="result-label">Original</span>
+                    <div class="result-btns">
+                      <button class="btn btn-sm" :class="displayedImage === 'original' ? 'btn-primary' : ''" @click="showOutput('original')">
+                        <i class="fa-regular fa-eye"></i> View
+                      </button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+
+    <!-- Presets CRUD Tab View -->
+    <div x-show="activeTab === 'presets'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 class="card-title"><i class="fa-solid fa-sliders"></i> Presets Library Manager</h2>
+        
+        <!-- Save Preset form -->
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <input type="text" class="input-control" x-model="newPresetName" placeholder="New Preset Name..." style="max-width: 250px;">
+          <button class="btn btn-primary btn-sm" @click="saveNewPreset()">
+            <i class="fa-solid fa-floppy-disk"></i> Save Current Settings
+          </button>
+        </div>
+      </div>
+      
+      <div class="presets-grid">
+        <template x-for="(data, name) in presetsList" :key="name">
+          <div class="preset-card glass-card" style="background: rgba(255,255,255,0.01);">
+            <div style="display: flex; justify-content: space-between; align-items: start; gap: 10px;">
+              <h3 x-text="name" style="font-size: 1.1rem; font-weight: 600;"></h3>
+              <button class="btn-danger-sm" @click="deletePreset(name)"><i class="fa-solid fa-trash"></i></button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; color: var(--text-secondary);">
+              <div><strong style="color: var(--text-primary);">Mode:</strong> <span x-text="data.mode"></span></div>
+              <div><strong style="color: var(--text-primary);">UNet:</strong> <span x-text="data.unet_name ? data.unet_name.split('/').pop() : 'Default'"></span></div>
+              <div><strong style="color: var(--text-primary);">Steps:</strong> <span x-text="data.steps"></span></div>
+              <div><strong style="color: var(--text-primary);">Resolution:</strong> <span x-text="data.resolution + 'px'"></span></div>
+            </div>
+            
+            <button class="btn btn-sm" @click="applyPreset(name); activeTab = 'enhance'; activeAccordion = 'edit'" style="margin-top: 10px; width: 100%;">
+              <i class="fa-solid fa-check"></i> Apply Configuration
+            </button>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Prompts CRUD Tab View -->
+    <div x-show="activeTab === 'prompts'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 class="card-title"><i class="fa-solid fa-paragraph"></i> Prompts Library</h2>
+        
+        <button class="btn btn-danger-sm" @click="resetPrompts()">
+          <i class="fa-solid fa-rotate-left"></i> Reset to System Defaults
+        </button>
+      </div>
+      
+      <div class="main-grid" style="grid-template-columns: 4fr 6fr;">
+        <!-- Left Panel CRUD lists -->
+        <div class="glass-card" style="background: rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; gap: 1rem;">
+          <h3 style="font-size: 1.05rem; font-weight: 600;">Saved Prompt Templates</h3>
+          <div class="crud-list">
+            <template x-for="(content, name) in promptsList" :key="name">
+              <div class="crud-item">
+                <div style="cursor: pointer; flex-grow: 1;" @click="applyPrompt(name)">
+                  <strong x-text="name" style="display: block; font-size: 0.9rem;"></strong>
+                  <span x-text="content.substring(0, 50) + '...'" style="font-size: 0.75rem; color: var(--text-secondary);"></span>
+                </div>
+                <button class="btn-danger-sm" @click="deletePrompt(name)" style="padding: 4px 8px;"><i class="fa-solid fa-trash"></i></button>
+              </div>
+            </template>
+          </div>
+        </div>
+        
+        <!-- Right Panel add/edit form -->
+        <div class="glass-card" style="background: rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; gap: 1.2rem;">
+          <h3 style="font-size: 1.05rem; font-weight: 600;">Create Prompt Template</h3>
+          
+          <div class="input-group">
+            <label class="input-label">Template Name</label>
+            <input type="text" class="input-control" x-model="newPromptName" placeholder="e.g. Cinematic Portrait Glow...">
+          </div>
+          
+          <div class="input-group">
+            <label class="input-label">Prompt Content</label>
+            <textarea class="input-control" x-model="newPromptContent" placeholder="Enter the prompt description that will guide the Klein 9B refiner..." style="min-height: 180px;"></textarea>
+          </div>
+          
+          <button class="btn btn-primary" @click="saveNewPrompt()" :disabled="!newPromptName.trim() || !newPromptContent.trim()">
+            <i class="fa-solid fa-plus"></i> Save New Template
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Models Manager Tab View -->
+    <div x-show="activeTab === 'models'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <h2 class="card-title"><i class="fa-solid fa-download"></i> Model Resources Manager</h2>
+      
+      <!-- Active background downloader progress bar widget -->
+      <div x-show="downloadState.status === 'downloading'" class="download-widget">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div>
+            <strong style="color: var(--warning);"><i class="fa-solid fa-circle-notch fa-spin"></i> Downloading from HuggingFace...</strong>
+            <span x-text="downloadState.filename" style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; word-break: break-all;"></span>
+          </div>
+          <div style="text-align: right; font-family: 'Outfit', sans-serif;">
+            <strong x-text="downloadState.speed">0 B/s</strong>
+            <span x-text="((downloadState.downloaded / (1024*1024*1024)).toFixed(2)) + ' / ' + ((downloadState.total / (1024*1024*1024)).toFixed(2)) + ' GB'" style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;"></span>
+          </div>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" :style="'width: ' + downloadState.progress + '%'"></div>
+        </div>
+      </div>
+
+      <!-- General Completed/Error notices -->
+      <div x-show="downloadState.status === 'completed'" class="conn-indicator online" style="margin-bottom: 1.5rem; justify-content: center; width: 100%;">
+        <i class="fa-solid fa-circle-check"></i> Model resource "<span x-text="downloadState.filename"></span>" downloaded successfully!
+      </div>
+      
+      <div x-show="downloadState.status === 'error'" class="conn-indicator offline" style="margin-bottom: 1.5rem; justify-content: center; width: 100%;">
+        <i class="fa-solid fa-circle-exclamation"></i> Download failed: <span x-text="downloadState.error"></span>
+      </div>
+
+      <!-- Models categorization guides -->
+      <div>
+        <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;">Recommended Models Checks</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1.2rem;">
+          To leverage the full power of Senzu, verify that the following recommended files exist on disk. You can download missing models directly from HuggingFace to your local ComfyUI cache folder!
+        </p>
+        
+        <div class="models-grid">
+          <!-- Model UNet fp8 -->
+          <div class="model-card">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <span class="model-status-badge" :class="modelExists(recommendedModels.unet.filename, 'diffusion_models') ? 'installed' : 'missing'"
+                      x-text="modelExists(recommendedModels.unet.filename, 'diffusion_models') ? 'Installed' : 'Missing'">Checking</span>
+              </div>
+              <h4 class="model-name" x-text="recommendedModels.unet.filename"></h4>
+              <p class="model-desc" x-text="recommendedModels.unet.desc"></p>
+            </div>
+            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.unet.filename, 'diffusion_models')"
+                    @click="triggerDownload(recommendedModels.unet.repo, recommendedModels.unet.filename, 'unet')" :disabled="downloadState.status === 'downloading'">
+              <i class="fa-solid fa-download"></i> Download (9.8GB)
+            </button>
+          </div>
+
+          <!-- Model UNet GGUF -->
+          <div class="model-card">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <span class="model-status-badge" :class="modelExists(recommendedModels.unet_gguf.filename, 'diffusion_models') ? 'installed' : 'missing'"
+                      x-text="modelExists(recommendedModels.unet_gguf.filename, 'diffusion_models') ? 'Installed' : 'Missing'">Checking</span>
+              </div>
+              <h4 class="model-name" x-text="recommendedModels.unet_gguf.filename"></h4>
+              <p class="model-desc" x-text="recommendedModels.unet_gguf.desc"></p>
+            </div>
+            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.unet_gguf.filename, 'diffusion_models')"
+                    @click="triggerDownload(recommendedModels.unet_gguf.repo, recommendedModels.unet_gguf.filename, 'unet')" :disabled="downloadState.status === 'downloading'">
+              <i class="fa-solid fa-download"></i> Download (5.9GB)
+            </button>
+          </div>
+
+          <!-- Model CLIP -->
+          <div class="model-card">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <span class="model-status-badge" :class="modelExists(recommendedModels.clip.filename, 'text_encoders') ? 'installed' : 'missing'"
+                      x-text="modelExists(recommendedModels.clip.filename, 'text_encoders') ? 'Installed' : 'Missing'">Checking</span>
+              </div>
+              <h4 class="model-name" x-text="recommendedModels.clip.filename"></h4>
+              <p class="model-desc" x-text="recommendedModels.clip.desc"></p>
+            </div>
+            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.clip.filename, 'text_encoders')"
+                    @click="triggerDownload(recommendedModels.clip.repo, recommendedModels.clip.filename, 'text_encoder')" :disabled="downloadState.status === 'downloading'">
+              <i class="fa-solid fa-download"></i> Download (8.6GB)
+            </button>
+          </div>
+
+          <!-- Model CLIP GGUF -->
+          <div class="model-card">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <span class="model-status-badge" :class="modelExists(recommendedModels.clip_gguf.filename, 'text_encoders') ? 'installed' : 'missing'"
+                      x-text="modelExists(recommendedModels.clip_gguf.filename, 'text_encoders') ? 'Installed' : 'Missing'">Checking</span>
+              </div>
+              <h4 class="model-name" x-text="recommendedModels.clip_gguf.filename"></h4>
+              <p class="model-desc" x-text="recommendedModels.clip_gguf.desc"></p>
+            </div>
+            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.clip_gguf.filename, 'text_encoders')"
+                    @click="triggerDownload(recommendedModels.clip_gguf.repo, recommendedModels.clip_gguf.filename, 'text_encoder')" :disabled="downloadState.status === 'downloading'">
+              <i class="fa-solid fa-download"></i> Download (4.2GB)
+            </button>
+          </div>
+
+          <!-- VAE -->
+          <div class="model-card">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <span class="model-status-badge" :class="modelExists(recommendedModels.vae.filename, 'vae') ? 'installed' : 'missing'"
+                      x-text="modelExists(recommendedModels.vae.filename, 'vae') ? 'Installed' : 'Missing'">Checking</span>
+              </div>
+              <h4 class="model-name" x-text="recommendedModels.vae.filename"></h4>
+              <p class="model-desc" x-text="recommendedModels.vae.desc"></p>
+            </div>
+            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.vae.filename, 'vae')"
+                    @click="triggerDownload(recommendedModels.vae.repo, recommendedModels.vae.filename, 'vae')" :disabled="downloadState.status === 'downloading'">
+              <i class="fa-solid fa-download"></i> Download (336MB)
+            </button>
+          </div>
+
+          <!-- SeedVR2 DiT -->
+          <div class="model-card">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <span class="model-status-badge" :class="modelExists(recommendedModels.dit.filename, 'seedvr2') ? 'installed' : 'missing'"
+                      x-text="modelExists(recommendedModels.dit.filename, 'seedvr2') ? 'Installed' : 'Missing'">Checking</span>
+              </div>
+              <h4 class="model-name" x-text="recommendedModels.dit.filename"></h4>
+              <p class="model-desc" x-text="recommendedModels.dit.desc"></p>
+            </div>
+            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.dit.filename, 'seedvr2')"
+                    @click="triggerDownload(recommendedModels.dit.repo, recommendedModels.dit.filename, 'seedvr2')" :disabled="downloadState.status === 'downloading'">
+              <i class="fa-solid fa-download"></i> Download (8.4GB)
+            </button>
+          </div>
+
+          <!-- SeedVR2 VAE -->
+          <div class="model-card">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <span class="model-status-badge" :class="modelExists(recommendedModels.seedvae.filename, 'seedvr2') ? 'installed' : 'missing'"
+                      x-text="modelExists(recommendedModels.seedvae.filename, 'seedvr2') ? 'Installed' : 'Missing'">Checking</span>
+              </div>
+              <h4 class="model-name" x-text="recommendedModels.seedvae.filename"></h4>
+              <p class="model-desc" x-text="recommendedModels.seedvae.desc"></p>
+            </div>
+            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.seedvae.filename, 'seedvr2')"
+                    @click="triggerDownload(recommendedModels.seedvae.repo, recommendedModels.seedvae.filename, 'seedvr2')" :disabled="downloadState.status === 'downloading'">
+              <i class="fa-solid fa-download"></i> Download (501MB)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

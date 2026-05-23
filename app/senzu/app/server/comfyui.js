@@ -1,0 +1,296 @@
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+const FormData = require('form-data');
+const workflowMap = require('./workflowMap');
+
+const COMFY_URL = 'http://127.0.0.1:8188';
+
+// HTTP JSON POST helper
+function postJSON(url, data) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const bodyStr = JSON.stringify(data);
+    const options = {
+      method: 'POST',
+      host: parsedUrl.hostname,
+      port: parsedUrl.port,
+      path: parsedUrl.pathname,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(bodyStr)
+      }
+    };
+    
+    const req = http.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(new Error("Failed to parse POST response: " + e.message));
+          }
+        } else {
+          reject(new Error(`POST failed with status ${res.statusCode}: ${body}`));
+        }
+      });
+    });
+    
+    req.on('error', (err) => reject(err));
+    req.write(bodyStr);
+    req.end();
+  });
+}
+
+// HTTP JSON GET helper
+function getJSON(url) {
+  return new Promise((resolve, reject) => {
+    http.get(url, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(new Error("Failed to parse GET response: " + e.message));
+          }
+        } else {
+          reject(new Error(`GET failed with status ${res.statusCode}`));
+        }
+      });
+    }).on('error', reject);
+  });
+}
+
+// Upload local image to ComfyUI
+function uploadImage(filePath) {
+  return new Promise((resolve, reject) => {
+    if (!fs.existsSync(filePath)) {
+      return reject(new Error(`File not found: ${filePath}`));
+    }
+    
+    const form = new FormData();
+    form.append('image', fs.createReadStream(filePath));
+    
+    const parsedUrl = new URL(COMFY_URL);
+    const options = {
+      method: 'POST',
+      host: parsedUrl.hostname,
+      port: parsedUrl.port,
+      path: '/upload/image',
+      headers: form.getHeaders()
+    };
+    
+    const req = http.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(new Error("Failed to parse upload response: " + e.message));
+          }
+        } else {
+          reject(new Error(`Upload failed with status code ${res.statusCode}: ${body}`));
+        }
+      });
+    });
+    
+    req.on('error', (err) => reject(err));
+    form.pipe(req);
+  });
+}
+
+// Check if ComfyUI is online
+function checkComfyOnline() {
+  return new Promise((resolve) => {
+    const parsedUrl = new URL(COMFY_URL);
+    const req = http.request({
+      method: 'GET',
+      host: parsedUrl.hostname,
+      port: parsedUrl.port,
+      path: '/system_stats',
+      timeout: 1500
+    }, (res) => {
+      resolve(res.statusCode === 200);
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
+function normalizeWorkflowValue(field, value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  if (field === 'lora_name' && process.platform === 'win32') {
+    return value.replace(/\//g, '\\');
+  }
+
+  return value;
+}
+
+// Download image from ComfyUI view endpoint
+function downloadComfyImage(filename, subfolder, type, destPath) {
+  return new Promise((resolve, reject) => {
+    const query = `filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder || '')}&type=${encodeURIComponent(type || 'output')}`;
+    const url = `${COMFY_URL}/view?${query}`;
+    
+    const dir = path.dirname(destPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    const file = fs.createWriteStream(destPath);
+    http.get(url, (res) => {
+      if (res.statusCode !== 200) {
+        file.close();
+        fs.unlinkSync(destPath);
+        return reject(new Error(`Failed to download image: ${res.statusCode}`));
+      }
+      res.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        resolve(destPath);
+      });
+    }).on('error', (err) => {
+      file.close();
+      if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+      reject(err);
+    });
+  });
+}
+
+// Inject params into ComfyUI workflow JSON
+async function injectParams(workflowJson, mode, params) {
+  const map = workflowMap[mode];
+  if (!map) {
+    throw new Error(`Unknown workflow mode: ${mode}`);
+  }
+  
+  const patched = JSON.parse(JSON.stringify(workflowJson)); // deep copy
+  
+  for (const [key, val] of Object.entries(params)) {
+    const entry = map[key];
+    if (entry) {
+      const { node, field, upload } = entry;
+      if (patched[node]) {
+        if (!patched[node].inputs) patched[node].inputs = {};
+        
+        if (upload && val) {
+          // If it is a file path, upload it first
+          if (fs.existsSync(val)) {
+            console.log(`Uploading input image ${key}: ${val}...`);
+            const uploadResult = await uploadImage(val);
+            patched[node].inputs[field] = uploadResult.name;
+            console.log(`Uploaded successfully as ${uploadResult.name}`);
+          } else {
+            // Already uploaded filename
+            patched[node].inputs[field] = val;
+          }
+        } else {
+          patched[node].inputs[field] = normalizeWorkflowValue(field, val);
+        }
+      }
+    }
+  }
+  
+  return patched;
+}
+
+// Poll history until complete
+function pollHistory(promptId, intervalMs = 1000) {
+  return new Promise((resolve, reject) => {
+    const url = `${COMFY_URL}/history/${promptId}`;
+    const timer = setInterval(async () => {
+      try {
+        const history = await getJSON(url);
+        if (history && history[promptId]) {
+          clearInterval(timer);
+          resolve(history[promptId]);
+        }
+      } catch (err) {
+        // Suppress transient GET errors while restarting/polling
+      }
+    }, intervalMs);
+  });
+}
+
+// Main execution helper
+async function runWorkflow(workflowPath, mode, params, progressCallback) {
+  if (!fs.existsSync(workflowPath)) {
+    throw new Error(`Workflow file not found: ${workflowPath}`);
+  }
+  
+  const rawWorkflow = JSON.parse(fs.readFileSync(workflowPath, 'utf-8'));
+  
+  if (progressCallback) progressCallback("Preparing workflow...");
+  const patchedWorkflow = await injectParams(rawWorkflow, mode, params);
+  
+  if (progressCallback) progressCallback("Queueing prompt...");
+  const queueResult = await postJSON(`${COMFY_URL}/prompt`, {
+    prompt: patchedWorkflow,
+    client_id: 'senzu'
+  });
+  
+  if (queueResult.node_errors && Object.keys(queueResult.node_errors).length > 0) {
+    throw new Error(`ComfyUI node validation errors: ${JSON.stringify(queueResult.node_errors)}`);
+  }
+  
+  const promptId = queueResult.prompt_id;
+  if (!promptId) {
+    throw new Error("Failed to queue prompt: No prompt ID returned");
+  }
+  
+  if (progressCallback) progressCallback("Processing in ComfyUI...");
+  const historyResult = await pollHistory(promptId);
+  
+  if (historyResult.status && historyResult.status.status === "error") {
+    const messages = historyResult.status.messages || [];
+    throw new Error(`Execution error: ${messages.map(m => m[1] || m[0]).join(', ')}`);
+  }
+  
+  // Find output image in history
+  let imageOutput = null;
+  const targetNodeId = mode === 'edit' ? '1' : '23';
+  
+  if (historyResult.outputs && historyResult.outputs[targetNodeId] && historyResult.outputs[targetNodeId].images) {
+    imageOutput = historyResult.outputs[targetNodeId].images[0];
+  } else if (historyResult.outputs) {
+    // Fallback: search for any node that has an output image
+    for (const [nodeId, out] of Object.entries(historyResult.outputs)) {
+      if (out.images && out.images.length > 0) {
+        imageOutput = out.images[0];
+        break;
+      }
+    }
+  }
+  
+  if (!imageOutput) {
+    throw new Error("No output image found in ComfyUI execution history.");
+  }
+  
+  return {
+    filename: imageOutput.filename,
+    subfolder: imageOutput.subfolder,
+    type: imageOutput.type,
+    prompt_id: promptId
+  };
+}
+
+module.exports = {
+  checkComfyOnline,
+  uploadImage,
+  downloadComfyImage,
+  runWorkflow,
+  COMFY_URL
+};

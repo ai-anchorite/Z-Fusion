@@ -1,0 +1,112 @@
+const API_BASE = '/api';
+
+const api = {
+  async getStatus() {
+    const res = await fetch(`${API_BASE}/status`);
+    return res.json();
+  },
+  
+  async getPresets() {
+    const res = await fetch(`${API_BASE}/presets`);
+    return res.json();
+  },
+  
+  async savePreset(name, data) {
+    const res = await fetch(`${API_BASE}/presets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, data })
+    });
+    return res.json();
+  },
+  
+  async deletePreset(name) {
+    const res = await fetch(`${API_BASE}/presets/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    });
+    return res.json();
+  },
+  
+  async getPrompts() {
+    const res = await fetch(`${API_BASE}/prompts`);
+    return res.json();
+  },
+  
+  async savePrompt(name, content) {
+    const res = await fetch(`${API_BASE}/prompts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content })
+    });
+    return res.json();
+  },
+  
+  async deletePrompt(name) {
+    const res = await fetch(`${API_BASE}/prompts/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    });
+    return res.json();
+  },
+  
+  async resetPrompts() {
+    const res = await fetch(`${API_BASE}/prompts/reset`, {
+      method: 'POST'
+    });
+    return res.json();
+  },
+  
+  async getModels() {
+    const res = await fetch(`${API_BASE}/models`);
+    return res.json();
+  },
+  
+  async getDownloadStatus() {
+    const res = await fetch(`${API_BASE}/models/download-status`);
+    return res.json();
+  },
+  
+  async startDownload(repo, filename, type) {
+    const res = await fetch(`${API_BASE}/models/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo, filename, type })
+    });
+    return res.json();
+  },
+  
+  async enhanceImage(file, mode, parameters, onProgress) {
+    const formData = new FormData();
+    if (file) {
+      formData.append('image', file);
+    }
+    formData.append('mode', mode);
+    formData.append('parameters', JSON.stringify(parameters));
+    
+    const xhr = new XMLHttpRequest();
+    const promise = new Promise((resolve, reject) => {
+      xhr.open('POST', `${API_BASE}/enhance`);
+      
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch (e) {
+            reject(new Error("Failed to parse response: " + e.message));
+          }
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err.error || `Failed with status ${xhr.status}`));
+          } catch (e) {
+            reject(new Error(`Failed with status ${xhr.status}: ${xhr.responseText}`));
+          }
+        }
+      };
+      
+      xhr.onerror = () => reject(new Error("Network connection error."));
+      xhr.send(formData);
+    });
+    
+    return promise;
+  }
+};

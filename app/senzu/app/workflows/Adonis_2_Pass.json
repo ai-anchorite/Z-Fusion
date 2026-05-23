@@ -1,0 +1,476 @@
+{
+  "118": {
+    "inputs": {
+      "image": "ComfyUI_temp_msfti_00004_.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "317": {
+    "inputs": {
+      "images": [
+        "415",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Pre-Process Preview"
+    }
+  },
+  "405": {
+    "inputs": {
+      "images": [
+        "416",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Base Preview"
+    }
+  },
+  "415": {
+    "inputs": {
+      "samples": [
+        "418",
+        0
+      ],
+      "vae": [
+        "427",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "416": {
+    "inputs": {
+      "samples": [
+        "417",
+        0
+      ],
+      "vae": [
+        "427",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "417": {
+    "inputs": {
+      "eta": 0.8,
+      "sampler_name": "exponential/res_2s",
+      "scheduler": "simple",
+      "steps": [
+        "460",
+        0
+      ],
+      "steps_to_run": -1,
+      "denoise": 1,
+      "cfg": 1,
+      "seed": 720289810505328,
+      "sampler_mode": "standard",
+      "bongmath": true,
+      "model": [
+        "461",
+        0
+      ],
+      "positive": [
+        "437",
+        0
+      ],
+      "negative": [
+        "439",
+        0
+      ],
+      "latent_image": [
+        "435",
+        0
+      ],
+      "options": [
+        "432",
+        0
+      ]
+    },
+    "class_type": "ClownsharKSampler_Beta",
+    "_meta": {
+      "title": "ClownsharKSampler-FirstPass"
+    }
+  },
+  "418": {
+    "inputs": {
+      "eta": 0.5,
+      "sampler_name": "exponential/res_2s",
+      "scheduler": "simple",
+      "steps": [
+        "460",
+        0
+      ],
+      "steps_to_run": -1,
+      "denoise": 1,
+      "cfg": 1,
+      "seed": 343089814346268,
+      "sampler_mode": "standard",
+      "bongmath": true,
+      "model": [
+        "462",
+        0
+      ],
+      "positive": [
+        "419",
+        0
+      ],
+      "negative": [
+        "420",
+        0
+      ],
+      "latent_image": [
+        "417",
+        1
+      ],
+      "options": [
+        "432",
+        0
+      ]
+    },
+    "class_type": "ClownsharKSampler_Beta",
+    "_meta": {
+      "title": "ClownsharKSampler-SecondPass"
+    }
+  },
+  "419": {
+    "inputs": {
+      "conditioning": [
+        "444",
+        0
+      ],
+      "latent": [
+        "417",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "420": {
+    "inputs": {
+      "conditioning": [
+        "423",
+        0
+      ],
+      "latent": [
+        "417",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "423": {
+    "inputs": {
+      "conditioning": [
+        "444",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ConditioningZeroOut"
+    }
+  },
+  "424": {
+    "inputs": {
+      "lora_name": "_Flux_LoRA\\Flux2_klein\\klein9b_adonis_base.safetensors",
+      "strength_model": 1,
+      "model": [
+        "425",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "First Pass Lora 1"
+    }
+  },
+  "425": {
+    "inputs": {
+      "unet_name": "flux-2-klein-9b.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "426": {
+    "inputs": {
+      "lora_name": "_Flux_LoRA\\Flux2_klein\\adonis_post.safetensors",
+      "strength_model": 1,
+      "model": [
+        "425",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Second Pass Lora 1"
+    }
+  },
+  "427": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "428": {
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "432": {
+    "inputs": {
+      "noise_type_init": "laplacian",
+      "s_noise_init": 1,
+      "denoise_alt": 1,
+      "channelwise_cfg": false
+    },
+    "class_type": "SharkOptions_Beta",
+    "_meta": {
+      "title": "SharkOptions"
+    }
+  },
+  "435": {
+    "inputs": {
+      "width": [
+        "463",
+        1
+      ],
+      "height": [
+        "463",
+        2
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "Empty Flux 2 Latent"
+    }
+  },
+  "436": {
+    "inputs": {
+      "pixels": [
+        "118",
+        0
+      ],
+      "vae": [
+        "427",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "437": {
+    "inputs": {
+      "conditioning": [
+        "441",
+        0
+      ],
+      "latent": [
+        "436",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "438": {
+    "inputs": {
+      "conditioning": [
+        "441",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ConditioningZeroOut"
+    }
+  },
+  "439": {
+    "inputs": {
+      "conditioning": [
+        "438",
+        0
+      ],
+      "latent": [
+        "436",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "441": {
+    "inputs": {
+      "text": "uhdmanscale. Remove halftone dot pattern. Apply descreen filter. Eliminate periodic grid noise. Eliminate repeating noise patterns and artifacts, remove uniform diagonal line texture patterns. Reconstruct low resolution high ISO noise areas with high resolution low ISO noise textures.\n\nApply full detail reconstruction to all areas: background, environment, surfaces, objects, clothing, and foreground elements — render everything sharp, textured, and high fidelity.\n\nSubject identity is locked: preserve exact facial geometry and body geometry, eye shape and color, nose and mouth shape, and expression.\n\nOn skin areas, remove color blotch artifacts, normalize tone uniformity, preserve natural pore and texture detail. On hair areas, separate smeared color artifacts, restore strand separation and texture. Outside the subject's face, freely reconstruct all texture and sharpness with no restrictions.\n\nDeblur and focus correction pass. Infer and reconstruct underlying detail from soft source: sharpen edge definition, recover lip definition, and skin texture from motion blur.\n\nOutput as professional high resolution camera RAW image.",
+      "clip": [
+        "428",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "First Pass Prompt"
+    }
+  },
+  "444": {
+    "inputs": {
+      "text": "clean natural skin, hair and body texture, no jpeg artifacts, no checkerboard pattern, human portrait.",
+      "clip": [
+        "428",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Second Pass Prompt"
+    }
+  },
+  "448": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "424",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "First Pass Lora 2"
+    }
+  },
+  "449": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "448",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "First Pass Lora 3"
+    }
+  },
+  "450": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "426",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Second Pass Lora 2"
+    }
+  },
+  "451": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "450",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Second Pass Lora 3"
+    }
+  },
+  "460": {
+    "inputs": {
+      "value": 9
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "Total Steps (Per Model)"
+    }
+  },
+  "461": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "449",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "First Pass Lora 4"
+    }
+  },
+  "462": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "451",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Second Pass Lora 4"
+    }
+  },
+  "463": {
+    "inputs": {
+      "megapixels": 1.5,
+      "multiple_of": 16,
+      "resize_mode": "crop",
+      "upscale_method": "lanczos",
+      "resolution": "",
+      "image": [
+        "118",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixelsX",
+    "_meta": {
+      "title": "Scale Image to Total Pixels Adv"
+    }
+  }
+}
