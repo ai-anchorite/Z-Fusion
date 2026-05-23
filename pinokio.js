@@ -8,7 +8,7 @@ module.exports = {
     let running = {
       install: info.running("install.js"),
       start: info.running("start.js"),
-      start_pf: info.running("start_pf.js"),
+      start_senzu: info.running("start_senzu.js"),
       update: info.running("update.js") || info.running("_update_steps.js"),
       reset: info.running("reset.js"),
     }
@@ -48,8 +48,8 @@ module.exports = {
           }]
         }
       } 
-      else if (running.start_pf) {
-        let local = info.local("start_pf.js")
+      else if (running.start_senzu) {
+        let local = info.local("start_senzu.js")
         if (local && local.url) {
           return [{
             default: true,
@@ -63,14 +63,14 @@ module.exports = {
           }, {
             icon: "fa-solid fa-terminal",
             text: "Terminal",
-            href: "start_pf.js",
+            href: "start_senzu.js",
           }]
         } else {
           return [{
             default: true,
             icon: "fa-solid fa-terminal",
             text: "Terminal",
-            href: "start_pf.js",
+            href: "start_senzu.js",
           }]
         }
       }
