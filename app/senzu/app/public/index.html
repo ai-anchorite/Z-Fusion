@@ -397,7 +397,7 @@
                @mousedown="startPan($event)"
                @mousemove="onMouseMove($event)"
                @mouseup="stopPan(); stopSliderDrag()"
-               @mouseleave="stopPan(); stopSliderDrag()">
+               @mouseleave="stopPan()">
             
             <div class="slider-badge slider-badge-before">Original</div>
             <div class="slider-badge slider-badge-after" x-text="outputImage ? 'Enhanced' : 'Preview'">Preview</div>
