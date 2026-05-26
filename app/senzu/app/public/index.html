@@ -48,6 +48,9 @@
             <i class="fa-solid fa-download"></i> Models
             <span x-show="downloadState.status === 'downloading'" class="indicator-dot" style="background-color: var(--warning); margin-left: 5px;"></span>
           </button>
+          <button class="nav-btn" :class="activeTab === 'settings' ? 'active' : ''" @click="activeTab = 'settings'">
+            <i class="fa-solid fa-gear"></i> Settings
+          </button>
         </nav>
       </div>
     </header>
@@ -754,6 +757,71 @@
               </div>
             </div>
           </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Tab View -->
+    <div x-show="activeTab === 'settings'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <h2 class="card-title"><i class="fa-solid fa-gear"></i> App Settings</h2>
+      
+      <!-- Output Settings -->
+      <div>
+        <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 12px;"><i class="fa-solid fa-folder-open"></i> Output</h3>
+        
+        <div class="input-group">
+          <label class="input-label">Save Folder</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" class="input-control" x-model="appSettings.save_folder" placeholder="e.g. C:\Users\You\Pictures\Senzu" style="flex-grow: 1;">
+            <button class="btn btn-sm" @click="openOutputs()" style="white-space: nowrap;">
+              <i class="fa-solid fa-folder-open"></i> Open
+            </button>
+          </div>
+          <span style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 4px;">Results are temporarily cached. Set a save folder to keep outputs permanently.</span>
+        </div>
+        
+        <div class="flex-switch">
+          <div>
+            <span class="switch-label">Autosave to Folder</span>
+            <span style="display: block; font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Automatically copy outputs to the save folder after each enhancement</span>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" x-model="appSettings.autosave">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        
+        <div class="flex-switch" style="border-top: 1px solid var(--border-glass); padding-top: 10px; margin-top: 4px;">
+          <div>
+            <span class="switch-label">Clear Temp on Start</span>
+            <span style="display: block; font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Remove all cached outputs when the server starts</span>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" x-model="appSettings.clear_temp_on_start">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <button class="btn btn-sm" @click="saveSettings()">
+            <i class="fa-solid fa-floppy-disk"></i> Save Settings
+          </button>
+          <button class="btn btn-sm" @click="clearTempOutputs()" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);">
+            <i class="fa-solid fa-trash"></i> Clear Temp Now
+          </button>
+        </div>
+      </div>
+      
+      <!-- Appearance -->
+      <div style="border-top: 1px solid var(--border-glass); padding-top: 1.5rem;">
+        <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 12px;"><i class="fa-solid fa-palette"></i> Appearance</h3>
+        
+        <div class="input-group">
+          <label class="input-label">UI Theme</label>
+          <select class="input-control" x-model="appSettings.theme" disabled style="opacity: 0.5;">
+            <option value="Default">Default</option>
+          </select>
+          <span style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 4px;">Theme support coming soon</span>
         </div>
       </div>
     </div>

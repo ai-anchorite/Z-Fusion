@@ -103,6 +103,49 @@ const api = {
     return res.json();
   },
   
+  async getSettings() {
+    const res = await fetch(`${API_BASE}/settings`);
+    return res.json();
+  },
+  
+  async saveSettings(data) {
+    const res = await fetch(`${API_BASE}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  
+  async openOutputs(folder) {
+    const res = await fetch(`${API_BASE}/settings/open-outputs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder })
+    });
+    return res.json();
+  },
+  
+  async saveOutputToFolder(filename, save_folder) {
+    const res = await fetch(`${API_BASE}/outputs/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, save_folder })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+  
+  async clearTempOutputs() {
+    const res = await fetch(`${API_BASE}/outputs/clear-temp`, {
+      method: 'POST'
+    });
+    return res.json();
+  },
+  
   async enhanceImage(file, mode, parameters, onProgress) {
     const formData = new FormData();
     if (file) {

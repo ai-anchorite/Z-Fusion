@@ -10,6 +10,7 @@ const comfy = require('./comfyui');
 const presets = require('./presets');
 const prompts = require('./prompts');
 const modelPacks = require('./model-packs');
+const settings = require('./settings');
 
 const app = express();
 const PORT = process.env.PORT || 4242;
@@ -18,24 +19,28 @@ const PORT = process.env.PORT || 4242;
 const APP_ROOT = path.resolve(__dirname, '../../..');
 const MODELS_ROOT = path.join(APP_ROOT, 'comfyui/models');
 const OUTPUTS_ROOT = path.join(APP_ROOT, 'outputs');
-const SENZU_OUTPUTS = path.join(OUTPUTS_ROOT, 'senzu');
 const WORKFLOWS_DIR = path.resolve(__dirname, '../workflows');
 const DATA_DIR = path.resolve(__dirname, '../data');
+const OUTPUT_TEMP_DIR = path.join(DATA_DIR, 'output-temp');
+const SENZU_OUTPUTS = path.join(OUTPUTS_ROOT, 'senzu');
 
 // Ensure directories exist
+if (!fs.existsSync(OUTPUT_TEMP_DIR)) {
+  fs.mkdirSync(OUTPUT_TEMP_DIR, { recursive: true });
+}
 if (!fs.existsSync(SENZU_OUTPUTS)) {
   fs.mkdirSync(SENZU_OUTPUTS, { recursive: true });
 }
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
-const TEMP_DIR = path.join(DATA_DIR, 'temp');
-if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR, { recursive: true });
+const MULTER_TEMP = path.join(DATA_DIR, 'temp');
+if (!fs.existsSync(MULTER_TEMP)) {
+  fs.mkdirSync(MULTER_TEMP, { recursive: true });
 }
 
 // Multer storage
-const upload = multer({ dest: TEMP_DIR });
+const upload = multer({ dest: MULTER_TEMP });
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -46,6 +51,14 @@ app.use(express.static(path.resolve(__dirname, '../public')));
 
 // Serve outputs static directory
 app.use('/outputs', express.static(OUTPUTS_ROOT));
+app.use('/temp-outputs', express.static(OUTPUT_TEMP_DIR));
+
+// Clear temp outputs on start if setting enabled
+const appSettings = settings.loadSettings();
+if (appSettings.clear_temp_on_start) {
+  const result = settings.clearTempOutputs(OUTPUT_TEMP_DIR);
+  console.log(`[Init] Clear temp on start: cleared ${result.count || 0} files`);
+}
 
 // Standard active download tracker
 let currentDownload = {
@@ -345,6 +358,57 @@ app.post('/api/models/download', (req, res) => {
   res.json({ success: true, message: "Download started in background" });
 });
 
+// Settings API
+app.get('/api/settings', (req, res) => {
+  const s = settings.loadSettings();
+  if (!s.save_folder) {
+    s.save_folder = SENZU_OUTPUTS;
+  }
+  res.json(s);
+});
+
+app.post('/api/settings', (req, res) => {
+  const result = settings.saveSettings(req.body);
+  if (result.success) {
+    res.json({ success: true });
+  } else {
+    res.status(500).json({ error: result.error });
+  }
+});
+
+app.post('/api/settings/open-outputs', (req, res) => {
+  const { folder } = req.body;
+  const folderPath = folder || SENZU_OUTPUTS;
+  const result = settings.openFolder(folderPath);
+  if (result.success) {
+    res.json({ success: true });
+  } else {
+    res.status(500).json({ error: result.error });
+  }
+});
+
+app.post('/api/outputs/save', (req, res) => {
+  const { filename, save_folder } = req.body;
+  if (!filename || !save_folder) {
+    return res.status(400).json({ error: "Missing filename or save_folder" });
+  }
+  const srcPath = path.join(OUTPUT_TEMP_DIR, filename);
+  if (!fs.existsSync(srcPath)) {
+    return res.status(404).json({ error: "Output file not found in temp" });
+  }
+  const ok = settings.copyOutputToFolder(srcPath, save_folder);
+  if (ok) {
+    res.json({ success: true, message: `Saved ${filename} to ${save_folder}` });
+  } else {
+    res.status(500).json({ error: "Failed to save output" });
+  }
+});
+
+app.post('/api/outputs/clear-temp', (req, res) => {
+  const result = settings.clearTempOutputs(OUTPUT_TEMP_DIR);
+  res.json(result);
+});
+
 // Unified Enhance API (supports upload + execution)
 app.post('/api/enhance', upload.single('image'), async (req, res) => {
   try {
@@ -422,7 +486,7 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       editResult = await comfy.runWorkflow(editWorkflowPath, 'edit', editParams);
       
       // Save output locally
-      editOutPath = path.join(SENZU_OUTPUTS, `edit_${timestamp}.png`);
+      editOutPath = path.join(OUTPUT_TEMP_DIR, `edit_${timestamp}.png`);
       await comfy.downloadComfyImage(editResult.filename, editResult.subfolder, editResult.type, editOutPath);
       console.log(`[Enhance] Edit Step complete. Saved to ${editOutPath}`);
     }
@@ -469,7 +533,7 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       upscaleResult = await comfy.runWorkflow(upscaleWorkflowPath, 'upscale', upscaleParams);
       
       // Save output locally
-      upscaleOutPath = path.join(SENZU_OUTPUTS, `upscale_${timestamp}.png`);
+      upscaleOutPath = path.join(OUTPUT_TEMP_DIR, `upscale_${timestamp}.png`);
       await comfy.downloadComfyImage(upscaleResult.filename, upscaleResult.subfolder, upscaleResult.type, upscaleOutPath);
       console.log(`[Enhance] Upscale Step complete. Saved to ${upscaleOutPath}`);
     }
@@ -483,18 +547,24 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       }
     }
 
+    // Autosave outputs to user's save folder if enabled
+    if (parsedParams.autosave && parsedParams.save_folder) {
+      if (editOutPath) settings.copyOutputToFolder(editOutPath, parsedParams.save_folder);
+      if (upscaleOutPath) settings.copyOutputToFolder(upscaleOutPath, parsedParams.save_folder);
+    }
+
     // Return the appropriate response depending on mode
     const responsePayload = { success: true, mode };
     
     if (mode === 'edit') {
-      responsePayload.output = `/outputs/senzu/${path.basename(editOutPath)}`;
+      responsePayload.output = `/temp-outputs/${path.basename(editOutPath)}`;
       responsePayload.editOutput = responsePayload.output;
     } else if (mode === 'upscale') {
-      responsePayload.output = `/outputs/senzu/${path.basename(upscaleOutPath)}`;
+      responsePayload.output = `/temp-outputs/${path.basename(upscaleOutPath)}`;
       responsePayload.upscaleOutput = responsePayload.output;
     } else if (mode === 'full') {
-      responsePayload.output = `/outputs/senzu/${path.basename(upscaleOutPath)}`;
-      responsePayload.editOutput = `/outputs/senzu/${path.basename(editOutPath)}`;
+      responsePayload.output = `/temp-outputs/${path.basename(upscaleOutPath)}`;
+      responsePayload.editOutput = `/temp-outputs/${path.basename(editOutPath)}`;
       responsePayload.upscaleOutput = responsePayload.output;
     }
 

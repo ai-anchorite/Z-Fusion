@@ -80,6 +80,14 @@ document.addEventListener('alpine:init', () => {
     newPackName: '',
     presetToUpdate: '',
     
+    // App settings
+    appSettings: {
+      save_folder: '',
+      autosave: false,
+      clear_temp_on_start: true,
+      theme: 'Default'
+    },
+    
     // Core parameters mapping
     params: {
       mode: 'full',
@@ -136,6 +144,7 @@ document.addEventListener('alpine:init', () => {
         this.loadPrompts();
         this.loadModels();
         this.loadModelPacks();
+        this.loadSettings();
         
         setInterval(() => this.checkStatus(), 5000);
         this.pollDownloadStatus();
@@ -602,6 +611,10 @@ document.addEventListener('alpine:init', () => {
       try {
         const payload = JSON.parse(JSON.stringify(this.params));
         
+        // Attach autosave settings
+        payload.save_folder = this.appSettings.save_folder;
+        payload.autosave = this.appSettings.autosave;
+        
         // Auto-overwrite model selection based on GGUF flag if not edited
         if (payload.use_gguf) {
           if (payload.unet_name === 'flux-2-klein-9b-kv-fp8.safetensors') {
@@ -774,6 +787,96 @@ document.addEventListener('alpine:init', () => {
         label = 'senzu_result';
       }
       if (!url) return;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${label}_${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    },
+    
+    // App Settings
+    async loadSettings() {
+      try {
+        const s = await api.getSettings();
+        if (s && typeof s === 'object') {
+          this.appSettings.save_folder = s.save_folder || '';
+          this.appSettings.autosave = s.autosave || false;
+          this.appSettings.clear_temp_on_start = s.clear_temp_on_start !== false;
+          this.appSettings.theme = s.theme || 'Default';
+        }
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    },
+    
+    async saveSettings() {
+      try {
+        await api.saveSettings({
+          save_folder: this.appSettings.save_folder,
+          autosave: this.appSettings.autosave,
+          clear_temp_on_start: this.appSettings.clear_temp_on_start,
+          theme: this.appSettings.theme
+        });
+      } catch (err) {
+        alert('Failed to save settings: ' + err.message);
+      }
+    },
+    
+    async openOutputs() {
+      try {
+        const folder = this.appSettings.save_folder || '';
+        await api.openOutputs(folder);
+      } catch (err) {
+        alert('Failed to open folder: ' + err.message);
+      }
+    },
+    
+    async clearTempOutputs() {
+      if (!confirm('Clear all temporary output files?')) return;
+      try {
+        const res = await api.clearTempOutputs();
+        if (res.success) {
+          this.outputImage = null;
+          this.editOutput = null;
+          this.upscaleOutput = null;
+        }
+      } catch (err) {
+        alert('Failed to clear temp: ' + err.message);
+      }
+    },
+    
+    async downloadOutput(type) {
+      let url = null;
+      let filename = null;
+      let label = 'senzu';
+      if (type === 'edit' && this.editOutput) {
+        url = this.editOutput;
+        filename = url.split('/').pop();
+        label = 'senzu_edit';
+      } else if (type === 'final' && this.upscaleOutput) {
+        url = this.upscaleOutput;
+        filename = url.split('/').pop();
+        label = 'senzu_upscaled';
+      } else if (this.outputImage) {
+        url = this.outputImage;
+        filename = url.split('/').pop();
+        label = 'senzu_result';
+      }
+      if (!url || !filename) return;
+      
+      // Server-side save if folder configured, else browser download
+      const saveFolder = this.appSettings.save_folder;
+      if (saveFolder && saveFolder.trim()) {
+        try {
+          await api.saveOutputToFolder(filename, saveFolder);
+          return;
+        } catch (err) {
+          alert('Failed to save to folder: ' + err.message);
+        }
+      }
+      
+      // Fallback: browser download
       const a = document.createElement('a');
       a.href = url;
       a.download = `${label}_${Date.now()}.png`;
