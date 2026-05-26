@@ -9,6 +9,7 @@ const http = require('http');
 const comfy = require('./comfyui');
 const presets = require('./presets');
 const prompts = require('./prompts');
+const modelPacks = require('./model-packs');
 
 const app = express();
 const PORT = process.env.PORT || 4242;
@@ -205,6 +206,36 @@ app.post('/api/prompts/reset', (req, res) => {
     res.json({ success: true, prompts: prompts.loadPrompts() });
   } else {
     res.status(500).json({ error: "Failed to reset prompts" });
+  }
+});
+
+// Model Packs CRUD APIs
+app.get('/api/model-packs', (req, res) => {
+  res.json(modelPacks.loadModelPacks());
+});
+
+app.post('/api/model-packs', (req, res) => {
+  const { name, data } = req.body;
+  if (!name || !data) {
+    return res.status(400).json({ error: "Missing name or data" });
+  }
+  const result = modelPacks.saveModelPack(name, data);
+  if (result.success) {
+    res.json({ success: true });
+  } else {
+    res.status(result.error === "Cannot overwrite a recommended model pack." ? 403 : 500)
+       .json({ error: result.error });
+  }
+});
+
+app.delete('/api/model-packs/:name', (req, res) => {
+  const { name } = req.params;
+  const result = modelPacks.deleteModelPack(name);
+  if (result.success) {
+    res.json({ success: true });
+  } else {
+    res.status(result.error === "Cannot delete a recommended model pack." ? 403 : 404)
+       .json({ error: result.error });
   }
 });
 

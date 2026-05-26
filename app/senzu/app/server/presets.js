@@ -5,8 +5,9 @@ const DATA_DIR = path.join(__dirname, '../data');
 const PRESETS_FILE = path.join(DATA_DIR, 'senzu-presets.json');
 
 const DEFAULT_PRESET = {
-  "Senzu Detail": {
+  "Default": {
     mode: "full",
+    model_pack: "FP8 Standard",
     unet_name: "flux-2-klein-9b-kv-fp8.safetensors",
     clip_name: "qwen_3_8b_fp8mixed.safetensors",
     vae_name: "flux2-vae.safetensors",

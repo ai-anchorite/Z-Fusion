@@ -73,6 +73,35 @@ const api = {
     });
     return res.json();
   },
+
+  async getModelPacks() {
+    const res = await fetch(`${API_BASE}/model-packs`);
+    return res.json();
+  },
+
+  async saveModelPack(name, data) {
+    const res = await fetch(`${API_BASE}/model-packs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, data })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
+
+  async deleteModelPack(name) {
+    const res = await fetch(`${API_BASE}/model-packs/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error);
+    }
+    return res.json();
+  },
   
   async enhanceImage(file, mode, parameters, onProgress) {
     const formData = new FormData();

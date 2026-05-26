@@ -75,9 +75,15 @@ document.addEventListener('alpine:init', () => {
     newPromptName: '',
     newPromptContent: '',
     
+    // Model packs
+    modelPacksList: {},
+    newPackName: '',
+    presetToUpdate: '',
+    
     // Core parameters mapping
     params: {
       mode: 'full',
+      model_pack: 'FP8 Standard',
       unet_name: 'flux-2-klein-9b-kv-fp8.safetensors',
       clip_name: 'qwen_3_8b_fp8mixed.safetensors',
       vae_name: 'flux2-vae.safetensors',
@@ -129,6 +135,7 @@ document.addEventListener('alpine:init', () => {
         this.loadPresets();
         this.loadPrompts();
         this.loadModels();
+        this.loadModelPacks();
         
         setInterval(() => this.checkStatus(), 5000);
         this.pollDownloadStatus();
@@ -178,8 +185,8 @@ document.addEventListener('alpine:init', () => {
       try {
         this.presetsList = await api.getPresets();
         // Set default prompt preset on launch if not set
-        if (this.presetsList['Senzu Detail'] && this.params.prompt === '') {
-          this.applyPreset('Senzu Detail');
+        if (this.presetsList['Default'] && this.params.prompt === '') {
+          this.applyPreset('Default');
         }
       } catch (err) {
         console.error('Failed to load presets:', err);
@@ -234,8 +241,8 @@ document.addEventListener('alpine:init', () => {
     },
     
     async deletePreset(name) {
-      if (name === 'Senzu Detail') {
-        alert('Cannot delete factory default preset.');
+      if (name === 'Default') {
+        alert('Cannot delete the Default preset.');
         return;
       }
       if (!confirm(`Are you sure you want to delete preset "${name}"?`)) return;
@@ -282,6 +289,109 @@ document.addEventListener('alpine:init', () => {
         this.promptsList = res.prompts;
       } catch (err) {
         alert('Failed to reset prompts: ' + err.message);
+      }
+    },
+    
+    // Model Packs management
+    async loadModelPacks() {
+      try {
+        this.modelPacksList = await api.getModelPacks();
+      } catch (err) {
+        console.error('Failed to load model packs:', err);
+      }
+    },
+    
+    applyModelPack(name) {
+      const pack = this.modelPacksList[name];
+      if (!pack) return;
+      this.params.model_pack = name;
+      this.params.use_gguf = pack.use_gguf;
+      this.params.unet_name = pack.unet_name;
+      this.params.clip_name = pack.clip_name;
+      this.params.vae_name = pack.vae_name;
+    },
+    
+    packModelsInstalled(pack) {
+      if (!pack) return false;
+      return this.modelExists(pack.unet_name, 'diffusion_models') &&
+             this.modelExists(pack.clip_name, 'text_encoders') &&
+             this.modelExists(pack.vae_name, 'vae');
+    },
+    
+    async saveModelPack() {
+      if (!this.newPackName.trim()) return;
+      const data = {
+        use_gguf: this.params.use_gguf,
+        unet_name: this.params.unet_name,
+        clip_name: this.params.clip_name,
+        vae_name: this.params.vae_name,
+        is_recommended: false
+      };
+      try {
+        await api.saveModelPack(this.newPackName.trim(), data);
+        this.newPackName = '';
+        await this.loadModelPacks();
+      } catch (err) {
+        alert('Failed to save model pack: ' + err.message);
+      }
+    },
+    
+    async deleteModelPack(name) {
+      if (!confirm(`Delete model pack "${name}"?`)) return;
+      try {
+        await api.deleteModelPack(name);
+        await this.loadModelPacks();
+      } catch (err) {
+        alert('Failed to delete model pack: ' + err.message);
+      }
+    },
+    
+    async downloadPackModel(packName, modelType) {
+      const pack = this.modelPacksList[packName];
+      if (!pack || !pack.downloads || !pack.downloads[modelType]) return;
+      const dl = pack.downloads[modelType];
+      try {
+        await api.startDownload(dl.repo, dl.filename, modelType === 'vae' ? 'vae' : (modelType === 'clip' ? 'text_encoder' : 'unet'));
+        this.pollDownloadStatus();
+      } catch (err) {
+        alert('Download error: ' + err.message);
+      }
+    },
+    
+    async downloadPack(packName) {
+      const pack = this.modelPacksList[packName];
+      if (!pack || !pack.downloads) return;
+      if (!confirm(`Download ALL models for "${packName}"? This may take a while.`)) return;
+      
+      const types = ['unet', 'clip', 'vae'];
+      for (const type of types) {
+        const dl = pack.downloads[type];
+        if (!dl) continue;
+        const category = type === 'vae' ? 'vae' : (type === 'clip' ? 'text_encoders' : 'diffusion_models');
+        if (this.modelExists(dl.filename, category)) continue;
+        try {
+          const res = await api.startDownload(dl.repo, dl.filename, type === 'vae' ? 'vae' : (type === 'clip' ? 'text_encoder' : 'unet'));
+          this.pollDownloadStatus();
+          while (this.downloadState.status === 'downloading') {
+            await new Promise(r => setTimeout(r, 500));
+          }
+        } catch (err) {
+          alert(`Download failed for ${dl.filename}: ${err.message}`);
+        }
+      }
+    },
+    
+    // Preset update (overwrite existing)
+    async updatePreset() {
+      if (!this.presetToUpdate) return;
+      if (!confirm(`Overwrite preset "${this.presetToUpdate}" with current settings?`)) return;
+      try {
+        const payload = JSON.parse(JSON.stringify(this.params));
+        await api.savePreset(this.presetToUpdate, payload);
+        this.presetToUpdate = '';
+        await this.loadPresets();
+      } catch (err) {
+        alert('Failed to update preset: ' + err.message);
       }
     },
     

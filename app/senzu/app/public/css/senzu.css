@@ -1051,6 +1051,128 @@ input:checked + .switch-slider:before {
   gap: 12px;
 }
 
+/* Model Pack Cards */
+.model-packs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.model-pack-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-glass);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.model-pack-card.recommended {
+  border-left: 3px solid var(--primary-neon);
+}
+
+.model-pack-card.all-installed {
+  border-color: rgba(0, 230, 118, 0.2);
+}
+
+.model-pack-card.has-missing {
+  border-color: rgba(255, 171, 64, 0.2);
+}
+
+.pack-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.pack-gguf-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pack-gguf-badge.gguf-on {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.pack-gguf-badge.gguf-off {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+.pack-model-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.pack-model-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pack-model-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pack-model-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Preset Card Badges */
+.preset-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-glass);
+}
+
+.preset-badge-pack {
+  background: var(--primary-soft);
+  color: #c9b3ff;
+  border-color: rgba(124, 77, 255, 0.3);
+}
+
+.preset-badge-loras {
+  background: rgba(255, 171, 64, 0.1);
+  color: var(--warning);
+  border-color: rgba(255, 171, 64, 0.2);
+}
+
+.preset-badge-res {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: rgba(0, 230, 118, 0.2);
+}
+
 @media (max-width: 480px) {
   .form-row {
     grid-template-columns: 1fr;

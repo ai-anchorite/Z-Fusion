@@ -113,7 +113,7 @@
             <select class="input-control" @change="applyPreset($event.target.value)">
               <option value="">-- Choose Preset --</option>
               <template x-for="(data, name) in presetsList" :key="name">
-                <option :value="name" :selected="name === 'Senzu Detail'" x-text="name"></option>
+                <option :value="name" :selected="name === 'Default'" x-text="name"></option>
               </template>
             </select>
           </div>
@@ -126,45 +126,13 @@
             </div>
             
             <div x-show="activeAccordion === 'edit'" class="accordion-content">
-              <div class="flex-switch" style="margin-bottom: 12px;">
-                <span class="switch-label">Low VRAM GGUF Mode</span>
-                <label class="switch-control">
-                  <input type="checkbox" x-model="params.use_gguf">
-                  <span class="switch-slider"></span>
-                </label>
-              </div>
-              
-              <div class="form-row">
-                <div class="input-group">
-                  <label class="input-label">UNet Model</label>
-                  <select class="input-control" x-model="params.unet_name">
-                    <template x-for="m in (params.use_gguf ? models.diffusion_models.filter(f => f.indexOf('.gguf') !== -1) : models.diffusion_models.filter(f => f.indexOf('.safetensors') !== -1))" :key="m">
-                      <option :value="m" x-text="m"></option>
-                    </template>
-                    <option value="flux-2-klein-9b-kv-fp8.safetensors" x-show="!params.use_gguf">flux-2-klein-9b-kv-fp8.safetensors (Default)</option>
-                    <option value="flux-2-klein-9b-Q4_K_M.gguf" x-show="params.use_gguf">flux-2-klein-9b-Q4_K_M.gguf (Default)</option>
-                  </select>
-                </div>
-                
-                <div class="input-group">
-                  <label class="input-label">CLIP Text Encoder</label>
-                  <select class="input-control" x-model="params.clip_name">
-                    <template x-for="m in (params.use_gguf ? models.text_encoders.filter(f => f.indexOf('.gguf') !== -1) : models.text_encoders.filter(f => f.indexOf('.safetensors') !== -1))" :key="m">
-                      <option :value="m" x-text="m"></option>
-                    </template>
-                    <option value="qwen_3_8b_fp8mixed.safetensors" x-show="!params.use_gguf">qwen_3_8b_fp8mixed.safetensors (Default)</option>
-                    <option value="Qwen3-4B-Q8_0.gguf" x-show="params.use_gguf">Qwen3-4B-Q8_0.gguf (Default)</option>
-                  </select>
-                </div>
-              </div>
-              
               <div class="input-group">
-                <label class="input-label">VAE Model</label>
-                <select class="input-control" x-model="params.vae_name">
-                  <template x-for="m in models.vae" :key="m">
-                    <option :value="m" x-text="m"></option>
+                <label class="input-label">Model Pack</label>
+                <select class="input-control" @change="applyModelPack($event.target.value)">
+                  <option value="">-- Choose Pack --</option>
+                  <template x-for="(pack, name) in modelPacksList" :key="name">
+                    <option :value="name" :selected="params.model_pack === name" x-text="name"></option>
                   </template>
-                  <option value="flux2-vae.safetensors">flux2-vae.safetensors (Default)</option>
                 </select>
               </div>
               
@@ -212,12 +180,12 @@
                     </div>
                     <div class="range-group">
                       <input type="range" class="range-slider" min="0.5" max="3.0" step="0.1" x-model="params.megapixels">
-                    </div>
-                  </div>
-                </div>
+            </div>
+          </div>
               </div>
             </div>
           </div>
+        </div>
           
           <!-- LoRA Accordion -->
           <div x-show="params.mode === 'full' || params.mode === 'edit'" class="accordion" :class="activeAccordion === 'lora' ? 'active' : ''">
@@ -376,6 +344,38 @@
           </div>
         </div>
         
+        <!-- Preset Controls Accordion -->
+        <div class="accordion" :class="activeAccordion === 'preset' ? 'active' : ''">
+          <div class="accordion-header" @click="toggleAccordion('preset')">
+            <h3><i class="fa-solid fa-floppy-disk"></i> Preset Controls</h3>
+            <i class="fa-solid fa-chevron-down accordion-icon"></i>
+          </div>
+          
+          <div x-show="activeAccordion === 'preset'" class="accordion-content">
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 12px;">
+              <input type="text" class="input-control" x-model="newPresetName" placeholder="New Preset Name..." style="flex-grow: 1;">
+              <button class="btn btn-primary btn-sm" @click="saveNewPreset()" :disabled="!newPresetName.trim()" style="white-space: nowrap;">
+                <i class="fa-solid fa-floppy-disk"></i> Save
+              </button>
+            </div>
+            
+            <div style="border-top: 1px solid var(--border-glass); padding-top: 10px;">
+              <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Update existing preset:</span>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <select class="input-control" x-model="presetToUpdate">
+                  <option value="">-- Select --</option>
+                  <template x-for="(data, name) in presetsList" :key="name">
+                    <option :value="name" x-text="name"></option>
+                  </template>
+                </select>
+                <button class="btn btn-sm" @click="updatePreset()" :disabled="!presetToUpdate" style="white-space: nowrap;">
+                  <i class="fa-solid fa-rotate"></i> Overwrite
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
       </div>
       
       <!-- Right Output Panel -->
@@ -498,15 +498,8 @@
     <!-- Presets CRUD Tab View -->
     <div x-show="activeTab === 'presets'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 class="card-title"><i class="fa-solid fa-sliders"></i> Presets Library Manager</h2>
-        
-        <!-- Save Preset form -->
-        <div style="display: flex; gap: 10px; align-items: center;">
-          <input type="text" class="input-control" x-model="newPresetName" placeholder="New Preset Name..." style="max-width: 250px;">
-          <button class="btn btn-primary btn-sm" @click="saveNewPreset()">
-            <i class="fa-solid fa-floppy-disk"></i> Save Current Settings
-          </button>
-        </div>
+        <h2 class="card-title"><i class="fa-solid fa-sliders"></i> Presets Library</h2>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">Save new presets from the Enhancer page</span>
       </div>
       
       <div class="presets-grid">
@@ -514,18 +507,30 @@
           <div class="preset-card glass-card" style="background: rgba(255,255,255,0.01);">
             <div style="display: flex; justify-content: space-between; align-items: start; gap: 10px;">
               <h3 x-text="name" style="font-size: 1.1rem; font-weight: 600;"></h3>
-              <button class="btn-danger-sm" @click="deletePreset(name)"><i class="fa-solid fa-trash"></i></button>
+              <button class="btn-danger-sm" @click="deletePreset(name)" x-show="name !== 'Default'" style="padding: 4px 8px;">
+                <i class="fa-solid fa-trash"></i>
+              </button>
             </div>
             
-            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; color: var(--text-secondary);">
-              <div><strong style="color: var(--text-primary);">Mode:</strong> <span x-text="data.mode"></span></div>
-              <div><strong style="color: var(--text-primary);">UNet:</strong> <span x-text="data.unet_name ? data.unet_name.split('/').pop() : 'Default'"></span></div>
-              <div><strong style="color: var(--text-primary);">Steps:</strong> <span x-text="data.steps"></span></div>
-              <div><strong style="color: var(--text-primary);">Resolution:</strong> <span x-text="data.resolution + 'px'"></span></div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0;">
+              <span class="preset-badge" x-text="data.mode"></span>
+              <span x-show="data.model_pack" class="preset-badge preset-badge-pack" x-text="data.model_pack"></span>
+              <span class="preset-badge preset-badge-loras">
+                <span x-text="(data.lora1_enabled ? 1 : 0) + (data.lora2_enabled ? 1 : 0) + (data.lora3_enabled ? 1 : 0) + (data.lora4_enabled ? 1 : 0) + (data.lora5_enabled ? 1 : 0) + (data.lora6_enabled ? 1 : 0)"></span> LoRA<span x-show="(data.lora1_enabled ? 1 : 0) + (data.lora2_enabled ? 1 : 0) + (data.lora3_enabled ? 1 : 0) + (data.lora4_enabled ? 1 : 0) + (data.lora5_enabled ? 1 : 0) + (data.lora6_enabled ? 1 : 0) !== 1">s</span>
+              </span>
+              <span class="preset-badge preset-badge-res" x-text="data.resolution + 'px'"></span>
             </div>
             
-            <button class="btn btn-sm" @click="applyPreset(name); activeTab = 'enhance'; activeAccordion = 'edit'" style="margin-top: 10px; width: 100%;">
-              <i class="fa-solid fa-check"></i> Apply Configuration
+            <div x-show="data.prompt" style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 8px; max-height: 2.8em; overflow: hidden;" x-text="data.prompt.substring(0, 120)"></div>
+            
+            <div style="display: flex; gap: 12px; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px;">
+              <span>Steps: <strong style="color: var(--text-primary);" x-text="data.steps"></strong></span>
+              <span>CFG: <strong style="color: var(--text-primary);" x-text="parseFloat(data.cfg).toFixed(1)"></strong></span>
+              <span>MP: <strong style="color: var(--text-primary);" x-text="parseFloat(data.megapixels).toFixed(1)"></strong></span>
+            </div>
+            
+            <button class="btn btn-sm" @click="applyPreset(name); activeTab = 'enhance'; activeAccordion = 'edit'" style="margin-top: auto; width: 100%;">
+              <i class="fa-solid fa-check"></i> Apply &amp; Go to Enhance
             </button>
           </div>
         </template>
@@ -582,7 +587,7 @@
 
     <!-- Models Manager Tab View -->
     <div x-show="activeTab === 'models'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
-      <h2 class="card-title"><i class="fa-solid fa-download"></i> Model Resources Manager</h2>
+      <h2 class="card-title"><i class="fa-solid fa-download"></i> Model Packs & Resources</h2>
       
       <!-- Active background downloader progress bar widget -->
       <div x-show="downloadState.status === 'downloading'" class="download-widget">
@@ -610,125 +615,145 @@
         <i class="fa-solid fa-circle-exclamation"></i> Download failed: <span x-text="downloadState.error"></span>
       </div>
 
-      <!-- Models categorization guides -->
+      <!-- Recommended Model Packs -->
       <div>
-        <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;">Recommended Models Checks</h3>
+        <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;"><i class="fa-solid fa-star"></i> Recommended Model Packs</h3>
         <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1.2rem;">
-          To leverage the full power of Senzu, verify that the following recommended files exist on disk. You can download missing models directly from HuggingFace to your local ComfyUI cache folder!
+          Pre-configured model stacks with one-click downloads. Use these as-is or as starting points for custom packs.
         </p>
         
-        <div class="models-grid">
-          <!-- Model UNet fp8 -->
-          <div class="model-card">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                <span class="model-status-badge" :class="modelExists(recommendedModels.unet.filename, 'diffusion_models') ? 'installed' : 'missing'"
-                      x-text="modelExists(recommendedModels.unet.filename, 'diffusion_models') ? 'Installed' : 'Missing'">Checking</span>
+        <div class="model-packs-grid">
+          <template x-for="(pack, name) in modelPacksList" :key="name">
+            <div x-show="pack.is_recommended" class="model-pack-card recommended" :class="packModelsInstalled(pack) ? 'all-installed' : 'has-missing'">
+              <div class="pack-header">
+                <h4 x-text="name" style="font-weight: 700; font-size: 1.05rem;"></h4>
+                <span class="pack-gguf-badge" :class="pack.use_gguf ? 'gguf-on' : 'gguf-off'" x-text="pack.use_gguf ? 'GGUF' : 'Standard'"></span>
               </div>
-              <h4 class="model-name" x-text="recommendedModels.unet.filename"></h4>
-              <p class="model-desc" x-text="recommendedModels.unet.desc"></p>
+              
+              <div class="pack-model-row">
+                <div class="pack-model-info">
+                  <span class="pack-model-label">UNet</span>
+                  <span class="pack-model-name" x-text="pack.unet_name"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="model-status-badge" :class="modelExists(pack.unet_name, 'diffusion_models') ? 'installed' : 'missing'"
+                        x-text="modelExists(pack.unet_name, 'diffusion_models') ? 'Installed' : 'Missing'"></span>
+                  <button x-show="!modelExists(pack.unet_name, 'diffusion_models') && pack.downloads && pack.downloads.unet"
+                          class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 4px 10px;"
+                          @click="downloadPackModel(name, 'unet')" :disabled="downloadState.status === 'downloading'">
+                    <i class="fa-solid fa-download"></i>
+                  </button>
+                </div>
+              </div>
+              
+              <div class="pack-model-row">
+                <div class="pack-model-info">
+                  <span class="pack-model-label">CLIP</span>
+                  <span class="pack-model-name" x-text="pack.clip_name"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="model-status-badge" :class="modelExists(pack.clip_name, 'text_encoders') ? 'installed' : 'missing'"
+                        x-text="modelExists(pack.clip_name, 'text_encoders') ? 'Installed' : 'Missing'"></span>
+                  <button x-show="!modelExists(pack.clip_name, 'text_encoders') && pack.downloads && pack.downloads.clip"
+                          class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 4px 10px;"
+                          @click="downloadPackModel(name, 'clip')" :disabled="downloadState.status === 'downloading'">
+                    <i class="fa-solid fa-download"></i>
+                  </button>
+                </div>
+              </div>
+              
+              <div class="pack-model-row">
+                <div class="pack-model-info">
+                  <span class="pack-model-label">VAE</span>
+                  <span class="pack-model-name" x-text="pack.vae_name"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="model-status-badge" :class="modelExists(pack.vae_name, 'vae') ? 'installed' : 'missing'"
+                        x-text="modelExists(pack.vae_name, 'vae') ? 'Installed' : 'Missing'"></span>
+                  <button x-show="!modelExists(pack.vae_name, 'vae') && pack.downloads && pack.downloads.vae"
+                          class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 4px 10px;"
+                          @click="downloadPackModel(name, 'vae')" :disabled="downloadState.status === 'downloading'">
+                    <i class="fa-solid fa-download"></i>
+                  </button>
+                </div>
+              </div>
+              
+              <button class="btn btn-sm" style="margin-top: 10px; width: 100%; background: var(--primary-soft); border-color: rgba(124, 77, 255, 0.3);"
+                      @click="downloadPack(name)" :disabled="downloadState.status === 'downloading' || packModelsInstalled(pack)">
+                <i class="fa-solid fa-download"></i> <span x-text="packModelsInstalled(pack) ? 'All Models Installed' : 'Download Pack'"></span>
+              </button>
             </div>
-            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.unet.filename, 'diffusion_models')"
-                    @click="triggerDownload(recommendedModels.unet.repo, recommendedModels.unet.filename, 'unet')" :disabled="downloadState.status === 'downloading'">
-              <i class="fa-solid fa-download"></i> Download (9.8GB)
-            </button>
-          </div>
+          </template>
+        </div>
+      </div>
 
-          <!-- Model UNet GGUF -->
-          <div class="model-card">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                <span class="model-status-badge" :class="modelExists(recommendedModels.unet_gguf.filename, 'diffusion_models') ? 'installed' : 'missing'"
-                      x-text="modelExists(recommendedModels.unet_gguf.filename, 'diffusion_models') ? 'Installed' : 'Missing'">Checking</span>
-              </div>
-              <h4 class="model-name" x-text="recommendedModels.unet_gguf.filename"></h4>
-              <p class="model-desc" x-text="recommendedModels.unet_gguf.desc"></p>
-            </div>
-            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.unet_gguf.filename, 'diffusion_models')"
-                    @click="triggerDownload(recommendedModels.unet_gguf.repo, recommendedModels.unet_gguf.filename, 'unet')" :disabled="downloadState.status === 'downloading'">
-              <i class="fa-solid fa-download"></i> Download (5.9GB)
+      <!-- Custom Model Pack Composer -->
+      <div style="border-top: 1px solid var(--border-glass); padding-top: 1.5rem;">
+        <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;"><i class="fa-solid fa-wrench"></i> Custom Model Packs</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          Create your own model combinations from locally installed models. These become available on the Enhance page.
+        </p>
+        
+        <div class="glass-card" style="background: rgba(255,255,255,0.02); margin-bottom: 1.2rem;">
+          <div class="flex-switch" style="margin-bottom: 12px;">
+            <span class="switch-label">GGUF Mode</span>
+            <label class="switch-control">
+              <input type="checkbox" x-model="params.use_gguf">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          
+          <div class="input-group">
+            <label class="input-label">UNet Model</label>
+            <select class="input-control" x-model="params.unet_name">
+              <template x-for="m in (params.use_gguf ? models.diffusion_models.filter(f => f.indexOf('.gguf') !== -1) : models.diffusion_models.filter(f => f.indexOf('.safetensors') !== -1))" :key="m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+          </div>
+          
+          <div class="input-group">
+            <label class="input-label">CLIP Text Encoder</label>
+            <select class="input-control" x-model="params.clip_name">
+              <template x-for="m in (params.use_gguf ? models.text_encoders.filter(f => f.indexOf('.gguf') !== -1) : models.text_encoders.filter(f => f.indexOf('.safetensors') !== -1))" :key="m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+          </div>
+          
+          <div class="input-group">
+            <label class="input-label">VAE Model</label>
+            <select class="input-control" x-model="params.vae_name">
+              <template x-for="m in models.vae" :key="m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+          </div>
+          
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="text" class="input-control" x-model="newPackName" placeholder="Pack Name..." style="flex-grow: 1;">
+            <button class="btn btn-primary btn-sm" @click="saveModelPack()" style="white-space: nowrap;">
+              <i class="fa-solid fa-floppy-disk"></i> Save Pack
             </button>
           </div>
-
-          <!-- Model CLIP -->
-          <div class="model-card">
-            <div>
+        </div>
+        
+        <!-- Saved Custom Packs -->
+        <div class="model-packs-grid">
+          <template x-for="(pack, name) in modelPacksList" :key="name">
+            <div x-show="!pack.is_recommended" class="model-pack-card">
               <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                <span class="model-status-badge" :class="modelExists(recommendedModels.clip.filename, 'text_encoders') ? 'installed' : 'missing'"
-                      x-text="modelExists(recommendedModels.clip.filename, 'text_encoders') ? 'Installed' : 'Missing'">Checking</span>
+                <h4 x-text="name" style="font-weight: 600; font-size: 0.95rem;"></h4>
+                <button class="btn-danger-sm" @click="deleteModelPack(name)" style="padding: 4px 8px;"><i class="fa-solid fa-trash"></i></button>
               </div>
-              <h4 class="model-name" x-text="recommendedModels.clip.filename"></h4>
-              <p class="model-desc" x-text="recommendedModels.clip.desc"></p>
-            </div>
-            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.clip.filename, 'text_encoders')"
-                    @click="triggerDownload(recommendedModels.clip.repo, recommendedModels.clip.filename, 'text_encoder')" :disabled="downloadState.status === 'downloading'">
-              <i class="fa-solid fa-download"></i> Download (8.6GB)
-            </button>
-          </div>
-
-          <!-- Model CLIP GGUF -->
-          <div class="model-card">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                <span class="model-status-badge" :class="modelExists(recommendedModels.clip_gguf.filename, 'text_encoders') ? 'installed' : 'missing'"
-                      x-text="modelExists(recommendedModels.clip_gguf.filename, 'text_encoders') ? 'Installed' : 'Missing'">Checking</span>
+              <span class="pack-gguf-badge" :class="pack.use_gguf ? 'gguf-on' : 'gguf-off'" x-text="pack.use_gguf ? 'GGUF' : 'Standard'" style="margin-bottom: 8px;"></span>
+              <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px;">
+                <span>UNet: <span x-text="pack.unet_name ? pack.unet_name.split('/').pop() : ''" style="color: var(--text-primary);"></span></span>
+                <span>CLIP: <span x-text="pack.clip_name ? pack.clip_name.split('/').pop() : ''" style="color: var(--text-primary);"></span></span>
+                <span>VAE: <span x-text="pack.vae_name ? pack.vae_name.split('/').pop() : ''" style="color: var(--text-primary);"></span></span>
               </div>
-              <h4 class="model-name" x-text="recommendedModels.clip_gguf.filename"></h4>
-              <p class="model-desc" x-text="recommendedModels.clip_gguf.desc"></p>
             </div>
-            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.clip_gguf.filename, 'text_encoders')"
-                    @click="triggerDownload(recommendedModels.clip_gguf.repo, recommendedModels.clip_gguf.filename, 'text_encoder')" :disabled="downloadState.status === 'downloading'">
-              <i class="fa-solid fa-download"></i> Download (4.2GB)
-            </button>
-          </div>
-
-          <!-- VAE -->
-          <div class="model-card">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                <span class="model-status-badge" :class="modelExists(recommendedModels.vae.filename, 'vae') ? 'installed' : 'missing'"
-                      x-text="modelExists(recommendedModels.vae.filename, 'vae') ? 'Installed' : 'Missing'">Checking</span>
-              </div>
-              <h4 class="model-name" x-text="recommendedModels.vae.filename"></h4>
-              <p class="model-desc" x-text="recommendedModels.vae.desc"></p>
-            </div>
-            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.vae.filename, 'vae')"
-                    @click="triggerDownload(recommendedModels.vae.repo, recommendedModels.vae.filename, 'vae')" :disabled="downloadState.status === 'downloading'">
-              <i class="fa-solid fa-download"></i> Download (336MB)
-            </button>
-          </div>
-
-          <!-- SeedVR2 DiT -->
-          <div class="model-card">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                <span class="model-status-badge" :class="modelExists(recommendedModels.dit.filename, 'seedvr2') ? 'installed' : 'missing'"
-                      x-text="modelExists(recommendedModels.dit.filename, 'seedvr2') ? 'Installed' : 'Missing'">Checking</span>
-              </div>
-              <h4 class="model-name" x-text="recommendedModels.dit.filename"></h4>
-              <p class="model-desc" x-text="recommendedModels.dit.desc"></p>
-            </div>
-            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.dit.filename, 'seedvr2')"
-                    @click="triggerDownload(recommendedModels.dit.repo, recommendedModels.dit.filename, 'seedvr2')" :disabled="downloadState.status === 'downloading'">
-              <i class="fa-solid fa-download"></i> Download (8.4GB)
-            </button>
-          </div>
-
-          <!-- SeedVR2 VAE -->
-          <div class="model-card">
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                <span class="model-status-badge" :class="modelExists(recommendedModels.seedvae.filename, 'seedvr2') ? 'installed' : 'missing'"
-                      x-text="modelExists(recommendedModels.seedvae.filename, 'seedvr2') ? 'Installed' : 'Missing'">Checking</span>
-              </div>
-              <h4 class="model-name" x-text="recommendedModels.seedvae.filename"></h4>
-              <p class="model-desc" x-text="recommendedModels.seedvae.desc"></p>
-            </div>
-            <button class="btn btn-sm btn-primary" x-show="!modelExists(recommendedModels.seedvae.filename, 'seedvr2')"
-                    @click="triggerDownload(recommendedModels.seedvae.repo, recommendedModels.seedvae.filename, 'seedvr2')" :disabled="downloadState.status === 'downloading'">
-              <i class="fa-solid fa-download"></i> Download (501MB)
-            </button>
-          </div>
+          </template>
         </div>
       </div>
     </div>
