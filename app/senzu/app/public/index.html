@@ -66,20 +66,35 @@
           
           <!-- Input Image Component -->
           <div class="input-image-card">
-            <template x-if="!inputPreview">
-              <div class="compact-upload" @click="triggerFileSelect()"
-                   @dragover.prevent="() => {}" @drop.prevent="handleDrop($event)">
-                <i class="fa-solid fa-cloud-arrow-up"></i>
-                <span>Drop image or click</span>
-                <input type="file" x-ref="fileInput" @change="handleFileChange($event)" style="display: none;" accept="image/*">
+            <!-- Queue strip -->
+            <div x-show="imageQueue.length > 0" class="queue-strip">
+              <template x-for="(item, idx) in imageQueue" :key="item.id">
+                <div class="queue-thumb" :class="item.status" :title="item.name">
+                  <img :src="item.preview">
+                  <span class="queue-thumb-badge" x-show="item.status === 'processing'">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                  </span>
+                  <span class="queue-thumb-badge" x-show="item.status === 'error'" style="background: var(--danger);">
+                    <i class="fa-solid fa-exclamation"></i>
+                  </span>
+                  <button class="queue-thumb-remove" @click="removeFromQueue(idx)" x-show="item.status !== 'processing'">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </template>
+              <div class="queue-add-zone" @click="triggerFileSelect()"
+                   @dragover.prevent @drop.prevent="handleDrop($event)">
+                <i class="fa-solid fa-plus"></i>
               </div>
-            </template>
-            <template x-if="inputPreview">
-              <div class="input-preview-thumb">
-                <img :src="inputPreview" alt="Input">
-                <button class="btn-change" @click="removeInput()" title="Remove image"><i class="fa-solid fa-xmark"></i></button>
-              </div>
-            </template>
+            </div>
+            
+            <!-- Empty state drop zone -->
+            <div x-show="imageQueue.length === 0" class="compact-upload" @click="triggerFileSelect()"
+                 @dragover.prevent="() => {}" @drop.prevent="handleDrop($event)">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <span>Drop images or click</span>
+              <input type="file" x-ref="fileInput" @change="handleFileChange($event)" style="display: none;" accept="image/*" multiple>
+            </div>
           </div>
           
           <!-- Enhancement Mode -->
@@ -96,10 +111,14 @@
           </div>
           
           <!-- Enhance Button -->
-          <button class="btn btn-primary" :disabled="isProcessing || !inputFile || !comfyOnline" @click="enhanceImage()" style="padding: 14px 20px; font-size: 1.05rem;">
-            <span x-show="!isProcessing"><i class="fa-solid fa-wand-magic-sparkles"></i> Senzu Enhance</span>
+          <button class="btn btn-primary" :disabled="isProcessing || !hasPendingImages() || !comfyOnline" @click="startQueue()" style="padding: 14px 20px; font-size: 1.05rem;">
+            <span x-show="!isProcessing"><i class="fa-solid fa-wand-magic-sparkles"></i> <span x-text="imageQueue.length > 0 ? 'Enhance (' + imageQueue.filter(i => i.status==='pending').length + ')' : 'Enhance'">Enhance</span></span>
             <span x-show="isProcessing"><i class="fa-solid fa-circle-notch fa-spin"></i> Processing...</span>
           </button>
+          
+          <div x-show="isProcessing && imageQueue.length > 0" style="display: flex; gap: 8px;">
+            <span style="font-size: 0.75rem; color: var(--text-muted);" x-text="imageQueue.filter(i => i.status==='pending').length + ' remaining'"></span>
+          </div>
           
           <div x-show="!comfyOnline" style="color: var(--danger); font-size: 0.8rem; text-align: center; font-weight: 500;">
             <i class="fa-solid fa-circle-exclamation"></i> ComfyUI offline
@@ -435,19 +454,33 @@
         </div>
         
         <!-- Status + Controls -->
-        <div x-show="isProcessing || outputImage" class="glass-card">
+        <div x-show="isProcessing || outputImage || outputQueue.length > 0" class="glass-card">
           <div class="progress-panel">
             <div class="progress-header">
               <div class="progress-title">
-                <div x-show="isProcessing" class="spinner"></div>
-                <i x-show="!isProcessing && outputImage" class="fa-solid fa-circle-check" style="color: var(--success); font-size: 1.2rem;"></i>
+                <div x-show="isProcessing && !outputImage" class="spinner"></div>
+                <i x-show="outputImage" class="fa-solid fa-circle-check" style="color: var(--success); font-size: 1.2rem;"></i>
                 <span x-text="statusText">Idle</span>
               </div>
               <div class="process-time" x-text="formatTime(processTime)">0:00</div>
             </div>
             
+            <!-- Output queue navigation -->
+            <div x-show="outputQueue.length > 1" class="output-nav">
+              <button class="btn btn-sm" @click="prevOutput()" :disabled="viewedIndex === 0">
+                <i class="fa-solid fa-chevron-left"></i> Prev
+              </button>
+              <span class="output-nav-count" x-text="'Result ' + (viewedIndex + 1) + ' of ' + outputQueue.length"></span>
+              <button class="btn btn-sm" @click="nextOutput()" :disabled="viewedIndex >= outputQueue.length - 1">
+                Next <i class="fa-solid fa-chevron-right"></i>
+              </button>
+              <button class="btn btn-sm" @click="discardCurrentOutput()" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger); margin-left: auto;">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+            
             <!-- Result actions -->
-            <div x-show="!isProcessing && outputImage" class="result-actions">
+            <div x-show="outputImage" class="result-actions">
               
               <div class="result-action-row">
                 <template x-if="outputMode === 'full' || outputMode === 'edit'">

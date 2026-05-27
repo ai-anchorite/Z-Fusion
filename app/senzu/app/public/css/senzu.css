@@ -607,6 +607,129 @@ input:checked + .switch-slider:before {
   border-color: transparent;
 }
 
+/* Input Queue Strip */
+.queue-strip {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  overflow-x: auto;
+  align-items: center;
+  scrollbar-width: thin;
+}
+
+.queue-thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--border-glass);
+  transition: border-color 0.2s, opacity 0.3s;
+}
+
+.queue-thumb.pending {
+  border-color: var(--border-glass);
+}
+
+.queue-thumb.processing {
+  border-color: var(--primary-neon);
+  box-shadow: 0 0 8px rgba(124, 77, 255, 0.4);
+}
+
+.queue-thumb.done {
+  border-color: var(--success);
+  opacity: 0.4;
+}
+
+.queue-thumb.error {
+  border-color: var(--danger);
+  opacity: 0.6;
+}
+
+.queue-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.queue-thumb-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(124, 77, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  color: #fff;
+}
+
+.queue-thumb-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.queue-thumb:hover .queue-thumb-remove {
+  opacity: 1;
+}
+
+.queue-add-zone {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 2px dashed rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.queue-add-zone:hover {
+  border-color: var(--primary-neon);
+  color: var(--text-primary);
+  background: rgba(124, 77, 255, 0.05);
+}
+
+/* Output Queue Navigation */
+.output-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-glass);
+  border-bottom: 1px solid var(--border-glass);
+  margin: 8px 0;
+}
+
+.output-nav-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 100px;
+  text-align: center;
+}
+
 /* Upload Container (output viewer drop zone) */
 .upload-container {
   border: 2px dashed rgba(255, 255, 255, 0.12);

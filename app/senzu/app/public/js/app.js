@@ -10,7 +10,13 @@ document.addEventListener('alpine:init', () => {
     processTimer: null,
     statusText: 'Idle',
     
-    // File upload
+    // File upload — input queue
+    imageQueue: [],           // { id, file, preview, name, status }
+    outputQueue: [],          // { id, inputPreview, inputName, editOutput, upscaleOutput, mode }
+    queueRunning: false,
+    viewedIndex: 0,
+    
+    // Derived — kept for template compatibility
     inputFile: null,
     inputPreview: null,
     
@@ -418,43 +424,94 @@ document.addEventListener('alpine:init', () => {
     // File selection handling
     triggerFileSelect() {
       const input = document.querySelector('input[type="file"][accept="image/*"]');
-      if (input) input.click();
+      if (input) { input.value = ''; input.click(); }
     },
     
     handleFileChange(e) {
-      const file = e.target.files[0];
-      if (file) {
-        this.inputFile = file;
-        this.inputPreview = URL.createObjectURL(file);
-        
-        // Reset output when uploading a new file
-        this.outputImage = null;
-        this.editOutput = null;
-        this.upscaleOutput = null;
+      if (e.target.files && e.target.files.length > 0) {
+        this.addToQueue(Array.from(e.target.files));
       }
     },
     
     handleDrop(e) {
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('image/')) {
-        this.inputFile = file;
-        this.inputPreview = URL.createObjectURL(file);
-        this.outputImage = null;
-        this.editOutput = null;
-        this.upscaleOutput = null;
-        this.displayedImage = 'final';
+      const dt = e.dataTransfer;
+      if (!dt || !dt.files || dt.files.length === 0) return;
+      this.addToQueue(Array.from(dt.files));
+    },
+    
+    addToQueue(files) {
+      const items = [];
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue;
+        items.push({
+          id: crypto.randomUUID(),
+          file: file,
+          preview: URL.createObjectURL(file),
+          name: file.name,
+          status: 'pending',
+          size: this.formatFileSize(file.size)
+        });
+      }
+      if (items.length === 0) return;
+      
+      const wasEmpty = this.imageQueue.length === 0 && !this.inputPreview;
+      this.imageQueue.push(...items);
+      
+      // If nothing is being processed or viewed, load first item
+      if (wasEmpty || (!this.inputPreview && !this.queueRunning)) {
+        this.setActiveInput(this.imageQueue[0]);
       }
     },
     
-    removeInput() {
-      this.inputFile = null;
+    removeFromQueue(idx) {
+      const item = this.imageQueue[idx];
+      if (!item) return;
+      if (item.status === 'processing') return;
+      
+      if (item.preview) URL.revokeObjectURL(item.preview);
+      this.imageQueue.splice(idx, 1);
+      
+      // If this was the active input, switch to next pending
+      if (this.inputPreview === item.preview || this.imageQueue.length === 0) {
+        const pending = this.imageQueue.find(i => i.status === 'pending');
+        if (pending) {
+          this.setActiveInput(pending);
+        } else if (this.outputQueue.length > 0) {
+          this.loadOutputView(this.viewedIndex);
+        } else {
+          this.clearViewer();
+        }
+      }
+    },
+    
+    setActiveInput(item) {
+      this.inputFile = item.file;
+      this.inputPreview = item.preview;
+      this.outputImage = null;
+      this.editOutput = null;
+      this.upscaleOutput = null;
+      this.displayedImage = 'final';
+      this.sliderPos = 50;
+    },
+    
+    clearViewer() {
       if (this.inputPreview) URL.revokeObjectURL(this.inputPreview);
+      this.inputFile = null;
       this.inputPreview = null;
       this.outputImage = null;
       this.editOutput = null;
       this.upscaleOutput = null;
       this.displayedImage = 'final';
       this.zoomLevel = 1;
+    },
+    
+    removeInput() {
+      // Legacy hook — clears queue entirely
+      for (const item of this.imageQueue) {
+        if (item.preview) URL.revokeObjectURL(item.preview);
+      }
+      this.imageQueue = [];
+      this.clearViewer();
     },
     
     // Zoom controls
@@ -608,83 +665,176 @@ document.addEventListener('alpine:init', () => {
       return files.some(f => f.toLowerCase().includes(filename.toLowerCase()));
     },
     
-    // Pipeline trigger
-    async enhanceImage() {
-      if (!this.inputFile) {
-        alert('Please upload an image first.');
-        return;
+    // Output queue navigation
+    loadOutputView(idx) {
+      const entry = this.outputQueue[idx];
+      if (!entry) return;
+      this.viewedIndex = idx;
+      this.inputPreview = entry.inputPreview;
+      this.inputFile = null;
+      this.outputImage = entry.upscaleOutput || entry.editOutput;
+      this.editOutput = entry.editOutput;
+      this.upscaleOutput = entry.upscaleOutput;
+      this.outputMode = entry.mode;
+      this.displayedImage = entry.upscaleOutput ? 'final' : 'edit';
+      this.sliderPos = 50;
+    },
+
+    nextOutput() {
+      if (this.viewedIndex < this.outputQueue.length - 1) {
+        this.loadOutputView(this.viewedIndex + 1);
       }
+    },
+
+    prevOutput() {
+      if (this.viewedIndex > 0) {
+        this.loadOutputView(this.viewedIndex - 1);
+      }
+    },
+
+    discardCurrentOutput() {
+      if (this.outputQueue.length === 0) return;
+      const entry = this.outputQueue[this.viewedIndex];
+      if (entry && entry.inputPreview) URL.revokeObjectURL(entry.inputPreview);
+      this.outputQueue.splice(this.viewedIndex, 1);
+      if (this.outputQueue.length === 0) {
+        this.clearViewer();
+        this.statusText = 'Idle';
+      } else {
+        this.viewedIndex = Math.min(this.viewedIndex, this.outputQueue.length - 1);
+        this.loadOutputView(this.viewedIndex);
+      }
+    },
+
+    // Queue processor
+    async startQueue() {
+      const pending = this.imageQueue.findIndex(i => i.status === 'pending');
+      if (pending === -1) return;
       
+      this.queueRunning = true;
       this.isProcessing = true;
-      this.statusText = 'Initializing pipeline...';
       this.processTime = 0;
       
-      this.processTimer = setInterval(() => {
-        this.processTime++;
-      }, 1000);
+      if (this.processTimer) clearInterval(this.processTimer);
+      this.processTimer = setInterval(() => { this.processTime++; }, 1000);
       
-      try {
-        const payload = JSON.parse(JSON.stringify(this.params));
-        
-        // Attach autosave settings
-        payload.save_folder = this.appSettings.save_folder;
-        payload.autosave = this.appSettings.autosave;
-        
-        // Auto-overwrite model selection based on GGUF flag if not edited
-        if (payload.use_gguf) {
-          if (payload.unet_name === 'flux-2-klein-9b-kv-fp8.safetensors') {
-            payload.unet_name = 'flux-2-klein-9b-Q4_K_M.gguf';
-          }
-          if (payload.clip_name === 'qwen_3_8b_fp8mixed.safetensors') {
-            payload.clip_name = 'Qwen3-4B-Q8_0.gguf';
-          }
-        } else {
-          if (payload.unet_name === 'flux-2-klein-9b-Q4_K_M.gguf') {
-            payload.unet_name = 'flux-2-klein-9b-kv-fp8.safetensors';
-          }
-          if (payload.clip_name === 'Qwen3-4B-Q8_0.gguf') {
-            payload.clip_name = 'qwen_3_8b_fp8mixed.safetensors';
-          }
+      const payload = JSON.parse(JSON.stringify(this.params));
+      payload.save_folder = this.appSettings.save_folder;
+      payload.autosave = this.appSettings.autosave;
+      
+      // Auto-overwrite model selection based on GGUF flag if not edited
+      if (payload.use_gguf) {
+        if (payload.unet_name === 'flux-2-klein-9b-kv-fp8.safetensors') {
+          payload.unet_name = 'flux-2-klein-9b-Q4_K_M.gguf';
         }
-        
-        // Dynamic status mapping based on active steps
-        const mode = payload.mode;
-        
-        if (mode === 'full' || mode === 'edit') {
-          this.statusText = 'Uploading image and running Klein 9B Edit...';
-        } else {
-          this.statusText = 'Uploading image and running SeedVR2 Upscale...';
+        if (payload.clip_name === 'qwen_3_8b_fp8mixed.safetensors') {
+          payload.clip_name = 'Qwen3-4B-Q8_0.gguf';
         }
-        
-        // Run enhance
-        const res = await api.enhanceImage(this.inputFile, mode, payload);
-        
-        this.outputMode = res.mode;
-        this.editOutput = res.editOutput || null;
-        this.upscaleOutput = res.upscaleOutput || null;
-        
-        // Show final output by default
-        if (this.upscaleOutput) {
-          this.outputImage = this.upscaleOutput;
-          this.displayedImage = 'final';
-        } else if (this.editOutput) {
-          this.outputImage = this.editOutput;
-          this.displayedImage = 'edit';
-        } else {
-          this.outputImage = res.output;
-          this.displayedImage = 'final';
+      } else {
+        if (payload.unet_name === 'flux-2-klein-9b-Q4_K_M.gguf') {
+          payload.unet_name = 'flux-2-klein-9b-kv-fp8.safetensors';
         }
-        
-        this.statusText = 'Pipeline Completed successfully!';
-        
-      } catch (err) {
-        this.statusText = 'Error: ' + err.message;
-        alert('Enhancement failed:\n' + err.message);
-      } finally {
-        this.isProcessing = false;
-        clearInterval(this.processTimer);
-        this.processTimer = null;
+        if (payload.clip_name === 'Qwen3-4B-Q8_0.gguf') {
+          payload.clip_name = 'qwen_3_8b_fp8mixed.safetensors';
+        }
       }
+      
+      const mode = payload.mode;
+      
+      while (true) {
+        const idx = this.imageQueue.findIndex(i => i.status === 'pending');
+        if (idx === -1) break;
+        
+        const item = this.imageQueue[idx];
+        item.status = 'processing';
+        
+        // Only populate viewer with input if no output is already showing
+        this.inputFile = item.file;
+        if (this.outputQueue.length === 0) {
+          this.setActiveInput(item);
+        }
+        const total = this.imageQueue.filter(i => i.status !== 'done' && i.status !== 'error').length + this.outputQueue.length;
+        const done = this.outputQueue.length;
+        this.statusText = done > 0
+          ? `Processing (${done + 1}/${total}): ${item.name}`
+          : `Processing: ${item.name}`;
+        
+        try {
+          const res = await api.enhanceImage(item.file, mode, payload);
+          item.status = 'done';
+          
+          // Push to output queue
+          this.outputQueue.push({
+            id: item.id,
+            inputPreview: item.preview,
+            inputName: item.name,
+            editOutput: res.editOutput || null,
+            upscaleOutput: res.upscaleOutput || null,
+            mode: res.mode
+          });
+          
+          // Auto-show if first output
+          if (this.outputQueue.length === 1) {
+            this.viewedIndex = 0;
+            this.loadOutputView(0);
+          }
+          
+          const stillPending = this.imageQueue.filter(i => i.status === 'pending').length;
+          this.statusText = stillPending > 0
+            ? `${this.outputQueue.length} complete, ${stillPending} remaining`
+            : `${this.outputQueue.length} image${this.outputQueue.length !== 1 ? 's' : ''} processed`;
+        } catch (err) {
+          item.status = 'error';
+          item.error = err.message;
+          this.statusText = this.outputQueue.length > 0
+            ? `${item.name} failed: ${err.message}`
+            : 'Error: ' + err.message;
+          if (this.outputQueue.length === 0) {
+            alert('Enhancement failed:\n' + err.message);
+          } else {
+            this.loadOutputView(this.viewedIndex);
+          }
+        }
+        
+        // Remove processed item from queue
+        const inOutputQueue = this.outputQueue.some(o => o.inputPreview === item.preview);
+        if (item.preview !== this.inputPreview && !inOutputQueue) {
+          URL.revokeObjectURL(item.preview);
+        }
+        this.imageQueue.splice(idx, 1);
+        
+        if (this.imageQueue.length === 0 && this.outputQueue.length === 0) {
+          this.clearViewer();
+        }
+      }
+      
+      this.isProcessing = false;
+      this.queueRunning = false;
+      clearInterval(this.processTimer);
+      this.processTimer = null;
+      if (this.statusText.indexOf('Error:') === -1) {
+        this.statusText = this.outputQueue.length > 0 
+          ? `Done: ${this.outputQueue.length} image${this.outputQueue.length !== 1 ? 's' : ''}`
+          : 'Idle';
+      }
+    },
+    
+    stopQueue() {
+      // Mark all pending items as cancelled
+      for (const item of this.imageQueue) {
+        if (item.status === 'pending') item.status = 'done';
+      }
+      this.queueRunning = false;
+    },
+    
+    hasPendingImages() {
+      return this.imageQueue.some(i => i.status === 'pending');
+    },
+    
+    formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     },
     
     // Slider: fixed to container window (industry-standard approach)
