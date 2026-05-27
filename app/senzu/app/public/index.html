@@ -386,24 +386,24 @@
         
         <!-- Output Image Viewer -->
         <div class="glass-card output-viewer-card">
-          <div class="output-viewer-toolbar">
-            <span class="viewer-label" x-text="outputImage ? 'Enhanced Result' : 'Preview'"></span>
-            <div class="viewer-actions">
-              <button class="btn-icon" @click="zoomIn()" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
-              <button class="btn-icon" @click="zoomOut()" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
-              <button class="btn-icon" @click="resetZoom()" title="Fit to View"><i class="fa-solid fa-expand"></i></button>
-              <button class="btn-icon" @click="toggleFullscreen()" title="Full Screen"><i class="fa-solid fa-expand-arrows-alt"></i></button>
-            </div>
-          </div>
           
           <div class="compare-container" x-ref="sliderContainer"
                @mousedown="startPan($event)"
                @mousemove="onMouseMove($event)"
                @mouseup="stopPan(); stopSliderDrag()"
-               @mouseleave="stopPan()">
+               @mouseleave="stopPan()"
+               @dblclick="toggleFullscreen()">
             
-            <div class="slider-badge slider-badge-before">Original</div>
-            <div class="slider-badge slider-badge-after" x-text="outputImage ? 'Enhanced' : 'Preview'">Preview</div>
+            <!-- Floating toolbar overlay -->
+            <div x-show="inputPreview" class="viewer-toolbar-overlay">
+              <button class="btn-icon-overlay" @click="zoomIn()" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+              <button class="btn-icon-overlay" @click="zoomOut()" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+              <button class="btn-icon-overlay" @click="resetZoom()" title="Fit to View"><i class="fa-solid fa-expand"></i></button>
+              <button class="btn-icon-overlay" @click="toggleFullscreen()" :title="isFullscreen ? 'Exit Full Screen' : 'Full Screen'">
+                <i class="fa-solid" :class="isFullscreen ? 'fa-compress' : 'fa-expand-arrows-alt'"></i>
+              </button>
+            </div>
+            
             
             <!-- Drop zone when no image -->
             <div x-show="!inputPreview" class="upload-container" @click="triggerFileSelect()"

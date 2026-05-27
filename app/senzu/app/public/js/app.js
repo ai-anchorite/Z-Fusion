@@ -34,6 +34,7 @@ document.addEventListener('alpine:init', () => {
     panStartY: 0,
     panOriginX: 0,
     panOriginY: 0,
+    isFullscreen: false,
     
     // Model scan lists
     models: {
@@ -161,7 +162,9 @@ document.addEventListener('alpine:init', () => {
         
         // Reset zoom on exiting fullscreen (also catches ESC key)
         const onFullscreenChange = () => {
-          if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+          this.isFullscreen = fs;
+          if (!fs) {
             this.resetZoom();
           }
         };
@@ -478,11 +481,23 @@ document.addEventListener('alpine:init', () => {
     },
     
     handleZoom(e) {
-      if (e.deltaY < 0) {
-        this.zoomLevel = Math.min(this.zoomLevel * 1.1, 5);
-      } else {
-        this.zoomLevel = Math.max(this.zoomLevel / 1.1, 0.25);
-      }
+      const container = document.querySelector('.compare-container');
+      if (!container) return;
+      
+      const oldZoom = this.zoomLevel;
+      const newZoom = e.deltaY < 0
+        ? Math.min(oldZoom * 1.1, 5)
+        : Math.max(oldZoom / 1.1, 0.25);
+      
+      // Zoom toward mouse cursor position
+      const rect = container.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const ratio = (1 / newZoom) - (1 / oldZoom);
+      this.panX += (mx - rect.width / 2) * ratio;
+      this.panY += (my - rect.height / 2) * ratio;
+      
+      this.zoomLevel = newZoom;
       this.updatePanCursor();
     },
     
@@ -672,54 +687,21 @@ document.addEventListener('alpine:init', () => {
       }
     },
     
-    // Compute actual image display rect accounting for object-fit: contain letterboxing
-    getImageDisplayRect() {
-      const container = document.querySelector('.compare-container');
-      if (!container) return null;
-      const img = container.querySelector('.slider-img');
-      if (!img || !img.naturalWidth) return null;
-
-      const containerRect = container.getBoundingClientRect();
-      const containerW = containerRect.width;
-      const containerH = containerRect.height;
-      const imgRatio = img.naturalWidth / img.naturalHeight;
-      const containerRatio = containerW / containerH;
-
-      let displayW, displayH, offsetX, offsetY;
-
-      if (imgRatio > containerRatio) {
-        displayW = containerW;
-        displayH = containerW / imgRatio;
-        offsetX = 0;
-        offsetY = (containerH - displayH) / 2;
-      } else {
-        displayH = containerH;
-        displayW = containerH * imgRatio;
-        offsetX = (containerW - displayW) / 2;
-        offsetY = 0;
-      }
-
-      return { displayW, displayH, offsetX, offsetY, containerW, containerH };
-    },
-
-    // Slider mouse/touch coordinate mappings
+    // Slider: fixed to container window (industry-standard approach)
     getSliderStyle() {
-      const info = this.getImageDisplayRect();
-      if (!info) return `left: ${this.sliderPos}%`;
-      const W = info.containerW;
-      // Slider position in wrapper (pre-transform) coords
-      const wx = info.offsetX + (this.sliderPos / 100) * info.displayW;
-      // Forward zoom transform: wrapper coords -> container coords
-      const vx = W / 2 + (wx + this.panX - W / 2) * this.zoomLevel;
-      return `left: ${(vx / W) * 100}%`;
+      return `left: ${this.sliderPos}%`;
     },
 
     getAfterClipStyle() {
-      const info = this.getImageDisplayRect();
-      if (!info) return `clip-path: polygon(${this.sliderPos}% 0, 100% 0, 100% 100%, ${this.sliderPos}% 100%)`;
-      // Clip-path is in img element's local coords (pre-transform wrapper space), no zoom adjustment needed
-      const clipX = info.offsetX + (this.sliderPos / 100) * info.displayW;
-      const pct = (clipX / info.containerW) * 100;
+      const container = document.querySelector('.compare-container');
+      if (!container) return `clip-path: polygon(${this.sliderPos}% 0, 100% 0, 100% 100%, ${this.sliderPos}% 100%)`;
+      const W = container.getBoundingClientRect().width;
+      // Container-relative slider position
+      const vx = (this.sliderPos / 100) * W;
+      // Inverse zoom: container coords -> wrapper (pre-transform) coords
+      const wx = (vx - W / 2) / this.zoomLevel - this.panX + W / 2;
+      // Clip-path is in img element's local coords (pre-transform), as percentage of element width
+      const pct = (wx / W) * 100;
       return `clip-path: polygon(${pct}% 0, 100% 0, 100% 100%, ${pct}% 100%)`;
     },
 
@@ -741,35 +723,11 @@ document.addEventListener('alpine:init', () => {
     updateSliderPos(e) {
       const container = document.querySelector('.compare-container');
       if (!container) return;
-
+      const rect = container.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-
-      const info = this.getImageDisplayRect();
-      if (!info) {
-        const rect = container.getBoundingClientRect();
-        let pos = ((clientX - rect.left) / rect.width) * 100;
-        if (pos < 0) pos = 0;
-        if (pos > 100) pos = 100;
-        this.sliderPos = pos;
-        return;
-      }
-
-      const containerRect = container.getBoundingClientRect();
-      const W = info.containerW;
-
-      // Mouse position in container coordinates
-      const vx = clientX - containerRect.left;
-
-      // Inverse zoom transform: container coords -> wrapper (pre-transform) coords
-      const wx = (vx - W / 2) / this.zoomLevel - this.panX + W / 2;
-
-      // Map to image display area within wrapper
-      const imgRelativeX = wx - info.offsetX;
-      let pos = (imgRelativeX / info.displayW) * 100;
-
+      let pos = ((clientX - rect.left) / rect.width) * 100;
       if (pos < 0) pos = 0;
       if (pos > 100) pos = 100;
-
       this.sliderPos = pos;
     },
     
