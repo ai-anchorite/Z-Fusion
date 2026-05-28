@@ -15,6 +15,7 @@ document.addEventListener('alpine:init', () => {
     outputQueue: [],          // { id, inputPreview, inputName, editOutput, upscaleOutput, mode }
     queueRunning: false,
     viewedIndex: 0,
+    currentInputName: '',
     
     // Derived — kept for template compatibility
     inputFile: null,
@@ -487,6 +488,7 @@ document.addEventListener('alpine:init', () => {
     setActiveInput(item) {
       this.inputFile = item.file;
       this.inputPreview = item.preview;
+      this.currentInputName = item.name;
       this.outputImage = null;
       this.editOutput = null;
       this.upscaleOutput = null;
@@ -672,6 +674,7 @@ document.addEventListener('alpine:init', () => {
       this.viewedIndex = idx;
       this.inputPreview = entry.inputPreview;
       this.inputFile = null;
+      this.currentInputName = entry.inputName;
       this.outputImage = entry.upscaleOutput || entry.editOutput;
       this.editOutput = entry.editOutput;
       this.upscaleOutput = entry.upscaleOutput;
@@ -760,6 +763,7 @@ document.addEventListener('alpine:init', () => {
           : `Processing: ${item.name}`;
         
         try {
+          payload.input_filename = item.name;
           const res = await api.enhanceImage(item.file, mode, payload);
           item.status = 'done';
           
@@ -881,28 +885,6 @@ document.addEventListener('alpine:init', () => {
       this.sliderPos = pos;
     },
     
-    downloadOutput(type) {
-      let url = null;
-      let label = 'senzu';
-      if (type === 'edit' && this.editOutput) {
-        url = this.editOutput;
-        label = 'senzu_edit';
-      } else if (type === 'final' && this.upscaleOutput) {
-        url = this.upscaleOutput;
-        label = 'senzu_upscaled';
-      } else if (this.outputImage) {
-        url = this.outputImage;
-        label = 'senzu_result';
-      }
-      if (!url) return;
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${label}_${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    },
-    
     // App Settings
     async loadSettings() {
       try {
@@ -956,28 +938,31 @@ document.addEventListener('alpine:init', () => {
     
     async downloadOutput(type) {
       let url = null;
-      let filename = null;
-      let label = 'senzu';
+      let destName = null;
+      let suffix = '';
+      
       if (type === 'edit' && this.editOutput) {
         url = this.editOutput;
-        filename = url.split('/').pop();
-        label = 'senzu_edit';
+        suffix = 'ed';
       } else if (type === 'final' && this.upscaleOutput) {
         url = this.upscaleOutput;
-        filename = url.split('/').pop();
-        label = 'senzu_upscaled';
+        suffix = this.editOutput ? 'ed_ups' : 'ups';
       } else if (this.outputImage) {
         url = this.outputImage;
-        filename = url.split('/').pop();
-        label = 'senzu_result';
+        suffix = this.outputMode === 'full' ? 'ed_ups' : (this.outputMode === 'edit' ? 'ed' : 'ups');
       }
-      if (!url || !filename) return;
+      if (!url) return;
+      
+      const tempFilename = url.split('/').pop();
+      const stem = this.currentInputName.replace(/\.[^.]+$/, '') || 'senzu';
+      const ts = Date.now().toString(36);
+      destName = `${stem}_senzu_${suffix}_${ts}.png`;
       
       // Server-side save if folder configured, else browser download
       const saveFolder = this.appSettings.save_folder;
       if (saveFolder && saveFolder.trim()) {
         try {
-          await api.saveOutputToFolder(filename, saveFolder);
+          await api.saveOutputToFolder(tempFilename, saveFolder, destName);
           return;
         } catch (err) {
           alert('Failed to save to folder: ' + err.message);
@@ -987,7 +972,7 @@ document.addEventListener('alpine:init', () => {
       // Fallback: browser download
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${label}_${Date.now()}.png`;
+      a.download = destName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

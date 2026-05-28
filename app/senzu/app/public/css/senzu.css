@@ -1083,6 +1083,50 @@ input:checked + .switch-slider:before {
   transform: scale(1.05);
 }
 
+.overlay-counter {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+}
+
+/* Prev/Next nav arrows on viewer */
+.viewer-nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 44px;
+  height: 64px;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+
+.viewer-nav-prev {
+  left: 0;
+  border-radius: 0 10px 10px 0;
+}
+
+.viewer-nav-next {
+  right: 0;
+  border-radius: 10px 0 0 10px;
+}
+
+.viewer-nav-arrow:hover {
+  background: rgba(0, 0, 0, 0.6);
+  width: 52px;
+}
+
 /* Result actions grid */
 .result-actions {
   margin-top: 12px;

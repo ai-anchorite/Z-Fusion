@@ -415,6 +415,8 @@
             
             <!-- Floating toolbar overlay -->
             <div x-show="inputPreview" class="viewer-toolbar-overlay">
+              <span x-show="outputQueue.length > 1" class="overlay-counter"
+                    x-text="(viewedIndex + 1) + ' / ' + outputQueue.length"></span>
               <button class="btn-icon-overlay" @click="zoomIn()" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
               <button class="btn-icon-overlay" @click="zoomOut()" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
               <button class="btn-icon-overlay" @click="resetZoom()" title="Fit to View"><i class="fa-solid fa-expand"></i></button>
@@ -422,6 +424,16 @@
                 <i class="fa-solid" :class="isFullscreen ? 'fa-compress' : 'fa-expand-arrows-alt'"></i>
               </button>
             </div>
+            
+            <!-- Prev/Next arrows -->
+            <button x-show="inputPreview && outputQueue.length > 1 && viewedIndex > 0"
+                    class="viewer-nav-arrow viewer-nav-prev" @click="prevOutput()">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <button x-show="inputPreview && outputQueue.length > 1 && viewedIndex < outputQueue.length - 1"
+                    class="viewer-nav-arrow viewer-nav-next" @click="nextOutput()">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
             
             
             <!-- Drop zone when no image -->

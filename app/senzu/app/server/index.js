@@ -388,7 +388,7 @@ app.post('/api/settings/open-outputs', (req, res) => {
 });
 
 app.post('/api/outputs/save', (req, res) => {
-  const { filename, save_folder } = req.body;
+  const { filename, save_folder, destName } = req.body;
   if (!filename || !save_folder) {
     return res.status(400).json({ error: "Missing filename or save_folder" });
   }
@@ -396,9 +396,10 @@ app.post('/api/outputs/save', (req, res) => {
   if (!fs.existsSync(srcPath)) {
     return res.status(404).json({ error: "Output file not found in temp" });
   }
-  const ok = settings.copyOutputToFolder(srcPath, save_folder);
+  const resultName = destName || filename;
+  const ok = settings.copyOutputToFolder(srcPath, save_folder, resultName);
   if (ok) {
-    res.json({ success: true, message: `Saved ${filename} to ${save_folder}` });
+    res.json({ success: true, message: `Saved ${resultName} to ${save_folder}` });
   } else {
     res.status(500).json({ error: "Failed to save output" });
   }
@@ -549,8 +550,13 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
 
     // Autosave outputs to user's save folder if enabled
     if (parsedParams.autosave && parsedParams.save_folder) {
-      if (editOutPath) settings.copyOutputToFolder(editOutPath, parsedParams.save_folder);
-      if (upscaleOutPath) settings.copyOutputToFolder(upscaleOutPath, parsedParams.save_folder);
+      const stem = (parsedParams.input_filename || 'senzu').replace(/\.[^.]+$/, '');
+      const ts = Date.now().toString(36);
+      if (editOutPath) settings.copyOutputToFolder(editOutPath, parsedParams.save_folder, `${stem}_senzu_ed_${ts}.png`);
+      if (upscaleOutPath) {
+        const upsSuffix = mode === 'full' ? 'ed_ups' : 'ups';
+        settings.copyOutputToFolder(upscaleOutPath, parsedParams.save_folder, `${stem}_senzu_${upsSuffix}_${ts}.png`);
+      }
     }
 
     // Return the appropriate response depending on mode

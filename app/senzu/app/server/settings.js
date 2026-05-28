@@ -74,19 +74,19 @@ function clearTempOutputs(outputTempDir) {
   }
 }
 
-function copyOutputToFolder(srcPath, saveFolder) {
+function copyOutputToFolder(srcPath, saveFolder, destName) {
   if (!saveFolder || !srcPath) return false;
   try {
     if (!fs.existsSync(saveFolder)) {
       fs.mkdirSync(saveFolder, { recursive: true });
     }
-    const filename = path.basename(srcPath);
+    const filename = destName || path.basename(srcPath);
     const destPath = path.join(saveFolder, filename);
     fs.copyFileSync(srcPath, destPath);
-    console.log(`[Autosave] Copied ${filename} to ${saveFolder}`);
+    console.log(`[Save] Copied to ${destPath}`);
     return true;
   } catch (err) {
-    console.error(`[Autosave] Failed to copy ${srcPath} to ${saveFolder}:`, err.message);
+    console.error(`[Save] Failed to copy ${srcPath}:`, err.message);
     return false;
   }
 }

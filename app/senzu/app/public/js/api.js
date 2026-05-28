@@ -126,11 +126,11 @@ const api = {
     return res.json();
   },
   
-  async saveOutputToFolder(filename, save_folder) {
+  async saveOutputToFolder(filename, save_folder, destName) {
     const res = await fetch(`${API_BASE}/outputs/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, save_folder })
+      body: JSON.stringify({ filename, save_folder, destName })
     });
     if (!res.ok) {
       const err = await res.json();
