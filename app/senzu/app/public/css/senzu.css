@@ -541,7 +541,7 @@ input:checked + .switch-slider:before {
 .compact-upload {
   border: 2px dashed rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  padding: 1.2rem;
+  padding: 0.8rem;
   text-align: center;
   cursor: pointer;
   display: flex;
@@ -610,22 +610,24 @@ input:checked + .switch-slider:before {
 /* Input Queue Strip */
 .queue-strip {
   display: flex;
-  gap: 6px;
-  padding: 8px;
+  gap: 5px;
+  padding: 6px 4px;
   overflow-x: auto;
   align-items: center;
   scrollbar-width: thin;
+  scroll-behavior: smooth;
 }
 
 .queue-thumb {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 76px;
+  height: 76px;
   flex-shrink: 0;
   border-radius: 8px;
   overflow: hidden;
   border: 2px solid var(--border-glass);
   transition: border-color 0.2s, opacity 0.3s;
+  cursor: pointer;
 }
 
 .queue-thumb.pending {
@@ -692,8 +694,8 @@ input:checked + .switch-slider:before {
 }
 
 .queue-add-zone {
-  width: 56px;
-  height: 56px;
+  width: 76px;
+  height: 76px;
   flex-shrink: 0;
   border-radius: 8px;
   border: 2px dashed rgba(255, 255, 255, 0.1);
@@ -960,9 +962,9 @@ input:checked + .switch-slider:before {
 .progress-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   background: rgba(255, 255, 255, 0.02);
-  padding: 1.2rem;
+  padding: 0.75rem;
   border-radius: 14px;
   border: 1px solid var(--border-glass);
 }
@@ -1215,8 +1217,8 @@ input:checked + .switch-slider:before {
 .mode-toggles {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 1.2rem;
+  gap: 4px;
+  margin-bottom: 0;
 }
 
 .mode-toggle-btn {

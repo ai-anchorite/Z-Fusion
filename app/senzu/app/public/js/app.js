@@ -16,6 +16,7 @@ document.addEventListener('alpine:init', () => {
     queueRunning: false,
     viewedIndex: 0,
     currentInputName: '',
+    lastSavedType: '',
     
     // Derived — kept for template compatibility
     inputFile: null,
@@ -458,6 +459,12 @@ document.addEventListener('alpine:init', () => {
       const wasEmpty = this.imageQueue.length === 0 && !this.inputPreview;
       this.imageQueue.push(...items);
       
+      // Auto-scroll queue strip to show new items
+      this.$nextTick(() => {
+        const strip = document.querySelector('.queue-strip');
+        if (strip) strip.scrollLeft = strip.scrollWidth;
+      });
+      
       // If nothing is being processed or viewed, load first item
       if (wasEmpty || (!this.inputPreview && !this.queueRunning)) {
         this.setActiveInput(this.imageQueue[0]);
@@ -493,7 +500,7 @@ document.addEventListener('alpine:init', () => {
       this.editOutput = null;
       this.upscaleOutput = null;
       this.displayedImage = 'final';
-      this.sliderPos = 50;
+      this.resetZoom();
     },
     
     clearViewer() {
@@ -505,6 +512,19 @@ document.addEventListener('alpine:init', () => {
       this.upscaleOutput = null;
       this.displayedImage = 'final';
       this.zoomLevel = 1;
+    },
+    
+    viewQueueItem(idx) {
+      const item = this.imageQueue[idx];
+      if (!item) return;
+      this.inputFile = item.file;
+      this.inputPreview = item.preview;
+      this.currentInputName = item.name;
+      this.outputImage = null;
+      this.editOutput = null;
+      this.upscaleOutput = null;
+      this.displayedImage = 'final';
+      this.resetZoom();
     },
     
     removeInput() {
@@ -519,7 +539,8 @@ document.addEventListener('alpine:init', () => {
     // Zoom controls
     updatePanCursor() {
       const c = document.querySelector('.compare-container');
-      if (c) c.classList.toggle('pan-mode', this.zoomLevel > 1);
+      const isLocked = this.zoomLevel <= 1 && this.panX === 0 && this.panY === 0;
+      if (c) c.classList.toggle('pan-mode', !isLocked);
     },
     
     zoomIn() {
@@ -585,7 +606,9 @@ document.addEventListener('alpine:init', () => {
     
     // Pan handling (left-click grab, only when zoomed)
     startPan(e) {
-      if (e.button !== 0 || this.zoomLevel <= 1) return;
+      // Only lock panning when the image is truly fit-to-view (centered at normal zoom)
+      if (e.button !== 0) return;
+      if (this.zoomLevel <= 1 && this.panX === 0 && this.panY === 0) return;
       e.preventDefault();
       this.isPanning = true;
       this.panStartX = e.clientX;
@@ -624,8 +647,6 @@ document.addEventListener('alpine:init', () => {
         this.outputImage = this.editOutput;
       } else if (type === 'final' && this.upscaleOutput) {
         this.outputImage = this.upscaleOutput;
-      } else if (type === 'original') {
-        this.outputImage = null;
       }
       this.sliderPos = 50;
     },
@@ -681,6 +702,7 @@ document.addEventListener('alpine:init', () => {
       this.outputMode = entry.mode;
       this.displayedImage = entry.upscaleOutput ? 'final' : 'edit';
       this.sliderPos = 50;
+      this.resetZoom();
     },
 
     nextOutput() {
@@ -707,6 +729,17 @@ document.addEventListener('alpine:init', () => {
         this.viewedIndex = Math.min(this.viewedIndex, this.outputQueue.length - 1);
         this.loadOutputView(this.viewedIndex);
       }
+    },
+    
+    clearOutputQueue() {
+      if (!confirm(`Discard all ${this.outputQueue.length} results? Unsaved outputs will be lost.`)) return;
+      for (const entry of this.outputQueue) {
+        if (entry.inputPreview) URL.revokeObjectURL(entry.inputPreview);
+      }
+      this.outputQueue = [];
+      this.viewedIndex = 0;
+      this.clearViewer();
+      this.statusText = 'Idle';
     },
 
     // Queue processor
@@ -963,6 +996,8 @@ document.addEventListener('alpine:init', () => {
       if (saveFolder && saveFolder.trim()) {
         try {
           await api.saveOutputToFolder(tempFilename, saveFolder, destName);
+          this.lastSavedType = type;
+          setTimeout(() => { this.lastSavedType = ''; }, 2000);
           return;
         } catch (err) {
           alert('Failed to save to folder: ' + err.message);
@@ -976,6 +1011,28 @@ document.addEventListener('alpine:init', () => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      this.lastSavedType = type;
+      setTimeout(() => { this.lastSavedType = ''; }, 2000);
+    },
+    
+    async rerunOutput(type) {
+      let url = null;
+      if (type === 'original') {
+        // Re-add from current input preview — need to create a File from the blob
+        const blob = await fetch(this.inputPreview).then(r => r.blob());
+        const file = new File([blob], this.currentInputName || 'rerun.png', { type: blob.type });
+        this.addToQueue([file]);
+      } else if (type === 'edit' && this.editOutput) {
+        url = this.editOutput;
+      } else if (type === 'final' && this.upscaleOutput) {
+        url = this.upscaleOutput;
+      }
+      if (url) {
+        const blob = await fetch(url).then(r => r.blob());
+        const filename = `${this.currentInputName.replace(/\.[^.]+$/, '') || 'rerun'}_rerun.png`;
+        const file = new File([blob], filename, { type: blob.type });
+        this.addToQueue([file]);
+      }
     },
     
     formatTime(seconds) {

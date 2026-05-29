@@ -62,14 +62,14 @@
       <div class="sidebar-panel">
         
         <!-- Panel 1: Input image + Mode + Enhance -->
-        <div class="glass-card" style="display: flex; flex-direction: column; gap: 1rem;">
+        <div class="glass-card" style="display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem;">
           
           <!-- Input Image Component -->
           <div class="input-image-card">
             <!-- Queue strip -->
             <div x-show="imageQueue.length > 0" class="queue-strip">
               <template x-for="(item, idx) in imageQueue" :key="item.id">
-                <div class="queue-thumb" :class="item.status" :title="item.name">
+                <div class="queue-thumb" :class="item.status" :title="'Click to view: ' + item.name" @click="viewQueueItem(idx)">
                   <img :src="item.preview">
                   <span class="queue-thumb-badge" x-show="item.status === 'processing'">
                     <i class="fa-solid fa-spinner fa-spin"></i>
@@ -417,6 +417,12 @@
             <div x-show="inputPreview" class="viewer-toolbar-overlay">
               <span x-show="outputQueue.length > 1" class="overlay-counter"
                     x-text="(viewedIndex + 1) + ' / ' + outputQueue.length"></span>
+              <button x-show="outputImage && displayedImage !== 'original'" class="btn-icon-overlay"
+                      @click="downloadOutput(displayedImage === 'edit' ? 'edit' : 'final')"
+                      :title="'Save ' + (displayedImage === 'edit' ? 'Edit' : 'Upscaled')"
+                      :style="lastSavedType === (displayedImage === 'edit' ? 'edit' : 'final') ? 'background: var(--success); color: #000; border-color: transparent;' : ''">
+                <i class="fa-solid" :class="lastSavedType === (displayedImage === 'edit' ? 'edit' : 'final') ? 'fa-check' : 'fa-download'"></i>
+              </button>
               <button class="btn-icon-overlay" @click="zoomIn()" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
               <button class="btn-icon-overlay" @click="zoomOut()" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
               <button class="btn-icon-overlay" @click="resetZoom()" title="Fit to View"><i class="fa-solid fa-expand"></i></button>
@@ -450,7 +456,7 @@
                 <img :src="inputPreview" class="slider-img" alt="Input source">
               </template>
               <template x-if="inputPreview">
-                <img :src="outputImage || inputPreview" class="slider-img slider-img-after" :style="getAfterClipStyle()" alt="Enhanced result">
+                <img :src="displayedImage === 'original' ? inputPreview : (outputImage || inputPreview)" class="slider-img slider-img-after" :style="getAfterClipStyle()" alt="Enhanced result">
               </template>
             </div>
             
@@ -466,7 +472,7 @@
         </div>
         
         <!-- Status + Controls -->
-        <div x-show="isProcessing || outputImage || outputQueue.length > 0" class="glass-card">
+        <div x-show="isProcessing || outputImage || outputQueue.length > 0" class="glass-card" style="padding: 0.75rem;">
           <div class="progress-panel">
             <div class="progress-header">
               <div class="progress-title">
@@ -474,21 +480,29 @@
                 <i x-show="outputImage" class="fa-solid fa-circle-check" style="color: var(--success); font-size: 1.2rem;"></i>
                 <span x-text="statusText">Idle</span>
               </div>
-              <div class="process-time" x-text="formatTime(processTime)">0:00</div>
+              <div class="process-time" x-show="isProcessing || processTime > 0" x-text="formatTime(processTime)">0:00</div>
             </div>
             
             <!-- Output queue navigation -->
-            <div x-show="outputQueue.length > 1" class="output-nav">
-              <button class="btn btn-sm" @click="prevOutput()" :disabled="viewedIndex === 0">
-                <i class="fa-solid fa-chevron-left"></i> Prev
-              </button>
-              <span class="output-nav-count" x-text="'Result ' + (viewedIndex + 1) + ' of ' + outputQueue.length"></span>
-              <button class="btn btn-sm" @click="nextOutput()" :disabled="viewedIndex >= outputQueue.length - 1">
-                Next <i class="fa-solid fa-chevron-right"></i>
-              </button>
-              <button class="btn btn-sm" @click="discardCurrentOutput()" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger); margin-left: auto;">
-                <i class="fa-solid fa-trash"></i>
-              </button>
+            <div x-show="outputQueue.length > 0" class="output-nav">
+              <div style="display: flex; align-items: center; gap: 8px;" x-show="outputQueue.length > 1">
+                <button class="btn btn-sm" @click="prevOutput()" :disabled="viewedIndex === 0">
+                  <i class="fa-solid fa-chevron-left"></i> Prev
+                </button>
+                <span class="output-nav-count" x-text="'Result ' + (viewedIndex + 1) + ' of ' + outputQueue.length"></span>
+                <button class="btn btn-sm" @click="nextOutput()" :disabled="viewedIndex >= outputQueue.length - 1">
+                  Next <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
+              <span x-show="outputQueue.length === 1" class="output-nav-count" x-text="'Result 1 of 1'"></span>
+              <div style="display: flex; gap: 6px; margin-left: auto;">
+                <button class="btn btn-sm" @click="discardCurrentOutput()" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+                <button class="btn btn-sm" @click="clearOutputQueue()" x-show="outputQueue.length > 1" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);">
+                  <i class="fa-solid fa-trash-can"></i> All
+                </button>
+              </div>
             </div>
             
             <!-- Result actions -->
@@ -502,8 +516,12 @@
                       <button class="btn btn-sm" :class="displayedImage === 'edit' ? 'btn-primary' : ''" @click="showOutput('edit')">
                         <i class="fa-regular fa-eye"></i> View
                       </button>
-                      <button class="btn btn-sm" @click="downloadOutput('edit')">
-                        <i class="fa-solid fa-download"></i> Save
+                      <button class="btn btn-sm" @click="downloadOutput('edit')" :style="lastSavedType === 'edit' ? 'background: var(--success); color: #000; border-color: transparent;' : ''">
+                        <i class="fa-solid" :class="lastSavedType === 'edit' ? 'fa-check' : 'fa-download'"></i>
+                        <span x-text="lastSavedType === 'edit' ? 'Saved' : 'Save'"></span>
+                      </button>
+                      <button class="btn btn-sm" @click="rerunOutput('edit')">
+                        <i class="fa-solid fa-rotate-right"></i> Rerun
                       </button>
                     </div>
                   </div>
@@ -516,8 +534,12 @@
                       <button class="btn btn-sm" :class="displayedImage === 'final' ? 'btn-primary' : ''" @click="showOutput('final')">
                         <i class="fa-regular fa-eye"></i> View
                       </button>
-                      <button class="btn btn-sm" @click="downloadOutput('final')">
-                        <i class="fa-solid fa-download"></i> Save
+                      <button class="btn btn-sm" @click="downloadOutput('final')" :style="lastSavedType === 'final' ? 'background: var(--success); color: #000; border-color: transparent;' : ''">
+                        <i class="fa-solid" :class="lastSavedType === 'final' ? 'fa-check' : 'fa-download'"></i>
+                        <span x-text="lastSavedType === 'final' ? 'Saved' : 'Save'"></span>
+                      </button>
+                      <button class="btn btn-sm" @click="rerunOutput('final')">
+                        <i class="fa-solid fa-rotate-right"></i> Rerun
                       </button>
                     </div>
                   </div>
@@ -530,13 +552,22 @@
                       <button class="btn btn-sm" :class="displayedImage === 'original' ? 'btn-primary' : ''" @click="showOutput('original')">
                         <i class="fa-regular fa-eye"></i> View
                       </button>
+                      <button class="btn btn-sm" @click="rerunOutput('original')">
+                        <i class="fa-solid fa-rotate-right"></i> Rerun
+                      </button>
                     </div>
                   </div>
                 </template>
               </div>
-              
             </div>
           </div>
+        </div>
+        
+        <!-- Open Outputs -->
+        <div class="glass-card" style="padding: 0.75rem;">
+          <button class="btn btn-sm" @click="openOutputs()" style="width: 100%;">
+            <i class="fa-solid fa-folder-open"></i> Open Outputs Folder
+          </button>
         </div>
         
       </div>
