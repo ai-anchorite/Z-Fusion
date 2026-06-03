@@ -3,30 +3,58 @@ const fs = require('fs');
 
 const DATA_DIR = path.join(__dirname, '../data');
 const MODEL_PACKS_FILE = path.join(DATA_DIR, 'senzu-model-packs.json');
+const PACKS_VERSION = 2;
 
 const DEFAULT_PACKS = {
   "FP8 Standard": {
     use_gguf: false,
-    unet_name: "flux-2-klein-9b-kv-fp8.safetensors",
+    unet_name: "Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
     clip_name: "qwen_3_8b_fp8mixed.safetensors",
     vae_name: "flux2-vae.safetensors",
     is_recommended: true,
+    description: "Best quality. Requires NVIDIA GPU with 12GB+ VRAM.",
     downloads: {
-      unet: { repo: "Lytanshade/Flux2-Klein-9B", filename: "flux-2-klein-9b-kv-fp8.safetensors", desc: "Flux2 Klein 9B UNet (fp8)", size: "9.8GB" },
-      clip: { repo: "Lytanshade/Flux2-Klein-9B", filename: "qwen_3_8b_fp8mixed.safetensors", desc: "Qwen3 8B CLIP (fp8)", size: "8.6GB" },
-      vae: { repo: "black-forest-labs/FLUX.1-schnell", filename: "flux2-vae.safetensors", desc: "Flux2 VAE", size: "336MB" }
+      unet: { repo: "wikeeyang/Flux2-Klein-9B-True-V2", filename: "Flux2-Klein-9B-True-v2-fp8mixed.safetensors", desc: "Flux2 Klein 9B True v2 (FP8 finetune)", size: "~10GB" },
+      clip: { repo: "Comfy-Org/vae-text-encorder-for-flux-klein-9b", filename: "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors", dest_filename: "qwen_3_8b_fp8mixed.safetensors", desc: "Qwen3 8B CLIP (FP8)", size: "~8.6GB" },
+      vae: { repo: "Comfy-Org/vae-text-encorder-for-flux-klein-9b", filename: "split_files/vae/flux2-vae.safetensors", dest_filename: "flux2-vae.safetensors", desc: "Flux2 VAE", size: "~336MB" },
+      loras: [
+        { repo: "n8te0/adonis_flux2klein", filename: "adonis_refine.safetensors", dest_filename: "senzu/klein9B_adonis_refine.safetensors", desc: "Adonis Refine LoRA", size: "~1.5GB" },
+        { repo: "dx8152/Flux2-Klein-9B-Consistency", filename: "Flux2-Klein-9B-consistency-V2.safetensors", dest_filename: "senzu/Flux2-Klein-9B-consistency-V2.safetensors", desc: "Consistency V2 LoRA", size: "~1.5GB" }
+      ]
+    }
+  },
+  "Q8 High Quality": {
+    use_gguf: true,
+    unet_name: "flux-2-klein-9b-Q8_0.gguf",
+    clip_name: "Qwen3-8B-Q8_0.gguf",
+    vae_name: "flux2-vae.safetensors",
+    is_recommended: true,
+    description: "High quality GGUF. Good for macOS, AMD GPUs, and 8-12GB VRAM.",
+    downloads: {
+      unet: { repo: "unsloth/FLUX.2-klein-9B-GGUF", filename: "flux-2-klein-9b-Q8_0.gguf", desc: "Flux2 Klein 9B UNet (Q8 GGUF)", size: "~12GB" },
+      clip: { repo: "unsloth/Qwen3-8B-GGUF", filename: "Qwen3-8B-Q8_0.gguf", desc: "Qwen3 8B CLIP (Q8 GGUF)", size: "~8.6GB" },
+      vae: { repo: "Comfy-Org/vae-text-encorder-for-flux-klein-9b", filename: "split_files/vae/flux2-vae.safetensors", dest_filename: "flux2-vae.safetensors", desc: "Flux2 VAE", size: "~336MB" },
+      loras: [
+        { repo: "n8te0/adonis_flux2klein", filename: "adonis_refine.safetensors", dest_filename: "senzu/klein9B_adonis_refine.safetensors", desc: "Adonis Refine LoRA", size: "~1.5GB" },
+        { repo: "dx8152/Flux2-Klein-9B-Consistency", filename: "Flux2-Klein-9B-consistency-V2.safetensors", dest_filename: "senzu/Flux2-Klein-9B-consistency-V2.safetensors", desc: "Consistency V2 LoRA", size: "~1.5GB" }
+      ]
     }
   },
   "Q4 Low VRAM": {
     use_gguf: true,
     unet_name: "flux-2-klein-9b-Q4_K_M.gguf",
-    clip_name: "Qwen3-4B-Q8_0.gguf",
+    clip_name: "Qwen3-8B-Q4_K_M.gguf",
     vae_name: "flux2-vae.safetensors",
     is_recommended: true,
+    description: "Compact quantized models for 6-8GB VRAM systems.",
     downloads: {
-      unet: { repo: "city96/Flux-2-Klein-GGUF", filename: "flux-2-klein-9b-Q4_K_M.gguf", desc: "Flux2 Klein 9B UNet (Q4 GGUF)", size: "5.9GB" },
-      clip: { repo: "city96/Flux-2-Klein-GGUF", filename: "Qwen3-4B-Q8_0.gguf", desc: "Qwen3 4B CLIP (Q8 GGUF)", size: "4.2GB" },
-      vae: { repo: "black-forest-labs/FLUX.1-schnell", filename: "flux2-vae.safetensors", desc: "Flux2 VAE", size: "336MB" }
+      unet: { repo: "unsloth/FLUX.2-klein-9B-GGUF", filename: "flux-2-klein-9b-Q4_K_M.gguf", desc: "Flux2 Klein 9B UNet (Q4_K_M GGUF)", size: "~6.2GB" },
+      clip: { repo: "unsloth/Qwen3-8B-GGUF", filename: "Qwen3-8B-Q4_K_M.gguf", desc: "Qwen3 8B CLIP (Q4_K_M GGUF)", size: "~4.5GB" },
+      vae: { repo: "Comfy-Org/vae-text-encorder-for-flux-klein-9b", filename: "split_files/vae/flux2-vae.safetensors", dest_filename: "flux2-vae.safetensors", desc: "Flux2 VAE", size: "~336MB" },
+      loras: [
+        { repo: "n8te0/adonis_flux2klein", filename: "adonis_refine.safetensors", dest_filename: "senzu/klein9B_adonis_refine.safetensors", desc: "Adonis Refine LoRA", size: "~1.5GB" },
+        { repo: "dx8152/Flux2-Klein-9B-Consistency", filename: "Flux2-Klein-9B-consistency-V2.safetensors", dest_filename: "senzu/Flux2-Klein-9B-consistency-V2.safetensors", desc: "Consistency V2 LoRA", size: "~1.5GB" }
+      ]
     }
   }
 };
@@ -35,16 +63,31 @@ function ensurePacksExist() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
+  let needsRegen = false;
   if (!fs.existsSync(MODEL_PACKS_FILE)) {
-    fs.writeFileSync(MODEL_PACKS_FILE, JSON.stringify(DEFAULT_PACKS, null, 2), 'utf-8');
+    needsRegen = true;
+  } else {
+    try {
+      const existing = JSON.parse(fs.readFileSync(MODEL_PACKS_FILE, 'utf-8'));
+      if (!existing._version || existing._version < PACKS_VERSION) {
+        needsRegen = true;
+      }
+    } catch (e) {
+      needsRegen = true;
+    }
+  }
+  if (needsRegen) {
+    const defaults = { _version: PACKS_VERSION };
+    Object.assign(defaults, DEFAULT_PACKS);
+    fs.writeFileSync(MODEL_PACKS_FILE, JSON.stringify(defaults, null, 2), 'utf-8');
   }
 }
 
 function loadModelPacks() {
   ensurePacksExist();
   try {
-    const data = fs.readFileSync(MODEL_PACKS_FILE, 'utf-8');
-    return JSON.parse(data);
+    const data = JSON.parse(fs.readFileSync(MODEL_PACKS_FILE, 'utf-8'));
+    return data;
   } catch (err) {
     console.error("Error reading model packs:", err);
     return DEFAULT_PACKS;
@@ -60,6 +103,7 @@ function saveModelPack(name, data) {
   }
 
   packs[name] = data;
+  packs._version = PACKS_VERSION;
   try {
     fs.writeFileSync(MODEL_PACKS_FILE, JSON.stringify(packs, null, 2), 'utf-8');
     return { success: true };
@@ -77,6 +121,7 @@ function deleteModelPack(name) {
       return { success: false, error: "Cannot delete a recommended model pack." };
     }
     delete packs[name];
+    packs._version = PACKS_VERSION;
     try {
       fs.writeFileSync(MODEL_PACKS_FILE, JSON.stringify(packs, null, 2), 'utf-8');
       return { success: true };

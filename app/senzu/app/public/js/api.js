@@ -65,11 +65,13 @@ const api = {
     return res.json();
   },
   
-  async startDownload(repo, filename, type) {
+  async startDownload(repo, filename, type, dest_filename) {
+    const body = { repo, filename, type };
+    if (dest_filename) body.dest_filename = dest_filename;
     const res = await fetch(`${API_BASE}/models/download`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repo, filename, type })
+      body: JSON.stringify(body)
     });
     return res.json();
   },
@@ -100,6 +102,15 @@ const api = {
       const err = await res.json();
       throw new Error(err.error);
     }
+    return res.json();
+  },
+
+  async setDefaultModelPack(name) {
+    const res = await fetch(`${API_BASE}/model-packs/set-default`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
     return res.json();
   },
   

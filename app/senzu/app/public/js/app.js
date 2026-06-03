@@ -52,18 +52,7 @@ document.addEventListener('alpine:init', () => {
       loras: [],
       seedvr2: []
     },
-    
-    // Recommendations check list
-    recommendedModels: {
-      unet: { filename: 'flux-2-klein-9b-kv-fp8.safetensors', repo: 'Lytanshade/Flux2-Klein-9B', desc: 'Recommended Edit UNet (fp8)' },
-      unet_gguf: { filename: 'flux-2-klein-9b-Q4_K_M.gguf', repo: 'city96/Flux-2-Klein-GGUF', desc: 'Recommended Edit UNet (Low VRAM GGUF)' },
-      vae: { filename: 'flux2-vae.safetensors', repo: 'black-forest-labs/FLUX.1-schnell', desc: 'Recommended VAE' },
-      clip: { filename: 'qwen_3_8b_fp8mixed.safetensors', repo: 'Lytanshade/Flux2-Klein-9B', desc: 'Recommended CLIP Text Encoder' },
-      clip_gguf: { filename: 'Qwen3-4B-Q8_0.gguf', repo: 'city96/Flux-2-Klein-GGUF', desc: 'Recommended CLIP Text Encoder (Low VRAM)' },
-      dit: { filename: 'seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors', repo: 'Lytanshade/SeedVR2-Upscaler', desc: 'Recommended SeedVR2 Upscaler DiT' },
-      seedvae: { filename: 'ema_vae_fp16.safetensors', repo: 'Lytanshade/SeedVR2-Upscaler', desc: 'Recommended SeedVR2 VAE' }
-    },
-    
+
     // Active downloads state
     downloadState: {
       filename: '',
@@ -94,14 +83,15 @@ document.addEventListener('alpine:init', () => {
       save_folder: '',
       autosave: false,
       clear_temp_on_start: true,
-      theme: 'Default'
+      theme: 'Default',
+      default_model_pack: ''
     },
     
     // Core parameters mapping
     params: {
       mode: 'full',
-      model_pack: 'FP8 Standard',
-      unet_name: 'flux-2-klein-9b-kv-fp8.safetensors',
+      model_pack: '',
+      unet_name: 'Flux2-Klein-9B-True-v2-fp8mixed.safetensors',
       clip_name: 'qwen_3_8b_fp8mixed.safetensors',
       vae_name: 'flux2-vae.safetensors',
       use_gguf: false,
@@ -115,10 +105,10 @@ document.addEventListener('alpine:init', () => {
       negative_prompt: '',
       
       lora1_enabled: true,
-      lora1_name: '_Flux_LoRA/Flux2_klein/klein9B_adonis_refine.safetensors',
+      lora1_name: 'senzu/klein9B_adonis_refine.safetensors',
       lora1_strength: 1.0,
       lora2_enabled: true,
-      lora2_name: '_Flux_LoRA/Flux2_klein/Flux2-Klein-9B-consistency-V2.safetensors',
+      lora2_name: 'senzu/Flux2-Klein-9B-consistency-V2.safetensors',
       lora2_strength: 0.5,
       lora3_enabled: false, lora3_name: 'none.safetensors', lora3_strength: 0,
       lora4_enabled: false, lora4_name: 'none.safetensors', lora4_strength: 0,
@@ -204,9 +194,9 @@ document.addEventListener('alpine:init', () => {
     async loadPresets() {
       try {
         this.presetsList = await api.getPresets();
-        // Set default prompt preset on launch if not set
-        if (this.presetsList['Default'] && this.params.prompt === '') {
-          this.applyPreset('Default');
+        if (!this.params.prompt) {
+          const firstPreset = Object.keys(this.presetsList)[0];
+          if (firstPreset) this.applyPreset(firstPreset);
         }
       } catch (err) {
         console.error('Failed to load presets:', err);
@@ -261,8 +251,8 @@ document.addEventListener('alpine:init', () => {
     },
     
     async deletePreset(name) {
-      if (name === 'Default') {
-        alert('Cannot delete the Default preset.');
+      if (name === 'Adonis-refine') {
+        alert('Cannot delete the Adonis-refine preset.');
         return;
       }
       if (!confirm(`Are you sure you want to delete preset "${name}"?`)) return;
@@ -321,7 +311,7 @@ document.addEventListener('alpine:init', () => {
       }
     },
     
-    applyModelPack(name) {
+    applyModelPack(name, save) {
       const pack = this.modelPacksList[name];
       if (!pack) return;
       this.params.model_pack = name;
@@ -329,13 +319,27 @@ document.addEventListener('alpine:init', () => {
       this.params.unet_name = pack.unet_name;
       this.params.clip_name = pack.clip_name;
       this.params.vae_name = pack.vae_name;
+      if (save !== false) {
+        this.appSettings.default_model_pack = name;
+        this.saveSettings();
+      }
     },
     
     packModelsInstalled(pack) {
       if (!pack) return false;
-      return this.modelExists(pack.unet_name, 'diffusion_models') &&
+      let allInstalled = this.modelExists(pack.unet_name, 'diffusion_models') &&
              this.modelExists(pack.clip_name, 'text_encoders') &&
              this.modelExists(pack.vae_name, 'vae');
+      if (pack.downloads && pack.downloads.loras && Array.isArray(pack.downloads.loras)) {
+        for (const lora of pack.downloads.loras) {
+          const name = lora.dest_filename || lora.filename;
+          if (!this.modelExists(name, 'loras')) {
+            allInstalled = false;
+            break;
+          }
+        }
+      }
+      return allInstalled;
     },
     
     async saveModelPack() {
@@ -368,10 +372,26 @@ document.addEventListener('alpine:init', () => {
     
     async downloadPackModel(packName, modelType) {
       const pack = this.modelPacksList[packName];
-      if (!pack || !pack.downloads || !pack.downloads[modelType]) return;
+      if (!pack || !pack.downloads) return;
       const dl = pack.downloads[modelType];
+      if (!dl) return;
+      const typeMap = { unet: 'unet', clip: 'text_encoder', vae: 'vae', lora: 'lora' };
+      const apiType = typeMap[modelType] || 'unet';
       try {
-        await api.startDownload(dl.repo, dl.filename, modelType === 'vae' ? 'vae' : (modelType === 'clip' ? 'text_encoder' : 'unet'));
+        await api.startDownload(dl.repo, dl.filename, apiType, dl.dest_filename);
+        this.pollDownloadStatus();
+      } catch (err) {
+        alert('Download error: ' + err.message);
+      }
+    },
+
+    async downloadPackLora(packName, loraIndex) {
+      const pack = this.modelPacksList[packName];
+      if (!pack || !pack.downloads || !pack.downloads.loras) return;
+      const dl = pack.downloads.loras[loraIndex];
+      if (!dl) return;
+      try {
+        await api.startDownload(dl.repo, dl.filename, 'lora', dl.dest_filename);
         this.pollDownloadStatus();
       } catch (err) {
         alert('Download error: ' + err.message);
@@ -382,21 +402,29 @@ document.addEventListener('alpine:init', () => {
       const pack = this.modelPacksList[packName];
       if (!pack || !pack.downloads) return;
       if (!confirm(`Download ALL models for "${packName}"? This may take a while.`)) return;
-      
-      const types = ['unet', 'clip', 'vae'];
-      for (const type of types) {
-        const dl = pack.downloads[type];
-        if (!dl) continue;
-        const category = type === 'vae' ? 'vae' : (type === 'clip' ? 'text_encoders' : 'diffusion_models');
-        if (this.modelExists(dl.filename, category)) continue;
+
+      const allItems = [{ type: 'unet', category: 'diffusion_models', dl: pack.downloads.unet },
+                       { type: 'clip', category: 'text_encoders', dl: pack.downloads.clip },
+                       { type: 'vae', category: 'vae', dl: pack.downloads.vae }];
+      if (pack.downloads.loras && Array.isArray(pack.downloads.loras)) {
+        pack.downloads.loras.forEach((lora, i) => {
+          allItems.push({ type: 'lora', category: 'loras', dl: lora });
+        });
+      }
+
+      for (const item of allItems) {
+        if (!item.dl) continue;
+        const checkName = item.dl.dest_filename || item.dl.filename;
+        if (this.modelExists(checkName, item.category)) continue;
+        const apiTypeMap = { unet: 'unet', clip: 'text_encoder', vae: 'vae', lora: 'lora' };
         try {
-          const res = await api.startDownload(dl.repo, dl.filename, type === 'vae' ? 'vae' : (type === 'clip' ? 'text_encoder' : 'unet'));
+          await api.startDownload(item.dl.repo, item.dl.filename, apiTypeMap[item.type], item.dl.dest_filename);
           this.pollDownloadStatus();
           while (this.downloadState.status === 'downloading') {
             await new Promise(r => setTimeout(r, 500));
           }
         } catch (err) {
-          alert(`Download failed for ${dl.filename}: ${err.message}`);
+          alert(`Download failed for ${item.dl.desc || item.dl.filename}: ${err.message}`);
         }
       }
     },
@@ -459,10 +487,10 @@ document.addEventListener('alpine:init', () => {
       const wasEmpty = this.imageQueue.length === 0 && !this.inputPreview;
       this.imageQueue.push(...items);
       
-      // Auto-scroll queue strip to show new items
+      // Reset queue strip scroll to show first items
       this.$nextTick(() => {
         const strip = document.querySelector('.queue-strip');
-        if (strip) strip.scrollLeft = strip.scrollWidth;
+        if (strip) strip.scrollLeft = 0;
       });
       
       // If nothing is being processed or viewed, load first item
@@ -758,23 +786,6 @@ document.addEventListener('alpine:init', () => {
       payload.save_folder = this.appSettings.save_folder;
       payload.autosave = this.appSettings.autosave;
       
-      // Auto-overwrite model selection based on GGUF flag if not edited
-      if (payload.use_gguf) {
-        if (payload.unet_name === 'flux-2-klein-9b-kv-fp8.safetensors') {
-          payload.unet_name = 'flux-2-klein-9b-Q4_K_M.gguf';
-        }
-        if (payload.clip_name === 'qwen_3_8b_fp8mixed.safetensors') {
-          payload.clip_name = 'Qwen3-4B-Q8_0.gguf';
-        }
-      } else {
-        if (payload.unet_name === 'flux-2-klein-9b-Q4_K_M.gguf') {
-          payload.unet_name = 'flux-2-klein-9b-kv-fp8.safetensors';
-        }
-        if (payload.clip_name === 'Qwen3-4B-Q8_0.gguf') {
-          payload.clip_name = 'qwen_3_8b_fp8mixed.safetensors';
-        }
-      }
-      
       const mode = payload.mode;
       
       while (true) {
@@ -927,9 +938,23 @@ document.addEventListener('alpine:init', () => {
           this.appSettings.autosave = s.autosave || false;
           this.appSettings.clear_temp_on_start = s.clear_temp_on_start !== false;
           this.appSettings.theme = s.theme || 'Default';
+          if (s.default_model_pack) {
+            this.appSettings.default_model_pack = s.default_model_pack;
+            this.applyModelPack(s.default_model_pack, false);
+          }
         }
+        this.applyTheme();
       } catch (err) {
         console.error('Failed to load settings:', err);
+      }
+    },
+    
+    applyTheme() {
+      const t = this.appSettings.theme;
+      if (t && t !== 'Default') {
+        document.documentElement.setAttribute('data-theme', t.toLowerCase());
+      } else {
+        document.documentElement.removeAttribute('data-theme');
       }
     },
     
@@ -939,8 +964,10 @@ document.addEventListener('alpine:init', () => {
           save_folder: this.appSettings.save_folder,
           autosave: this.appSettings.autosave,
           clear_temp_on_start: this.appSettings.clear_temp_on_start,
-          theme: this.appSettings.theme
+          theme: this.appSettings.theme,
+          default_model_pack: this.appSettings.default_model_pack
         });
+        this.applyTheme();
       } catch (err) {
         alert('Failed to save settings: ' + err.message);
       }

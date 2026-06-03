@@ -16,7 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 4242;
 
 // Absolute workspace folders mapping
-const APP_ROOT = path.resolve(__dirname, '../../..');
+const APP_ROOT = path.resolve(__dirname, '../');
 const MODELS_ROOT = path.join(APP_ROOT, 'comfyui/models');
 const OUTPUTS_ROOT = path.join(APP_ROOT, 'outputs');
 const WORKFLOWS_DIR = path.resolve(__dirname, '../workflows');
@@ -224,7 +224,9 @@ app.post('/api/prompts/reset', (req, res) => {
 
 // Model Packs CRUD APIs
 app.get('/api/model-packs', (req, res) => {
-  res.json(modelPacks.loadModelPacks());
+  const packs = modelPacks.loadModelPacks();
+  delete packs._version;
+  res.json(packs);
 });
 
 app.post('/api/model-packs', (req, res) => {
@@ -249,6 +251,18 @@ app.delete('/api/model-packs/:name', (req, res) => {
   } else {
     res.status(result.error === "Cannot delete a recommended model pack." ? 403 : 404)
        .json({ error: result.error });
+  }
+});
+
+app.post('/api/model-packs/set-default', (req, res) => {
+  const { name } = req.body;
+  const s = settings.loadSettings();
+  s.default_model_pack = name || '';
+  const result = settings.saveSettings(s);
+  if (result.success) {
+    res.json({ success: true });
+  } else {
+    res.status(500).json({ error: result.error });
   }
 });
 
@@ -298,7 +312,7 @@ app.post('/api/models/download', (req, res) => {
     return res.status(400).json({ error: "A download is already in progress" });
   }
 
-  const { repo, filename, type } = req.body;
+  const { repo, filename, type, dest_filename } = req.body;
   if (!repo || !filename || !type) {
     return res.status(400).json({ error: "Missing repo, filename, or type" });
   }
@@ -324,11 +338,12 @@ app.post('/api/models/download', (req, res) => {
       return res.status(400).json({ error: "Invalid model type specified" });
   }
 
-  const destPath = path.join(destDir, filename);
+  const destName = dest_filename || filename;
+  const destPath = path.join(destDir, destName);
   const url = `https://huggingface.co/${repo}/resolve/main/${filename}`;
 
   currentDownload = {
-    filename,
+    filename: destName,
     repo,
     progress: 0,
     speed: '0 B/s',

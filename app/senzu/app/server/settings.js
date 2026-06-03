@@ -9,7 +9,8 @@ const DEFAULT_SETTINGS = {
   save_folder: '',
   autosave: false,
   clear_temp_on_start: true,
-  theme: 'Default'
+  theme: 'Default',
+  default_model_pack: ''
 };
 
 function ensureSettingsExist() {

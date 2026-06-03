@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Senzu — Image Enhancer & Upscaler</title>
   
+  <!-- Apply saved theme before page renders (prevents FOUC) -->
+  <script>
+    (async () => {
+      try {
+        const r = await fetch('/api/settings');
+        const s = await r.json();
+        if (s.theme && s.theme !== 'Default') {
+          document.documentElement.setAttribute('data-theme', s.theme.toLowerCase());
+        }
+      } catch (_) {}
+    })();
+  </script>
+  
   <!-- Font Awesome (self-hosted) -->
   <link rel="stylesheet" href="css/fontawesome/all.min.css">
   
@@ -82,17 +95,14 @@
                   </button>
                 </div>
               </template>
-              <div class="queue-add-zone" @click="triggerFileSelect()"
-                   @dragover.prevent @drop.prevent="handleDrop($event)">
-                <i class="fa-solid fa-plus"></i>
-              </div>
             </div>
             
-            <!-- Empty state drop zone -->
-            <div x-show="imageQueue.length === 0" class="compact-upload" @click="triggerFileSelect()"
+            <!-- Drop zone — always visible -->
+            <div class="compact-upload" @click="triggerFileSelect()"
                  @dragover.prevent="() => {}" @drop.prevent="handleDrop($event)">
               <i class="fa-solid fa-cloud-arrow-up"></i>
-              <span>Drop images or click</span>
+              <span x-show="imageQueue.length === 0">Drop images or click</span>
+              <span x-show="imageQueue.length > 0">Drop more images or click</span>
               <input type="file" x-ref="fileInput" @change="handleFileChange($event)" style="display: none;" accept="image/*" multiple>
             </div>
           </div>
@@ -128,14 +138,24 @@
         
         <!-- Panel 2: Quick Preset + Settings Accordions -->
         <div>
-          
+
+          <!-- Model Pack Status Banner -->
+          <div x-show="params.model_pack && modelPacksList[params.model_pack] && !packModelsInstalled(modelPacksList[params.model_pack])" class="onboard-banner onboard-warn">
+            <div class="onboard-banner-content">
+              <i class="fa-solid fa-download onboard-banner-icon"></i>
+              <div>
+                <strong>Models missing for "<span x-text="params.model_pack"></span>"</strong>
+                <p>Visit the <a href="#" @click.prevent="activeTab = 'models'" style="color: inherit; text-decoration: underline; font-weight: 600;">Models tab</a> to download the required models and LoRAs.</p>
+              </div>
+            </div>
+          </div>
+
           <!-- Preset Dropdown Selector -->
           <div class="input-group">
             <label class="input-label">Load Preset</label>
             <select class="input-control" @change="applyPreset($event.target.value)">
-              <option value="">-- Choose Preset --</option>
               <template x-for="(data, name) in presetsList" :key="name">
-                <option :value="name" :selected="name === 'Default'" x-text="name"></option>
+                <option :value="name" x-text="name"></option>
               </template>
             </select>
           </div>
@@ -151,9 +171,8 @@
               <div class="input-group">
                 <label class="input-label">Model Pack</label>
                 <select class="input-control" @change="applyModelPack($event.target.value)">
-                  <option value="">-- Choose Pack --</option>
                   <template x-for="(pack, name) in modelPacksList" :key="name">
-                    <option :value="name" :selected="params.model_pack === name" x-text="name"></option>
+                    <option :value="name" x-text="name"></option>
                   </template>
                 </select>
               </div>
@@ -230,7 +249,7 @@
                     <template x-for="m in models.loras" :key="m">
                       <option :value="m" x-text="m"></option>
                     </template>
-                    <option value="_Flux_LoRA/Flux2_klein/klein9B_adonis_refine.safetensors">adonis_refine (Default)</option>
+                    <option value="senzu/klein9B_adonis_refine.safetensors">adonis_refine (Senzu)</option>
                   </select>
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span class="input-label" style="font-size: 0.75rem;">Strength</span>
@@ -253,7 +272,7 @@
                     <template x-for="m in models.loras" :key="m">
                       <option :value="m" x-text="m"></option>
                     </template>
-                    <option value="_Flux_LoRA/Flux2_klein/Flux2-Klein-9B-consistency-V2.safetensors">consistency-V2 (Default)</option>
+                    <option value="senzu/Flux2-Klein-9B-consistency-V2.safetensors">consistency-V2 (Senzu)</option>
                   </select>
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span class="input-label" style="font-size: 0.75rem;">Strength</span>
@@ -417,7 +436,7 @@
             <div x-show="inputPreview" class="viewer-toolbar-overlay">
               <span x-show="outputQueue.length > 1" class="overlay-counter"
                     x-text="(viewedIndex + 1) + ' / ' + outputQueue.length"></span>
-              <button x-show="outputImage && displayedImage !== 'original'" class="btn-icon-overlay"
+              <button x-show="outputImage && displayedImage !== 'original'" class="btn-icon-overlay btn-save"
                       @click="downloadOutput(displayedImage === 'edit' ? 'edit' : 'final')"
                       :title="'Save ' + (displayedImage === 'edit' ? 'Edit' : 'Upscaled')"
                       :style="lastSavedType === (displayedImage === 'edit' ? 'edit' : 'final') ? 'background: var(--success); color: #000; border-color: transparent;' : ''">
@@ -485,17 +504,14 @@
             
             <!-- Output queue navigation -->
             <div x-show="outputQueue.length > 0" class="output-nav">
-              <div style="display: flex; align-items: center; gap: 8px;" x-show="outputQueue.length > 1">
-                <button class="btn btn-sm" @click="prevOutput()" :disabled="viewedIndex === 0">
-                  <i class="fa-solid fa-chevron-left"></i> Prev
-                </button>
-                <span class="output-nav-count" x-text="'Result ' + (viewedIndex + 1) + ' of ' + outputQueue.length"></span>
-                <button class="btn btn-sm" @click="nextOutput()" :disabled="viewedIndex >= outputQueue.length - 1">
-                  Next <i class="fa-solid fa-chevron-right"></i>
-                </button>
-              </div>
-              <span x-show="outputQueue.length === 1" class="output-nav-count" x-text="'Result 1 of 1'"></span>
-              <div style="display: flex; gap: 6px; margin-left: auto;">
+              <button class="btn btn-sm" x-show="outputQueue.length > 1" @click="prevOutput()" :disabled="viewedIndex === 0" style="flex-shrink: 0;">
+                <i class="fa-solid fa-chevron-left"></i> Prev
+              </button>
+              <span class="output-nav-count" x-text="'Result ' + (viewedIndex + 1) + ' of ' + outputQueue.length"></span>
+              <button class="btn btn-sm" x-show="outputQueue.length > 1" @click="nextOutput()" :disabled="viewedIndex >= outputQueue.length - 1" style="flex-shrink: 0;">
+                Next <i class="fa-solid fa-chevron-right"></i>
+              </button>
+              <div style="display: flex; gap: 6px; margin-left: auto; flex-shrink: 0;">
                 <button class="btn btn-sm" @click="discardCurrentOutput()" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);">
                   <i class="fa-solid fa-trash"></i>
                 </button>
@@ -586,7 +602,7 @@
           <div class="preset-card glass-card" style="background: rgba(255,255,255,0.01);">
             <div style="display: flex; justify-content: space-between; align-items: start; gap: 10px;">
               <h3 x-text="name" style="font-size: 1.1rem; font-weight: 600;"></h3>
-              <button class="btn-danger-sm" @click="deletePreset(name)" x-show="name !== 'Default'" style="padding: 4px 8px;">
+              <button class="btn-danger-sm" @click="deletePreset(name)" x-show="name !== 'Adonis-refine'" style="padding: 4px 8px;">
                 <i class="fa-solid fa-trash"></i>
               </button>
             </div>
@@ -698,16 +714,22 @@
       <div>
         <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;"><i class="fa-solid fa-star"></i> Recommended Model Packs</h3>
         <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1.2rem;">
-          Pre-configured model stacks with one-click downloads. Use these as-is or as starting points for custom packs.
+          Pre-configured model stacks with one-click downloads. Pick one that matches your hardware — they include the essential LoRAs for the default Senzu Detail preset.
         </p>
         
         <div class="model-packs-grid">
           <template x-for="(pack, name) in modelPacksList" :key="name">
             <div x-show="pack.is_recommended" class="model-pack-card recommended" :class="packModelsInstalled(pack) ? 'all-installed' : 'has-missing'">
               <div class="pack-header">
-                <h4 x-text="name" style="font-weight: 700; font-size: 1.05rem;"></h4>
-                <span class="pack-gguf-badge" :class="pack.use_gguf ? 'gguf-on' : 'gguf-off'" x-text="pack.use_gguf ? 'GGUF' : 'Standard'"></span>
+                <div>
+                  <h4 x-text="name" style="font-weight: 700; font-size: 1.05rem;"></h4>
+                  <span class="pack-gguf-badge" :class="pack.use_gguf ? 'gguf-on' : 'gguf-off'" x-text="pack.use_gguf ? 'GGUF' : 'Standard'"></span>
+                </div>
+                <span class="model-status-badge" :class="packModelsInstalled(pack) ? 'installed' : 'missing'"
+                      x-text="packModelsInstalled(pack) ? 'Ready' : 'Setup Needed'" style="font-size: 0.7rem; padding: 3px 10px;"></span>
               </div>
+
+              <p x-show="pack.description" class="pack-description" x-text="pack.description"></p>
               
               <div class="pack-model-row">
                 <div class="pack-model-info">
@@ -756,13 +778,67 @@
                   </button>
                 </div>
               </div>
+
+              <!-- LoRA downloads -->
+              <template x-if="pack.downloads && pack.downloads.loras && Array.isArray(pack.downloads.loras)">
+                <div style="border-top: 1px solid var(--border-glass); margin-top: 8px; padding-top: 8px;">
+                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">
+                    <i class="fa-solid fa-layer-group"></i> Essential LoRAs (included with pack)
+                  </span>
+                  <template x-for="(lora, idx) in pack.downloads.loras" :key="idx">
+                    <div class="pack-model-row" style="padding: 4px 0;">
+                      <div class="pack-model-info">
+                        <span class="pack-model-name" style="font-size: 0.72rem;" x-text="lora.desc"></span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="model-status-badge" :class="modelExists(lora.dest_filename || lora.filename, 'loras') ? 'installed' : 'missing'"
+                              style="font-size: 0.65rem; padding: 2px 8px;"
+                              x-text="modelExists(lora.dest_filename || lora.filename, 'loras') ? 'Installed' : 'Missing'"></span>
+                        <button x-show="!modelExists(lora.dest_filename || lora.filename, 'loras')"
+                                class="btn btn-sm btn-primary" style="font-size: 0.65rem; padding: 3px 8px;"
+                                @click="downloadPackLora(name, idx)" :disabled="downloadState.status === 'downloading'">
+                          <i class="fa-solid fa-download"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
               
               <button class="btn btn-sm" style="margin-top: 10px; width: 100%; background: var(--primary-soft); border-color: rgba(124, 77, 255, 0.3);"
                       @click="downloadPack(name)" :disabled="downloadState.status === 'downloading' || packModelsInstalled(pack)">
-                <i class="fa-solid fa-download"></i> <span x-text="packModelsInstalled(pack) ? 'All Models Installed' : 'Download Pack'"></span>
+                <i class="fa-solid fa-download"></i> <span x-text="packModelsInstalled(pack) ? 'All Installed' : 'Download All'"></span>
               </button>
             </div>
           </template>
+        </div>
+      </div>
+
+      <!-- Official & Full Quality Models Info -->
+      <div style="border-top: 1px solid var(--border-glass); padding-top: 1.5rem;">
+        <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 8px;"><i class="fa-solid fa-circle-info"></i> Quality Notes</h3>
+        <div class="glass-card" style="background: rgba(255,255,255,0.02); font-size: 0.82rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <i class="fa-solid fa-lock" style="color: var(--warning); margin-top: 2px;"></i>
+            <div>
+              <strong style="color: var(--text-primary);">Official Flux2 Klein 9B model is gated</strong>
+              <p>The original 18GB BF16 model requires access approval from Black Forest Labs at <a href="https://huggingface.co/black-forest-labs/FLUX.2-klein-9B" target="_blank" style="color: var(--primary-neon);">huggingface.co/black-forest-labs/FLUX.2-klein-9B</a>. Our recommended packs use freely available finetuned and quantized versions that don't require gated access.</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <i class="fa-solid fa-apple-whole" style="color: var(--text-muted); margin-top: 2px;"></i>
+            <div>
+              <strong style="color: var(--text-primary);">macOS &amp; AMD Users</strong>
+              <p>FP8 safetensors models don't work on macOS/AMD. Choose the <strong>Q8 High Quality</strong> or <strong>Q4 Low VRAM</strong> packs instead. For the best possible quality on these platforms, full-precision GGUF variants are available: <a href="https://huggingface.co/unsloth/FLUX.2-klein-9B-GGUF" target="_blank" style="color: var(--primary-neon);">BF16 GGUF</a> and <a href="https://huggingface.co/unsloth/FLUX.2-klein-9B-GGUF" target="_blank" style="color: var(--primary-neon);">F16 GGUF</a> — download them manually via the Custom Model Packs composer below.</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <i class="fa-solid fa-gem" style="color: var(--primary-neon); margin-top: 2px;"></i>
+            <div>
+              <strong style="color: var(--text-primary);">Quality in = Quality out</strong>
+              <p>Senzu uses cutting-edge diffusion models. Higher precision models (FP8/BF16) produce noticeably better results than heavily quantized ones. We recommend using the highest quality pack your hardware supports.</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -894,10 +970,13 @@
         
         <div class="input-group">
           <label class="input-label">UI Theme</label>
-          <select class="input-control" x-model="appSettings.theme" disabled style="opacity: 0.5;">
-            <option value="Default">Default</option>
+          <select class="input-control" x-model="appSettings.theme" @change="saveSettings()">
+            <option value="Default">Default (Purple)</option>
+            <option value="Pinokio">Pinokio Dark</option>
+            <option value="pinokiolight">Pinokio Light</option>
+            <option value="DBZ">Dragon Ball Z</option>
+            <option value="Light">Light Mode</option>
           </select>
-          <span style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 4px;">Theme support coming soon</span>
         </div>
       </div>
     </div>
