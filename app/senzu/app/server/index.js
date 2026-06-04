@@ -16,7 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 4242;
 
 // Absolute workspace folders mapping
-const APP_ROOT = path.resolve(__dirname, '../../../'); // when installed into z-fusion
+const APP_ROOT = path.resolve(__dirname, '../');
 const MODELS_ROOT = path.join(APP_ROOT, 'comfyui/models');
 const OUTPUTS_ROOT = path.join(APP_ROOT, 'outputs');
 const WORKFLOWS_DIR = path.resolve(__dirname, '../workflows');
@@ -518,6 +518,15 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       const upscaleInputImage = mode === 'full' ? editOutPath : inputImagePath;
       const seedVal = randomizeSeed ? Math.floor(Math.random() * 1000000000) : (parseInt(parsedParams.seed, 10) || 42);
 
+      // Auto-detect device for SeedVR2 (no built-in detection)
+      const isMac = process.platform === 'darwin';
+      const device = parsedParams.device && parsedParams.device !== 'cuda:0'
+        ? parsedParams.device
+        : (isMac ? 'mps' : 'cuda:0');
+      const attention = parsedParams.attention_mode && parsedParams.attention_mode !== 'flash_attn_2'
+        ? parsedParams.attention_mode
+        : (isMac ? 'sdpa' : 'flash_attn_2');
+
       const upscaleParams = {
         image: upscaleInputImage,
         seed: seedVal,
@@ -531,7 +540,7 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
         latent_noise_scale: parseFloat(parsedParams.latent_noise_scale) || 0.0,
         offload_device: parsedParams.offload_device || 'cpu',
         
-        device: parsedParams.device || 'cuda:0',
+        device,
         encode_tiled: parsedParams.encode_tiled !== false,
         encode_tile_size: parseInt(parsedParams.encode_tile_size, 10) || 1024,
         encode_tile_overlap: parseInt(parsedParams.encode_tile_overlap, 10) || 128,
@@ -540,9 +549,9 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
         decode_tile_overlap: parseInt(parsedParams.decode_tile_overlap, 10) || 128,
         
         dit_model: parsedParams.dit_model || 'seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors',
-        dit_device: parsedParams.device || 'cuda:0',
+        dit_device: device,
         blocks_to_swap: parseInt(parsedParams.blocks_to_swap, 10) || 36,
-        attention_mode: parsedParams.attention_mode || 'flash_attn_2'
+        attention_mode: attention
       };
 
       console.log(`[Enhance] Running Upscale Step with workflow senzu_upscale.json...`);
