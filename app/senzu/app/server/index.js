@@ -17,7 +17,7 @@ const app = express();
 const PORT = process.env.PORT || 4242;
 
 // Absolute workspace folders mapping
-const APP_ROOT = path.resolve(__dirname, '../');
+const APP_ROOT = path.resolve(__dirname, '../../../'); // when installed into z-fusion
 const MODELS_ROOT = path.join(APP_ROOT, 'comfyui/models');
 const OUTPUTS_ROOT = path.join(APP_ROOT, 'outputs');
 const WORKFLOWS_DIR = path.resolve(__dirname, '../workflows');
