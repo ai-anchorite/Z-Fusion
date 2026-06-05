@@ -158,6 +158,28 @@ function downloadFileWithProgress(urlStr, destPath, onProgress) {
   });
 }
 
+// Downscale input image for SeedVR2 — gives the model more room to reconstruct detail
+async function downscaleImage(imagePath, maxResolution) {
+  if (maxResolution <= 0) return imagePath;
+  try {
+    const sharp = require('sharp');
+    const meta = await sharp(imagePath).metadata();
+    const longest = Math.max(meta.width, meta.height);
+    console.log(`[Downscale] Input: ${meta.width}x${meta.height}, max: ${maxResolution}, longest: ${longest}`);
+    if (longest <= maxResolution) return imagePath;
+    const scale = maxResolution / longest;
+    const newW = Math.round(meta.width * scale);
+    const newH = Math.round(meta.height * scale);
+    const tmpPath = `${imagePath}_ds.png`;
+    await sharp(imagePath).resize(newW, newH, { kernel: 'lanczos3' }).toFile(tmpPath);
+    console.log(`[Downscale] Resized: ${meta.width}x${meta.height} → ${newW}x${newH}`);
+    return tmpPath;
+  } catch (e) {
+    console.error(`[Downscale] Failed: ${e.message}, returning original`);
+    return imagePath;
+  }
+}
+
 // Presets CRUD APIs
 app.get('/api/presets', (req, res) => {
   res.json(presets.loadPresets());
@@ -520,8 +542,6 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
     if (mode === 'full' || mode === 'upscale') {
       const upscaleWorkflowPath = path.join(WORKFLOWS_DIR, 'senzu_upscale.json');
       
-      // If full mode, intermediate input is the output of edit. Otherwise, original input image
-      const upscaleInputImage = mode === 'full' ? editOutPath : inputImagePath;
       const seedVal = randomizeSeed ? Math.floor(Math.random() * 1000000000) : (parseInt(parsedParams.seed, 10) || 42);
 
       // Auto-detect device for SeedVR2 (no built-in detection)
@@ -532,6 +552,16 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       const attention = parsedParams.attention_mode && parsedParams.attention_mode !== 'flash_attn_2'
         ? parsedParams.attention_mode
         : (isMac ? 'sdpa' : 'flash_attn_2');
+      const offload = parsedParams.offload_device && parsedParams.offload_device !== 'cpu'
+        ? parsedParams.offload_device
+        : (isMac ? 'none' : 'cpu');
+
+      // Downscale input if needed (gives SeedVR2 more room to work)
+      let upscaleInputImage = mode === 'full' ? editOutPath : inputImagePath;
+      const maxInputRes = parseInt(parsedParams.max_input_resolution, 10) || 0;
+      if (maxInputRes > 0) {
+        upscaleInputImage = await downscaleImage(upscaleInputImage, maxInputRes);
+      }
 
       const upscaleParams = {
         image: upscaleInputImage,
@@ -544,7 +574,7 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
         temporal_overlap: parseInt(parsedParams.temporal_overlap, 10) || 0,
         input_noise_scale: parseFloat(parsedParams.input_noise_scale) || 0.0,
         latent_noise_scale: parseFloat(parsedParams.latent_noise_scale) || 0.0,
-        offload_device: parsedParams.offload_device || 'cpu',
+        offload_device: offload,
         
         device,
         encode_tiled: parsedParams.encode_tiled !== false,

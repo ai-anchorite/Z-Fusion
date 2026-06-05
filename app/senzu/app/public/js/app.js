@@ -124,7 +124,7 @@ document.addEventListener('alpine:init', () => {
       color_correction: 'lab',
       resolution: 2048,
       max_resolution: 4096,
-      max_input_resolution: 0,
+      max_input_resolution: 768,
       encode_tiled: true,
       encode_tile_size: 1024,
       encode_tile_overlap: 128,
@@ -483,8 +483,12 @@ document.addEventListener('alpine:init', () => {
     
     addToQueue(files) {
       const items = [];
+      const IMG_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff', 'tif'];
       for (const file of files) {
-        if (!file.type.startsWith('image/')) continue;
+        if (!file.type.startsWith('image/')) {
+          const ext = file.name.split('.').pop().toLowerCase();
+          if (!IMG_EXTS.includes(ext)) continue;
+        }
         items.push({
           id: crypto.randomUUID(),
           file: file,

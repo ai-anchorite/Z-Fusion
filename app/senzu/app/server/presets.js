@@ -37,7 +37,7 @@ const DEFAULT_PRESET = {
     color_correction: "lab",
     resolution: 2048,
     max_resolution: 4096,
-    max_input_resolution: 0,
+    max_input_resolution: 768,
     randomize_seed: true,
     encode_tiled: true,
     encode_tile_size: 1024,

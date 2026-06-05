@@ -298,10 +298,15 @@
               <div class="input-group">
                 <label class="input-label">SeedVR2 DiT Model</label>
                 <select class="input-control" x-model="params.dit_model">
-                  <template x-for="m in models.seedvr2" :key="m">
-                    <option :value="m" x-text="m"></option>
-                  </template>
-                  <option value="seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors">seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors (Default)</option>
+                  <option value="seedvr2_ema_3b_fp16.safetensors">seedvr2_ema_3b_fp16.safetensors</option>
+                  <option value="seedvr2_ema_7b_fp16.safetensors">seedvr2_ema_7b_fp16.safetensors</option>
+                  <option value="seedvr2_ema_7b_sharp_fp16.safetensors">seedvr2_ema_7b_sharp_fp16.safetensors</option>
+                  <option value="seedvr2_ema_3b-Q4_K_M.gguf">seedvr2_ema_3b-Q4_K_M.gguf</option>
+                  <option value="seedvr2_ema_7b-Q4_K_M.gguf">seedvr2_ema_7b-Q4_K_M.gguf</option>
+                  <option value="seedvr2_ema_7b_sharp-Q4_K_M.gguf">seedvr2_ema_7b_sharp-Q4_K_M.gguf</option>
+                  <option value="seedvr2_ema_3b-Q8_0.gguf">seedvr2_ema_3b-Q8_0.gguf</option>
+                  <option value="seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors" selected>seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors</option>
+                  <option value="seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors">seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors</option>
                 </select>
               </div>
               
@@ -324,6 +329,18 @@
                     <option value="8192">8192 px (Ultra)</option>
                   </select>
                 </div>
+              </div>
+
+              <!-- Input Downscale -->
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">Downscale Input</span>
+                  <span class="range-val" x-text="params.max_input_resolution === 0 ? 'Off' : params.max_input_resolution + 'px'"></span>
+                </div>
+                <div class="range-group">
+                  <input type="range" class="range-slider" min="0" max="2048" step="64" x-model="params.max_input_resolution">
+                </div>
+                <span style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 2px;">Resize input to max side before upscale. Gives SeedVR2 more room to reconstruct detail. 0 = off.</span>
               </div>
               
               <div class="form-row">
@@ -356,15 +373,18 @@
                 </div>
                 
                 <div class="input-group">
-                  <label class="input-label">Blocks to Swap</label>
-                  <select class="input-control" x-model="params.blocks_to_swap">
-                    <option value="0">0 (Max VRAM Speed)</option>
-                    <option value="18">18 (Balanced)</option>
-                    <option value="36">36 (Low VRAM Offload)</option>
-                  </select>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span class="input-label">Blocks to Swap</span>
+                    <span class="range-val" x-text="params.blocks_to_swap"></span>
+                  </div>
+                  <div class="range-group">
+                    <input type="range" class="range-slider" min="0" max="36" step="2" x-model="params.blocks_to_swap">
+                  </div>
+                  <span style="font-size: 0.68rem; color: var(--text-muted); display: block; margin-top: 2px;">0 = max speed, 36 = max VRAM savings</span>
                 </div>
               </div>
               
+              <!-- Tiled Encoding -->
               <div class="flex-switch" style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px;">
                 <span class="switch-label">Tiled Encoding</span>
                 <label class="switch-control">
@@ -372,13 +392,54 @@
                   <span class="switch-slider"></span>
                 </label>
               </div>
+              <div x-show="params.encode_tiled" class="form-row">
+                <div class="input-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <span class="input-label">Encode Tile Size</span>
+                    <span class="range-val" x-text="params.encode_tile_size"></span>
+                  </div>
+                  <div class="range-group">
+                    <input type="range" class="range-slider" min="256" max="2048" step="128" x-model="params.encode_tile_size">
+                  </div>
+                </div>
+                <div class="input-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <span class="input-label">Encode Overlap</span>
+                    <span class="range-val" x-text="params.encode_tile_overlap"></span>
+                  </div>
+                  <div class="range-group">
+                    <input type="range" class="range-slider" min="0" max="256" step="16" x-model="params.encode_tile_overlap">
+                  </div>
+                </div>
+              </div>
               
+              <!-- Tiled Decoding -->
               <div class="flex-switch">
                 <span class="switch-label">Tiled Decoding</span>
                 <label class="switch-control">
                   <input type="checkbox" x-model="params.decode_tiled">
                   <span class="switch-slider"></span>
                 </label>
+              </div>
+              <div x-show="params.decode_tiled" class="form-row">
+                <div class="input-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <span class="input-label">Decode Tile Size</span>
+                    <span class="range-val" x-text="params.decode_tile_size"></span>
+                  </div>
+                  <div class="range-group">
+                    <input type="range" class="range-slider" min="256" max="2048" step="128" x-model="params.decode_tile_size">
+                  </div>
+                </div>
+                <div class="input-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <span class="input-label">Decode Overlap</span>
+                    <span class="range-val" x-text="params.decode_tile_overlap"></span>
+                  </div>
+                  <div class="range-group">
+                    <input type="range" class="range-slider" min="0" max="256" step="16" x-model="params.decode_tile_overlap">
+                  </div>
+                </div>
               </div>
             </div>
           </div>
