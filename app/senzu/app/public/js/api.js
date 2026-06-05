@@ -5,6 +5,11 @@ const api = {
     const res = await fetch(`${API_BASE}/status`);
     return res.json();
   },
+
+  async getSystemStats() {
+    const res = await fetch(`${API_BASE}/system-stats`);
+    return res.json();
+  },
   
   async getPresets() {
     const res = await fetch(`${API_BASE}/presets`);

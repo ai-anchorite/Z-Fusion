@@ -363,6 +363,58 @@ nav {
   border-color: rgba(255, 82, 82, 0.2);
 }
 
+/* System hardware monitor */
+.sys-monitor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border-glass);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sys-monitor-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.sys-monitor-item i {
+  font-size: 0.7rem;
+}
+
+.sys-monitor-vram {
+  gap: 6px;
+}
+
+.sys-monitor-bar {
+  width: 48px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.sys-monitor-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--success);
+  transition: width 0.8s ease, background 0.5s;
+}
+
+.sys-monitor-fill.warn {
+  background: var(--warning);
+}
+
+.sys-monitor-fill.danger {
+  background: var(--danger);
+}
+
 .indicator-dot {
   width: 8px;
   height: 8px;

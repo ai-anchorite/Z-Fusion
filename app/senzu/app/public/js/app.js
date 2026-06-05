@@ -9,6 +9,9 @@ document.addEventListener('alpine:init', () => {
     processTime: 0,
     processTimer: null,
     statusText: 'Idle',
+
+    // System monitor
+    sysStats: { gpu: null, ram: { used: 0, total: 0 }, available: false },
     
     // File upload — input queue
     imageQueue: [],           // { id, file, preview, name, status }
@@ -146,6 +149,7 @@ document.addEventListener('alpine:init', () => {
         this.loadSettings();
         
         setInterval(() => this.checkStatus(), 5000);
+        setInterval(() => this.checkSysStats(), 5000);
         this.pollDownloadStatus();
         
         // Global slider drag: continue tracking even when cursor leaves container
@@ -188,6 +192,14 @@ document.addEventListener('alpine:init', () => {
         this.comfyOnline = data.comfyOnline;
       } catch (err) {
         this.comfyOnline = false;
+      }
+    },
+
+    async checkSysStats() {
+      try {
+        this.sysStats = await api.getSystemStats();
+      } catch (err) {
+        this.sysStats.available = false;
       }
     },
     

@@ -44,6 +44,24 @@
           <div class="indicator-dot"></div>
           <span x-text="comfyOnline ? 'ComfyUI Online' : 'ComfyUI Offline'">ComfyUI Checking...</span>
         </div>
+
+        <!-- System Monitor -->
+        <div x-show="sysStats.available" class="sys-monitor">
+          <div class="sys-monitor-item" :title="sysStats.gpu.name">
+            <i class="fa-solid fa-microchip"></i>
+            <span x-text="sysStats.gpu.temperature + '°C'"></span>
+          </div>
+          <div class="sys-monitor-item sys-monitor-vram">
+            <div class="sys-monitor-bar">
+              <div class="sys-monitor-fill" :style="'width:' + ((sysStats.gpu.memory_used / sysStats.gpu.memory_total) * 100) + '%'"
+                   :class="(sysStats.gpu.memory_used / sysStats.gpu.memory_total) > 0.9 ? 'danger' : (sysStats.gpu.memory_used / sysStats.gpu.memory_total) > 0.75 ? 'warn' : ''"></div>
+            </div>
+            <span x-text="sysStats.gpu.memory_used + '/' + sysStats.gpu.memory_total + 'GB'"></span>
+          </div>
+          <div class="sys-monitor-item">
+            <span x-text="'RAM ' + sysStats.ram.used + '/' + sysStats.ram.total + 'GB'"></span>
+          </div>
+        </div>
       </div>
       
       <div class="logo-section">

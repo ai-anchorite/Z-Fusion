@@ -11,6 +11,7 @@ const presets = require('./presets');
 const prompts = require('./prompts');
 const modelPacks = require('./model-packs');
 const settings = require('./settings');
+const sysStats = require('./system-stats');
 
 const app = express();
 const PORT = process.env.PORT || 4242;
@@ -300,6 +301,11 @@ app.get('/api/models', (req, res) => {
 app.get('/api/status', async (req, res) => {
   const isOnline = await comfy.checkComfyOnline();
   res.json({ comfyOnline: isOnline });
+});
+
+// System hardware stats
+app.get('/api/system-stats', (req, res) => {
+  res.json(sysStats.getStats());
 });
 
 // HF Model Download APIs
