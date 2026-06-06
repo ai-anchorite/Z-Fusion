@@ -652,7 +652,7 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`=================================================`);
   console.log(`Senzu Backend is running on port ${PORT}`);
   console.log(`Access at http://localhost:${PORT}`);

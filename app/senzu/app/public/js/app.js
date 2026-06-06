@@ -481,7 +481,7 @@ document.addEventListener('alpine:init', () => {
       this.addToQueue(Array.from(dt.files));
     },
     
-    addToQueue(files) {
+    async addToQueue(files) {
       const items = [];
       const IMG_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff', 'tif'];
       for (const file of files) {
@@ -490,9 +490,9 @@ document.addEventListener('alpine:init', () => {
           if (!IMG_EXTS.includes(ext)) continue;
         }
         items.push({
-          id: crypto.randomUUID(),
+          id: (crypto.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2)),
           file: file,
-          preview: URL.createObjectURL(file),
+          preview: await this.readFileAsDataURL(file),
           name: file.name,
           status: 'pending',
           size: this.formatFileSize(file.size)
@@ -520,7 +520,7 @@ document.addEventListener('alpine:init', () => {
       if (!item) return;
       if (item.status === 'processing') return;
       
-      if (item.preview) URL.revokeObjectURL(item.preview);
+      if (item.preview) this.revokePreview(item.preview);
       this.imageQueue.splice(idx, 1);
       
       // If this was the active input, switch to next pending
@@ -548,7 +548,7 @@ document.addEventListener('alpine:init', () => {
     },
     
     clearViewer() {
-      if (this.inputPreview) URL.revokeObjectURL(this.inputPreview);
+      if (this.inputPreview) this.revokePreview(this.inputPreview);
       this.inputFile = null;
       this.inputPreview = null;
       this.outputImage = null;
@@ -574,7 +574,7 @@ document.addEventListener('alpine:init', () => {
     removeInput() {
       // Legacy hook — clears queue entirely
       for (const item of this.imageQueue) {
-        if (item.preview) URL.revokeObjectURL(item.preview);
+        if (item.preview) this.revokePreview(item.preview);
       }
       this.imageQueue = [];
       this.clearViewer();
@@ -764,7 +764,7 @@ document.addEventListener('alpine:init', () => {
     discardCurrentOutput() {
       if (this.outputQueue.length === 0) return;
       const entry = this.outputQueue[this.viewedIndex];
-      if (entry && entry.inputPreview) URL.revokeObjectURL(entry.inputPreview);
+      if (entry && entry.inputPreview) this.revokePreview(entry.inputPreview);
       this.outputQueue.splice(this.viewedIndex, 1);
       if (this.outputQueue.length === 0) {
         this.clearViewer();
@@ -778,7 +778,7 @@ document.addEventListener('alpine:init', () => {
     clearOutputQueue() {
       if (!confirm(`Discard all ${this.outputQueue.length} results? Unsaved outputs will be lost.`)) return;
       for (const entry of this.outputQueue) {
-        if (entry.inputPreview) URL.revokeObjectURL(entry.inputPreview);
+        if (entry.inputPreview) this.revokePreview(entry.inputPreview);
       }
       this.outputQueue = [];
       this.viewedIndex = 0;
@@ -863,7 +863,7 @@ document.addEventListener('alpine:init', () => {
         // Remove processed item from queue
         const inOutputQueue = this.outputQueue.some(o => o.inputPreview === item.preview);
         if (item.preview !== this.inputPreview && !inOutputQueue) {
-          URL.revokeObjectURL(item.preview);
+          this.revokePreview(item.preview);
         }
         this.imageQueue.splice(idx, 1);
         
@@ -899,6 +899,19 @@ document.addEventListener('alpine:init', () => {
       if (bytes < 1024) return bytes + ' B';
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    },
+
+    readFileAsDataURL(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    },
+
+    revokePreview(url) {
+      if (url && url.startsWith('blob:')) this.revokePreview(url);
     },
     
     // Slider: fixed to container window (industry-standard approach)
