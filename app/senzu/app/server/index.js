@@ -16,8 +16,19 @@ const sysStats = require('./system-stats');
 const app = express();
 const PORT = process.env.PORT || 4242;
 
-// Absolute workspace folders mapping
-const APP_ROOT = path.resolve(__dirname, '../../../'); // when installed into z-fusion
+// Auto-detect project root: standalone vs nested inside z-fusion
+const candidateRoots = [
+  path.resolve(__dirname, '../'),        // standalone: server/ → app/ → Senzu/
+  path.resolve(__dirname, '../../../'),  // nested:     server/ → app/ → Senzu/ → Z-Fusion/
+];
+let APP_ROOT = candidateRoots[0];
+for (const r of candidateRoots) {
+  if (fs.existsSync(path.join(r, 'comfyui/models'))) {
+    APP_ROOT = r;
+    break;
+  }
+}
+
 const MODELS_ROOT = path.join(APP_ROOT, 'comfyui/models');
 const OUTPUTS_ROOT = path.join(APP_ROOT, 'outputs');
 const WORKFLOWS_DIR = path.resolve(__dirname, '../workflows');

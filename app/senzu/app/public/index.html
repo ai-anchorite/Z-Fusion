@@ -48,18 +48,13 @@
         <!-- System Monitor -->
         <div x-show="sysStats.available" class="sys-monitor">
           <div class="sys-monitor-item" :title="sysStats.gpu.name">
-            <i class="fa-solid fa-microchip"></i>
             <span x-text="sysStats.gpu.temperature + '°C'"></span>
           </div>
-          <div class="sys-monitor-item sys-monitor-vram">
-            <div class="sys-monitor-bar">
-              <div class="sys-monitor-fill" :style="'width:' + ((sysStats.gpu.memory_used / sysStats.gpu.memory_total) * 100) + '%'"
-                   :class="(sysStats.gpu.memory_used / sysStats.gpu.memory_total) > 0.9 ? 'danger' : (sysStats.gpu.memory_used / sysStats.gpu.memory_total) > 0.75 ? 'warn' : ''"></div>
-            </div>
+          <div class="sys-monitor-item" :title="'VRAM'">
             <span x-text="sysStats.gpu.memory_used + '/' + sysStats.gpu.memory_total + 'GB'"></span>
           </div>
-          <div class="sys-monitor-item">
-            <span x-text="'RAM ' + sysStats.ram.used + '/' + sysStats.ram.total + 'GB'"></span>
+          <div class="sys-monitor-item" title="RAM">
+            <span x-text="sysStats.ram.used + '/' + sysStats.ram.total + 'GB'"></span>
           </div>
         </div>
       </div>
@@ -158,7 +153,7 @@
         <div>
 
           <!-- Model Pack Status Banner -->
-          <div x-show="params.model_pack && modelPacksList[params.model_pack] && !packModelsInstalled(modelPacksList[params.model_pack])" class="onboard-banner onboard-warn">
+          <div x-show="showModelNag" class="onboard-banner onboard-warn">
             <div class="onboard-banner-content">
               <i class="fa-solid fa-download onboard-banner-icon"></i>
               <div>

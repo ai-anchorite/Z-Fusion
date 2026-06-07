@@ -75,6 +75,7 @@ document.addEventListener('alpine:init', () => {
     newPresetName: '',
     newPromptName: '',
     newPromptContent: '',
+    showModelNag: false,
     
     // Model packs
     modelPacksList: {},
@@ -226,6 +227,7 @@ document.addEventListener('alpine:init', () => {
     async loadModels() {
       try {
         this.models = await api.getModels();
+        this.updateModelNag();
       } catch (err) {
         console.error('Failed to scan models:', err);
       }
@@ -318,6 +320,7 @@ document.addEventListener('alpine:init', () => {
     async loadModelPacks() {
       try {
         this.modelPacksList = await api.getModelPacks();
+        this.updateModelNag();
       } catch (err) {
         console.error('Failed to load model packs:', err);
       }
@@ -335,6 +338,7 @@ document.addEventListener('alpine:init', () => {
         this.appSettings.default_model_pack = name;
         this.saveSettings();
       }
+      this.updateModelNag();
     },
     
     packModelsInstalled(pack) {
@@ -352,6 +356,17 @@ document.addEventListener('alpine:init', () => {
         }
       }
       return allInstalled;
+    },
+
+    anyPackInstalled() {
+      for (const name of Object.keys(this.modelPacksList)) {
+        if (this.packModelsInstalled(this.modelPacksList[name])) return true;
+      }
+      return false;
+    },
+
+    updateModelNag() {
+      this.showModelNag = this.params.model_pack && this.modelPacksList[this.params.model_pack] && !this.anyPackInstalled();
     },
     
     async saveModelPack() {
