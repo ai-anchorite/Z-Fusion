@@ -18,8 +18,8 @@ const PORT = process.env.PORT || 4242;
 
 // Auto-detect project root: standalone vs nested inside z-fusion
 const candidateRoots = [
-  path.resolve(__dirname, '../'),        // standalone: server/ → app/ → Senzu/
-  path.resolve(__dirname, '../../../'),  // nested:     server/ → app/ → Senzu/ → Z-Fusion/
+  path.resolve(__dirname, '../../../'),    // nested:     server/ → app/ → Senzu/ → Z-Fusion/
+  path.resolve(__dirname, '../'),          // standalone: server/ → app/ → Senzu/n/
 ];
 let APP_ROOT = candidateRoots[0];
 for (const r of candidateRoots) {
