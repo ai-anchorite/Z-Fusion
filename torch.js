@@ -11,6 +11,7 @@ module.exports = {
           "uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130 --force-reinstall --no-deps",
           "uv pip install triton-windows==3.3.1.post19",
           "uv pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.26/flash_attn-2.8.3+cu130torch2.12-cp310-cp310-win_amd64.whl",
+          "uv pip uninstall sageattention"
         ]
       }
     },
