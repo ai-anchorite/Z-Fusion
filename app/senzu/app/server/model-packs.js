@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const DATA_DIR = path.join(__dirname, '../data');
 const MODEL_PACKS_FILE = path.join(DATA_DIR, 'senzu-model-packs.json');
-const PACKS_VERSION = 2;
+const PACKS_VERSION = 3;
 
 const DEFAULT_PACKS = {
   "FP8 Standard": {
@@ -55,6 +55,19 @@ const DEFAULT_PACKS = {
         { repo: "n8te0/adonis_flux2klein", filename: "adonis_refine.safetensors", dest_filename: "senzu/klein9B_adonis_refine.safetensors", desc: "Adonis Refine LoRA", size: "~1.5GB" },
         { repo: "dx8152/Flux2-Klein-9B-Consistency", filename: "Flux2-Klein-9B-consistency-V2.safetensors", dest_filename: "senzu/Flux2-Klein-9B-consistency-V2.safetensors", desc: "Consistency V2 LoRA", size: "~1.5GB" }
       ]
+    }
+  },
+  "Krea2 Standard": {
+    use_gguf: false,
+    unet_name: "krea2_turbo_fp8_scaled.safetensors",
+    clip_name: "qwen3vl_4b_fp8_scaled.safetensors",
+    vae_name: "qwen_image_vae.safetensors",
+    is_recommended: true,
+    description: "Krea2 Turbo T2I model. Requires ~18GB VRAM. Fast 8-step generation.",
+    downloads: {
+      unet: { repo: "Comfy-Org/Krea-2", filename: "diffusion_models/krea2_turbo_fp8_scaled.safetensors", dest_filename: "krea2_turbo_fp8_scaled.safetensors", desc: "Krea2 Turbo Diffusion (FP8)", size: "~13GB" },
+      clip: { repo: "Comfy-Org/Krea-2", filename: "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", dest_filename: "qwen3vl_4b_fp8_scaled.safetensors", desc: "Qwen3-VL 4B TE (FP8)", size: "~5GB" },
+      vae: { repo: "Comfy-Org/Krea-2", filename: "vae/qwen_image_vae.safetensors", dest_filename: "qwen_image_vae.safetensors", desc: "Krea2 VAE", size: "~0.25GB" }
     }
   }
 };

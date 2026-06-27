@@ -12,6 +12,7 @@ const prompts = require('./prompts');
 const modelPacks = require('./model-packs');
 const settings = require('./settings');
 const sysStats = require('./system-stats');
+const enhancerPrompts = require('./enhancer-prompts');
 
 const app = express();
 const PORT = process.env.PORT || 4242;
@@ -256,6 +257,23 @@ app.post('/api/prompts/reset', (req, res) => {
   }
 });
 
+// Enhancer Prompt Presets
+app.get('/api/enhancer-prompts', (req, res) => {
+  res.json(enhancerPrompts.load());
+});
+
+app.post('/api/enhancer-prompts', (req, res) => {
+  const { name, content } = req.body;
+  if (!name || !content) return res.status(400).json({ error: "Missing name or content" });
+  enhancerPrompts.save(name, content);
+  res.json({ success: true });
+});
+
+app.delete('/api/enhancer-prompts/:name', (req, res) => {
+  const ok = enhancerPrompts.delete(req.params.name);
+  ok ? res.json({ success: true }) : res.status(404).json({ error: "Not found" });
+});
+
 // Model Packs CRUD APIs
 app.get('/api/model-packs', (req, res) => {
   const packs = modelPacks.loadModelPacks();
@@ -339,6 +357,11 @@ app.get('/api/status', async (req, res) => {
 // System hardware stats
 app.get('/api/system-stats', (req, res) => {
   res.json(sysStats.getStats());
+});
+
+// ComfyUI sampler/scheduler options
+app.get('/api/comfyui-samplers', async (req, res) => {
+  res.json(await comfy.fetchSamplers());
 });
 
 // HF Model Download APIs
@@ -462,6 +485,85 @@ app.post('/api/outputs/save', (req, res) => {
 app.post('/api/outputs/clear-temp', (req, res) => {
   const result = settings.clearTempOutputs(OUTPUT_TEMP_DIR);
   res.json(result);
+});
+
+// Image Generation API (Krea2 T2I)
+app.post('/api/generate', async (req, res) => {
+  try {
+    const isOnline = await comfy.checkComfyOnline();
+    if (!isOnline) {
+      return res.status(503).json({ error: "ComfyUI backend is offline. Please launch ComfyUI first." });
+    }
+
+    const { parameters: rawParams } = req.body;
+    let parsedParams = {};
+    if (rawParams) {
+      try {
+        parsedParams = typeof rawParams === 'string' ? JSON.parse(rawParams) : rawParams;
+      } catch (err) {
+        return res.status(400).json({ error: "Invalid parameters format" });
+      }
+    }
+
+    if (!parsedParams.prompt || !parsedParams.prompt.trim()) {
+      return res.status(400).json({ error: "Prompt is required" });
+    }
+
+    const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_krea2_t2i.json');
+    const randomizeSeed = parsedParams.randomize_seed !== false;
+    const seedVal = randomizeSeed ? Math.floor(Math.random() * 1000000000) : (parseInt(parsedParams.seed, 10) || 0);
+
+    const width = parseInt(parsedParams.width, 10) || 1024;
+    const height = parseInt(parsedParams.height, 10) || 1024;
+
+    const genParams = {
+      width,
+      height,
+      unet_name: parsedParams.unet_name || 'krea2_turbo_fp8_scaled.safetensors',
+      vae_name: parsedParams.vae_name || 'qwen_image_vae.safetensors',
+      clip_name: parsedParams.clip_name || 'qwen3vl_4b_fp8_scaled.safetensors',
+      seed: seedVal,
+      steps: parseInt(parsedParams.steps, 10) || 8,
+      cfg: parseFloat(parsedParams.cfg) || 1.0,
+      sampler_name: parsedParams.sampler_name || 'euler',
+      scheduler: parsedParams.scheduler || 'beta',
+      prompt: parsedParams.prompt,
+      enable_prompt_enhancer: parsedParams.enable_prompt_enhancer === true,
+      lora1_name: parsedParams.lora1_enabled ? parsedParams.lora1_name : 'none.safetensors',
+      lora1_strength: parsedParams.lora1_enabled ? parseFloat(parsedParams.lora1_strength) : 0,
+      lora2_name: parsedParams.lora2_enabled ? parsedParams.lora2_name : 'none.safetensors',
+      lora2_strength: parsedParams.lora2_enabled ? parseFloat(parsedParams.lora2_strength) : 0,
+      lora3_name: parsedParams.lora3_enabled ? parsedParams.lora3_name : 'none.safetensors',
+      lora3_strength: parsedParams.lora3_enabled ? parseFloat(parsedParams.lora3_strength) : 0,
+      lora4_name: parsedParams.lora4_enabled ? parsedParams.lora4_name : 'none.safetensors',
+      lora4_strength: parsedParams.lora4_enabled ? parseFloat(parsedParams.lora4_strength) : 0,
+      lora5_name: parsedParams.lora5_enabled ? parsedParams.lora5_name : 'none.safetensors',
+      lora5_strength: parsedParams.lora5_enabled ? parseFloat(parsedParams.lora5_strength) : 0,
+      lora6_name: parsedParams.lora6_enabled ? parsedParams.lora6_name : 'none.safetensors',
+      lora6_strength: parsedParams.lora6_enabled ? parseFloat(parsedParams.lora6_strength) : 0
+    };
+    if (parsedParams.system_prompt) {
+      genParams.system_prompt = parsedParams.system_prompt;
+    }
+
+    console.log(`[Generate] Running Krea2 T2I: "${parsedParams.prompt.substring(0, 80)}..."`);
+    const result = await comfy.runWorkflow(workflowPath, 'krea2_t2i', genParams);
+
+    const timestamp = Date.now();
+    const outPath = path.join(OUTPUT_TEMP_DIR, `gen_${timestamp}.png`);
+    await comfy.downloadComfyImage(result.filename, result.subfolder, result.type, outPath);
+    console.log(`[Generate] Complete. Saved to ${outPath}`);
+
+    res.json({
+      success: true,
+      output: `/temp-outputs/${path.basename(outPath)}`,
+      enhanced_prompt: result.text || null
+    });
+
+  } catch (err) {
+    console.error("Generation error:", err);
+    res.status(500).json({ error: err.message || "An unexpected error occurred during generation." });
+  }
 });
 
 // Unified Enhance API (supports upload + execution)

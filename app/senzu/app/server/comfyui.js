@@ -278,13 +278,39 @@ async function runWorkflow(workflowPath, mode, params, progressCallback) {
   if (!imageOutput) {
     throw new Error("No output image found in ComfyUI execution history.");
   }
+
+  // Extract text outputs (e.g. enhanced prompts from TextGenerate/PreviewAny nodes)
+  let textOutput = null;
+  if (historyResult.outputs) {
+    for (const [nodeId, out] of Object.entries(historyResult.outputs)) {
+      if (out.text && out.text.length > 0) {
+        textOutput = out.text[0];
+        break;
+      }
+    }
+  }
   
   return {
     filename: imageOutput.filename,
     subfolder: imageOutput.subfolder,
     type: imageOutput.type,
-    prompt_id: promptId
+    prompt_id: promptId,
+    text: textOutput
   };
+}
+
+async function fetchSamplers() {
+  const FALLBACK_SAMPLERS = ["euler", "euler_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde", "res_multistep"];
+  const FALLBACK_SCHEDULERS = ["simple", "normal", "karras", "exponential", "sgm_uniform", "beta"];
+  try {
+    const data = await getJSON(`${COMFY_URL}/object_info/KSampler`);
+    const required = data?.KSampler?.input?.required || {};
+    const samplers = required.sampler_name?.[0] || FALLBACK_SAMPLERS;
+    const schedulers = required.scheduler?.[0] || FALLBACK_SCHEDULERS;
+    return { samplers, schedulers };
+  } catch (_) {
+    return { samplers: FALLBACK_SAMPLERS, schedulers: FALLBACK_SCHEDULERS };
+  }
 }
 
 module.exports = {
@@ -292,5 +318,6 @@ module.exports = {
   uploadImage,
   downloadComfyImage,
   runWorkflow,
+  fetchSamplers,
   COMFY_URL
 };

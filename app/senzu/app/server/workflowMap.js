@@ -52,5 +52,32 @@ module.exports = {
     dit_device: { node: "14", field: "device" },
     blocks_to_swap: { node: "14", field: "blocks_to_swap" },
     attention_mode: { node: "14", field: "attention_mode" }
+  },
+  krea2_t2i: {
+    width: { node: "52", field: "width" },
+    height: { node: "52", field: "height" },
+    unet_name: { node: "54", field: "unet_name" },
+    vae_name: { node: "55", field: "vae_name" },
+    clip_name: { node: "69", field: "clip_name" },
+    seed: { node: "63", field: "seed" },
+    steps: { node: "63", field: "steps" },
+    cfg: { node: "63", field: "cfg" },
+    sampler_name: { node: "63", field: "sampler_name" },
+    scheduler: { node: "63", field: "scheduler" },
+    prompt: { node: "59", field: "value" },
+    system_prompt: { node: "67", field: "value" },
+    enable_prompt_enhancer: { node: "65", field: "value" },
+    lora1_name: { node: "64", field: "lora_name" },
+    lora1_strength: { node: "64", field: "strength_model" },
+    lora2_name: { node: "73", field: "lora_name" },
+    lora2_strength: { node: "73", field: "strength_model" },
+    lora3_name: { node: "74", field: "lora_name" },
+    lora3_strength: { node: "74", field: "strength_model" },
+    lora4_name: { node: "75", field: "lora_name" },
+    lora4_strength: { node: "75", field: "strength_model" },
+    lora5_name: { node: "76", field: "lora_name" },
+    lora5_strength: { node: "76", field: "strength_model" },
+    lora6_name: { node: "77", field: "lora_name" },
+    lora6_strength: { node: "77", field: "strength_model" }
   }
 };

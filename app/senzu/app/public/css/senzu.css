@@ -1614,6 +1614,13 @@ input:checked + .switch-slider:before {
   box-shadow: 0 0 12px rgba(124, 77, 255, 0.2);
 }
 
+.mode-toggle-btn-sm {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
 /* Form layout two-column inputs inside accordions */
 .form-row {
   display: grid;

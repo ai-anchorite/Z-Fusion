@@ -64,6 +64,9 @@
           <button class="nav-btn" :class="activeTab === 'enhance' ? 'active' : ''" @click="activeTab = 'enhance'">
             <i class="fa-solid fa-wand-magic-sparkles"></i> Enhancer
           </button>
+          <button class="nav-btn" :class="activeTab === 'generate' ? 'active' : ''" @click="activeTab = 'generate'">
+            <i class="fa-solid fa-bolt"></i> Generate
+          </button>
           <button class="nav-btn" :class="activeTab === 'presets' ? 'active' : ''" @click="activeTab = 'presets'">
             <i class="fa-solid fa-sliders"></i> Presets
           </button>
@@ -241,7 +244,7 @@
           </div>
         </div>
           
-          <!-- LoRA Accordion -->
+        <!-- LoRA Accordion -->
           <div x-show="params.mode === 'full' || params.mode === 'edit'" class="accordion" :class="activeAccordion === 'lora' ? 'active' : ''">
             <div class="accordion-header" @click="toggleAccordion('lora')">
               <h3><i class="fa-solid fa-layer-group"></i> LoRA Configuration</h3>
@@ -1034,6 +1037,333 @@
           </select>
         </div>
       </div>
+    </div>
+
+    <!-- Generate Tab View (Krea2 T2I) -->
+    <div x-show="activeTab === 'generate'" class="main-grid" :class="{'sidebar-collapsed': !sidebarOpen}">
+      
+      <!-- Left Sidebar -->
+      <div class="sidebar-panel">
+        
+        <div class="glass-card" style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem;">
+
+          <!-- Prompt -->
+          <div class="input-group" style="margin-bottom: 0;">
+            <label class="input-label">Prompt</label>
+            <textarea class="input-control" x-model="genParams.prompt" placeholder="Describe the image you want to generate..." style="min-height: 120px;"></textarea>
+          </div>
+
+          <!-- Prompt Enhancer Toggle -->
+          <div class="flex-switch">
+            <div>
+              <span class="switch-label">Prompt Enhancer</span>
+              <span style="display: block; font-size: 0.68rem; color: var(--text-muted);">Auto-expand prompt for better results</span>
+            </div>
+            <label class="switch-control">
+              <input type="checkbox" x-model="genParams.enable_prompt_enhancer">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <!-- Generate Button -->
+          <button class="btn btn-primary" :disabled="genProcessing || !genParams.prompt.trim() || !comfyOnline" @click="startGeneration()" style="padding: 14px 20px; font-size: 1.05rem;">
+            <span x-show="!genProcessing"><i class="fa-solid fa-bolt"></i> Generate</span>
+            <span x-show="genProcessing"><i class="fa-solid fa-circle-notch fa-spin"></i> Generating...</span>
+          </button>
+
+          <!-- Resolution Selector -->
+          <div>
+            <span class="input-label">Resolution</span>
+            <div style="display: flex; gap: 6px;">
+              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1024 ? 'active' : ''" @click="genParams.base_size = 1024; updateResolutions()">1024</button>
+              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1280 ? 'active' : ''" @click="genParams.base_size = 1280; updateResolutions()">1280</button>
+              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1536 ? 'active' : ''" @click="genParams.base_size = 1536; updateResolutions()">1536</button>
+              <select class="input-control" x-model="genParams.selected_res" @change="applyResolutionLabel(genParams.selected_res)" style="flex-grow: 1; min-width: 0;">
+                <template x-for="r in genResolutions" :key="r.label">
+                  <option :value="r.label" :disabled="r.section === 'header'" x-text="r.label"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+        </div>
+
+        <div>
+        <!-- Model Settings Accordion -->
+        <div class="accordion" :class="activeAccordion === 'gen_model' ? 'active' : ''">
+          <div class="accordion-header" @click="toggleAccordion('gen_model')">
+            <h3><i class="fa-solid fa-microchip"></i> Model Settings</h3>
+            <i class="fa-solid fa-chevron-down accordion-icon"></i>
+          </div>
+          <div x-show="activeAccordion === 'gen_model'" class="accordion-content">
+            <div class="input-group">
+              <label class="input-label">UNet</label>
+              <select class="input-control" x-model="genParams.unet_name">
+                <template x-for="m in models.diffusion_models" :key="m">
+                  <option :value="m" x-text="m"></option>
+                </template>
+                <option value="krea2_turbo_fp8_scaled.safetensors">krea2_turbo_fp8_scaled</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <div class="input-group">
+                <label class="input-label">VAE</label>
+                <select class="input-control" x-model="genParams.vae_name">
+                  <template x-for="m in models.vae" :key="m">
+                    <option :value="m" x-text="m"></option>
+                  </template>
+                  <option value="qwen_image_vae.safetensors">qwen_image_vae</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label">CLIP</label>
+                <select class="input-control" x-model="genParams.clip_name">
+                  <template x-for="m in models.text_encoders" :key="m">
+                    <option :value="m" x-text="m"></option>
+                  </template>
+                  <option value="qwen3vl_4b_fp8_scaled.safetensors">qwen3vl_4b_fp8_scaled</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-glass); margin: 8px 0; padding-top: 8px;"></div>
+
+            <div class="form-row">
+              <div class="input-group">
+                <label class="input-label">Sampler</label>
+                <select class="input-control" x-model="genParams.sampler_name">
+                  <template x-for="s in genSamplers" :key="s">
+                    <option :value="s" x-text="s"></option>
+                  </template>
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Scheduler</label>
+                <select class="input-control" x-model="genParams.scheduler">
+                  <template x-for="s in genSchedulers" :key="s">
+                    <option :value="s" x-text="s"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">Steps</span>
+                  <span class="range-val" x-text="genParams.steps"></span>
+                </div>
+                <div class="range-group">
+                  <input type="range" class="range-slider" min="1" max="50" step="1" x-model="genParams.steps">
+                </div>
+              </div>
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">CFG</span>
+                  <span class="range-val" x-text="parseFloat(genParams.cfg).toFixed(1)"></span>
+                </div>
+                <div class="range-group">
+                  <input type="range" class="range-slider" min="0.5" max="10.0" step="0.1" x-model="genParams.cfg">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LoRA Accordion -->
+        <div class="accordion" :class="activeAccordion === 'gen_lora' ? 'active' : ''">
+          <div class="accordion-header" @click="toggleAccordion('gen_lora')">
+            <h3><i class="fa-solid fa-layer-group"></i> LoRA Configuration</h3>
+            <i class="fa-solid fa-chevron-down accordion-icon"></i>
+          </div>
+          <div x-show="activeAccordion === 'gen_lora'" class="accordion-content" style="display: flex; flex-direction: column; gap: 12px;">
+            <template x-for="idx in [1,2,3,4,5,6]" :key="idx">
+              <div style="padding-bottom: 12px;" :style="idx < 6 ? 'border-bottom: 1px solid rgba(255,255,255,0.05);' : ''">
+                <div class="flex-switch">
+                  <span class="switch-label" style="font-size: 0.85rem; font-weight: 600;" x-text="'LoRA ' + idx"></span>
+                  <label class="switch-control">
+                    <input type="checkbox" x-model="genParams['lora' + idx + '_enabled']">
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+                <div x-show="genParams['lora' + idx + '_enabled']" style="margin-top: 8px;">
+                  <select class="input-control" x-model="genParams['lora' + idx + '_name']" style="font-size: 0.85rem; padding: 6px 10px; margin-bottom: 8px;">
+                    <template x-for="m in models.loras" :key="m">
+                      <option :value="m" x-text="m"></option>
+                    </template>
+                  </select>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="input-label" style="font-size: 0.75rem;">Strength</span>
+                    <span class="range-val" style="font-size: 0.8rem;" x-text="parseFloat(genParams['lora' + idx + '_strength']).toFixed(1)"></span>
+                  </div>
+                  <input type="range" class="range-slider" min="-2.0" max="2.0" step="0.1" x-model="genParams['lora' + idx + '_strength']" style="height: 4px;">
+                </div>
+              </div>
+            </template>
+            <div style="text-align: center; font-size: 0.75rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px; margin-top: 4px;">
+              <i class="fa-solid fa-circle-info"></i> Up to 6 LoRA slots. Place LoRAs in <code>comfyui/models/loras/</code>.
+            </div>
+          </div>
+        </div>
+
+        <!-- Prompt Enhancer Accordion -->
+        <div class="accordion" :class="activeAccordion === 'gen_enhancer' ? 'active' : ''">
+          <div class="accordion-header" @click="toggleAccordion('gen_enhancer')">
+            <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Prompt Enhancer</h3>
+            <i class="fa-solid fa-chevron-down accordion-icon"></i>
+          </div>
+          <div x-show="activeAccordion === 'gen_enhancer'" class="accordion-content">
+            <div class="input-group">
+              <label class="input-label">Load Enhancer Prompt</label>
+              <select class="input-control" @change="applyEnhancerPrompt($event.target.value)">
+                <option value="">-- Choose --</option>
+                <template x-for="(content, name) in enhancerPromptsList" :key="name">
+                  <option :value="name" x-text="name"></option>
+                </template>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">System Prompt</label>
+              <textarea class="input-control" x-model="genParams.system_prompt" style="min-height: 150px; font-size: 0.8rem;"
+                placeholder="Instructions for the prompt enhancement model..."></textarea>
+              <span style="font-size: 0.68rem; color: var(--text-muted); display: block; margin-top: 4px;">
+                Defines how the prompt enhancer expands user prompts. Leave empty to use the built-in default.
+              </span>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-glass); padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="text" class="input-control" x-model="newEnhancerName" placeholder="New Preset Name..." style="flex-grow: 1;">
+                <button class="btn btn-primary btn-sm" @click="saveNewEnhancerPrompt()" :disabled="!newEnhancerName.trim()" style="white-space: nowrap;">
+                  <i class="fa-solid fa-floppy-disk"></i> Save
+                </button>
+              </div>
+              <div>
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Update existing preset:</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <select class="input-control" x-model="enhancerToUpdate">
+                    <option value="">-- Select --</option>
+                    <template x-for="(content, name) in enhancerPromptsList" :key="name">
+                      <option :value="name" x-text="name"></option>
+                    </template>
+                  </select>
+                  <button class="btn btn-sm" @click="updateEnhancerPrompt()" :disabled="!enhancerToUpdate" style="white-space: nowrap;">
+                    <i class="fa-solid fa-rotate"></i> Overwrite
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        </div>
+
+      </div>
+      
+      <!-- Right Output Panel -->
+      <div class="output-panel">
+        
+        <!-- Output Image Viewer -->
+        <div class="glass-card output-viewer-card">
+          <div class="compare-container" @mousedown="startPan($event)" @mousemove="onMouseMove($event)" @mouseup="stopPan()" @mouseleave="stopPan()" @dblclick="toggleFullscreen()">
+            
+            <!-- Floating toolbar overlay -->
+            <div x-show="genOutput" class="viewer-toolbar-overlay">
+              <span x-show="genOutputs.length > 1" class="overlay-counter" x-text="(genViewedIndex + 1) + ' / ' + genOutputs.length"></span>
+              <button class="btn-icon-overlay btn-save" @click="downloadGenOutput()" title="Save"
+                      :style="lastGenSaved ? 'background: var(--success); color: #000; border-color: transparent;' : ''">
+                <i class="fa-solid" :class="lastGenSaved ? 'fa-check' : 'fa-download'"></i>
+              </button>
+              <button class="btn-icon-overlay" @click="zoomIn()" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+              <button class="btn-icon-overlay" @click="zoomOut()" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+              <button class="btn-icon-overlay" @click="resetZoom()" title="Fit to View"><i class="fa-solid fa-expand"></i></button>
+              <button class="btn-icon-overlay" @click="toggleFullscreen()" :title="isFullscreen ? 'Exit' : 'Full Screen'">
+                <i class="fa-solid" :class="isFullscreen ? 'fa-compress' : 'fa-expand-arrows-alt'"></i>
+              </button>
+            </div>
+
+            <!-- Prev/Next arrows -->
+            <button x-show="genOutput && genOutputs.length > 1 && genViewedIndex > 0" class="viewer-nav-arrow viewer-nav-prev" @click="prevGenOutput()">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <button x-show="genOutput && genOutputs.length > 1 && genViewedIndex < genOutputs.length - 1" class="viewer-nav-arrow viewer-nav-next" @click="nextGenOutput()">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+
+            <!-- Empty state -->
+            <div x-show="!genOutput" class="upload-container" style="position: absolute; inset: 15px; z-index: 10;">
+              <i class="fa-solid fa-bolt upload-icon"></i>
+              <div class="upload-text">Generated Image</div>
+              <div class="upload-sub">Enter a prompt and click Generate</div>
+            </div>
+
+            <!-- Output image with zoom -->
+            <div x-show="genOutput" class="zoom-wrapper" :style="getZoomStyle()">
+              <img :src="genOutput" style="width: 100%; height: 100%; object-fit: contain;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Status + Controls -->
+        <div x-show="genProcessing || genOutput" class="glass-card" style="padding: 0.75rem;">
+          <div class="progress-panel">
+            <div class="progress-header">
+              <div class="progress-title">
+                <div x-show="genProcessing" class="spinner"></div>
+                <i x-show="!genProcessing && genOutput" class="fa-solid fa-circle-check" style="color: var(--success); font-size: 1.2rem;"></i>
+                <span x-text="genStatusText">Idle</span>
+              </div>
+              <div class="process-time" x-show="genProcessing || genProcessTime > 0" x-text="formatTime(genProcessTime)">0:00</div>
+            </div>
+            
+            <!-- Output queue navigation -->
+            <div x-show="genOutputs.length > 0" class="output-nav">
+              <button class="btn btn-sm" x-show="genOutputs.length > 1" @click="prevGenOutput()" :disabled="genViewedIndex === 0" style="flex-shrink: 0;">
+                <i class="fa-solid fa-chevron-left"></i> Prev
+              </button>
+              <span class="output-nav-count" x-text="'Result ' + (genViewedIndex + 1) + ' of ' + genOutputs.length"></span>
+              <button class="btn btn-sm" x-show="genOutputs.length > 1" @click="nextGenOutput()" :disabled="genViewedIndex >= genOutputs.length - 1" style="flex-shrink: 0;">
+                Next <i class="fa-solid fa-chevron-right"></i>
+              </button>
+              <div style="display: flex; gap: 6px; margin-left: auto; flex-shrink: 0;">
+                <button class="btn btn-sm" @click="discardGenOutput()" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+                <button class="btn btn-sm" @click="clearGenOutputs()" x-show="genOutputs.length > 1" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);">
+                  <i class="fa-solid fa-trash-can"></i> All
+                </button>
+              </div>
+            </div>
+            
+            <!-- Result actions -->
+            <div x-show="genOutput" class="result-actions">
+              <div class="result-action-row">
+                <div class="result-item">
+                  <span class="result-label">Generated</span>
+                  <div class="result-btns">
+                    <button class="btn btn-sm" @click="downloadGenOutput()" :style="lastGenSaved ? 'background: var(--success); color: #000; border-color: transparent;' : ''">
+                      <i class="fa-solid" :class="lastGenSaved ? 'fa-check' : 'fa-download'"></i>
+                      <span x-text="lastGenSaved ? 'Saved' : 'Save'"></span>
+                    </button>
+                    <button class="btn btn-sm btn-primary" @click="sendToEnhancer()">
+                      <i class="fa-solid fa-wand-magic-sparkles"></i> Enhance
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Open Outputs -->
+        <div class="glass-card" style="padding: 0.75rem;">
+          <button class="btn btn-sm" @click="openGenOutputs()" style="width: 100%;">
+            <i class="fa-solid fa-folder-open"></i> Open Outputs Folder
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 

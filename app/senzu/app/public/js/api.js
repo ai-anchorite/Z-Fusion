@@ -10,6 +10,32 @@ const api = {
     const res = await fetch(`${API_BASE}/system-stats`);
     return res.json();
   },
+
+  async getComfySamplers() {
+    const res = await fetch(`${API_BASE}/comfyui-samplers`);
+    return res.json();
+  },
+
+  async getEnhancerPrompts() {
+    const res = await fetch(`${API_BASE}/enhancer-prompts`);
+    return res.json();
+  },
+
+  async saveEnhancerPrompt(name, content) {
+    const res = await fetch(`${API_BASE}/enhancer-prompts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content })
+    });
+    return res.json();
+  },
+
+  async deleteEnhancerPrompt(name) {
+    const res = await fetch(`${API_BASE}/enhancer-prompts/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    });
+    return res.json();
+  },
   
   async getPresets() {
     const res = await fetch(`${API_BASE}/presets`);
@@ -196,5 +222,18 @@ const api = {
     });
     
     return promise;
+  },
+
+  async generateImage(parameters) {
+    const res = await fetch(`${API_BASE}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parameters })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Generation failed');
+    }
+    return res.json();
   }
 };

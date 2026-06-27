@@ -90,6 +90,87 @@ document.addEventListener('alpine:init', () => {
       theme: 'Default',
       default_model_pack: ''
     },
+
+    // Krea2 Image Generation
+    genParams: {
+      prompt: '',
+      enable_prompt_enhancer: true,
+      width: 1024,
+      height: 1024,
+      base_size: 1024,
+      selected_res: '1024x1024 ( 1:1 )',
+      unet_name: 'krea2_turbo_fp8_scaled.safetensors',
+      vae_name: 'qwen_image_vae.safetensors',
+      clip_name: 'qwen3vl_4b_fp8_scaled.safetensors',
+      steps: 8,
+      cfg: 1.0,
+      sampler_name: 'euler',
+      scheduler: 'beta',
+      seed: 0,
+      randomize_seed: true,
+      lora1_enabled: false, lora1_name: 'none.safetensors', lora1_strength: 0,
+      lora2_enabled: false, lora2_name: 'none.safetensors', lora2_strength: 0,
+      lora3_enabled: false, lora3_name: 'none.safetensors', lora3_strength: 0,
+      lora4_enabled: false, lora4_name: 'none.safetensors', lora4_strength: 0,
+      lora5_enabled: false, lora5_name: 'none.safetensors', lora5_strength: 0,
+      lora6_enabled: false, lora6_name: 'none.safetensors', lora6_strength: 0,
+      system_prompt: `You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.\n\nThink step by step about the request before writing the answer:\n- What is the subject and mood?\n- What visual styles, mediums, and lighting options would fit? Consider two or three alternatives and pick the one that best serves the caption.\n- What composition, framing, and grounded details will help the text-to-image model?\n\nThen output a single expanded prompt paragraph.\n\nFollow these rules strictly:\n1. **Faithfulness First:** Preserve all original subjects, actions, colors, and spatial relationships. Do not add new objects, props, characters, or animals unless the user clearly implies them.\n2. **Practical T2I Structure:** Write a prompt that a text-to-image model can parse cleanly. Group subjects with their own attributes and actions. Use grounded phrasing for poses, interactions, and spatial layout.\n3. **Style Planning Stays Internal:** Use your internal reasoning to choose style, medium, framing, and lighting. Do not emit planning tags or wrappers in the visible answer body.\n4. **Text Rendering:** If the user requests visible text, quotes, labels, or typography, specify the exact text clearly and wrap requested words in quotes.\n5. **Avoid Over-Specification:** Do not invent highly specific clothing, colors, materials, or scene details unless the input supports them.\n6. **Structure:** Write one cohesive paragraph after the thinking block. No bullets, JSON, or markdown.\n7. **Respect Existing Detail:** If the user's prompt is already detailed, lightly polish and finalize rather than heavily expanding \u2014 preserve their phrasing and direction.\n8. **Preserve User Medium:** When the user explicitly requests a medium (e.g. \"photo of\", \"photograph of\", \"illustration of\", \"painting of\", \"sketch of\", \"3D render of\"), honor it. Do not pivot to a different medium to avoid difficulty \u2014 match the user's stated intent.\n\nUser's Input:\n`
+    },
+    genOutput: null,
+    genOutputs: [],
+    genViewedIndex: 0,
+    genProcessing: false,
+    lastGenSaved: false,
+    genStatusText: 'Idle',
+    genProcessTime: 0,
+    genResolutions: [],
+    genSamplers: [],
+    genSchedulers: [],
+    enhancerPromptsList: {},
+    newEnhancerName: '',
+    enhancerToUpdate: '',
+
+    RES_CHOICES: {
+      1024: [
+        { label: '1024x1024 ( 1:1 )', w: 1024, h: 1024, section: null },
+        { label: '1152x896 ( 9:7 )', w: 1152, h: 896, section: 'landscape' },
+        { label: '896x1152 ( 7:9 )', w: 896, h: 1152, section: 'portrait' },
+        { label: '1152x864 ( 4:3 )', w: 1152, h: 864, section: 'landscape' },
+        { label: '864x1152 ( 3:4 )', w: 864, h: 1152, section: 'portrait' },
+        { label: '1248x832 ( 3:2 )', w: 1248, h: 832, section: 'landscape' },
+        { label: '832x1248 ( 2:3 )', w: 832, h: 1248, section: 'portrait' },
+        { label: '1280x720 ( 16:9 )', w: 1280, h: 720, section: 'landscape' },
+        { label: '720x1280 ( 9:16 )', w: 720, h: 1280, section: 'portrait' },
+        { label: '1344x576 ( 21:9 )', w: 1344, h: 576, section: 'landscape' },
+        { label: '576x1344 ( 9:21 )', w: 576, h: 1344, section: 'portrait' },
+      ],
+      1280: [
+        { label: '1280x1280 ( 1:1 )', w: 1280, h: 1280, section: null },
+        { label: '1440x1120 ( 9:7 )', w: 1440, h: 1120, section: 'landscape' },
+        { label: '1120x1440 ( 7:9 )', w: 1120, h: 1440, section: 'portrait' },
+        { label: '1472x1104 ( 4:3 )', w: 1472, h: 1104, section: 'landscape' },
+        { label: '1104x1472 ( 3:4 )', w: 1104, h: 1472, section: 'portrait' },
+        { label: '1536x1024 ( 3:2 )', w: 1536, h: 1024, section: 'landscape' },
+        { label: '1024x1536 ( 2:3 )', w: 1024, h: 1536, section: 'portrait' },
+        { label: '1536x864 ( 16:9 )', w: 1536, h: 864, section: 'landscape' },
+        { label: '864x1536 ( 9:16 )', w: 864, h: 1536, section: 'portrait' },
+        { label: '1680x720 ( 21:9 )', w: 1680, h: 720, section: 'landscape' },
+        { label: '720x1680 ( 9:21 )', w: 720, h: 1680, section: 'portrait' },
+      ],
+      1536: [
+        { label: '1536x1536 ( 1:1 )', w: 1536, h: 1536, section: null },
+        { label: '1728x1344 ( 9:7 )', w: 1728, h: 1344, section: 'landscape' },
+        { label: '1344x1728 ( 7:9 )', w: 1344, h: 1728, section: 'portrait' },
+        { label: '1728x1296 ( 4:3 )', w: 1728, h: 1296, section: 'landscape' },
+        { label: '1296x1728 ( 3:4 )', w: 1296, h: 1728, section: 'portrait' },
+        { label: '1872x1248 ( 3:2 )', w: 1872, h: 1248, section: 'landscape' },
+        { label: '1248x1872 ( 2:3 )', w: 1248, h: 1872, section: 'portrait' },
+        { label: '2048x1152 ( 16:9 )', w: 2048, h: 1152, section: 'landscape' },
+        { label: '1152x2048 ( 9:16 )', w: 1152, h: 2048, section: 'portrait' },
+        { label: '2016x864 ( 21:9 )', w: 2016, h: 864, section: 'landscape' },
+        { label: '864x2016 ( 9:21 )', w: 864, h: 2016, section: 'portrait' },
+      ],
+    },
     
     // Core parameters mapping
     params: {
@@ -148,6 +229,9 @@ document.addEventListener('alpine:init', () => {
         this.loadModels();
         this.loadModelPacks();
         this.loadSettings();
+        this.updateResolutions();
+        this.loadComfySamplers();
+        this.loadEnhancerPrompts();
         
         setInterval(() => this.checkStatus(), 5000);
         setInterval(() => this.checkSysStats(), 5000);
@@ -174,14 +258,13 @@ document.addEventListener('alpine:init', () => {
         document.addEventListener('fullscreenchange', onFullscreenChange);
         document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 
-        // Register wheel zoom (avoids @wheel.prevent compat issues)
-        const container = document.querySelector('.compare-container');
-        if (container) {
+        // Register wheel zoom on all viewer containers
+        document.querySelectorAll('.compare-container').forEach(container => {
           container.addEventListener('wheel', (e) => {
             e.preventDefault();
             this.handleZoom(e);
           }, { passive: false });
-        }
+        });
       } catch (e) {
         console.error('Init error:', e);
       }
@@ -223,7 +306,7 @@ document.addEventListener('alpine:init', () => {
         console.error('Failed to load prompts:', err);
       }
     },
-    
+
     async loadModels() {
       try {
         this.models = await api.getModels();
@@ -231,6 +314,54 @@ document.addEventListener('alpine:init', () => {
       } catch (err) {
         console.error('Failed to scan models:', err);
       }
+    },
+    
+    async loadComfySamplers() {
+      try {
+        const data = await api.getComfySamplers();
+        this.genSamplers = data.samplers || [];
+        this.genSchedulers = data.schedulers || [];
+      } catch (err) {
+        console.error('Failed to load samplers:', err);
+        this.genSamplers = ["euler", "euler_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde"];
+        this.genSchedulers = ["simple", "normal", "karras", "exponential", "sgm_uniform", "beta"];
+      }
+    },
+
+    async loadEnhancerPrompts() {
+      try { this.enhancerPromptsList = await api.getEnhancerPrompts(); }
+      catch (err) { console.error('Failed to load enhancer prompts:', err); }
+    },
+
+    applyEnhancerPrompt(name) {
+      if (this.enhancerPromptsList[name]) {
+        this.genParams.system_prompt = this.enhancerPromptsList[name];
+      }
+    },
+
+    async saveNewEnhancerPrompt() {
+      if (!this.newEnhancerName.trim()) return;
+      try {
+        await api.saveEnhancerPrompt(this.newEnhancerName.trim(), this.genParams.system_prompt);
+        this.newEnhancerName = '';
+        await this.loadEnhancerPrompts();
+      } catch (err) { alert('Failed: ' + err.message); }
+    },
+
+    async deleteEnhancerPrompt(name) {
+      if (!confirm('Delete enhancer prompt "' + name + '"?')) return;
+      try { await api.deleteEnhancerPrompt(name); await this.loadEnhancerPrompts(); }
+      catch (err) { alert('Failed: ' + err.message); }
+    },
+
+    async updateEnhancerPrompt() {
+      if (!this.enhancerToUpdate) return;
+      if (!confirm('Overwrite "' + this.enhancerToUpdate + '" with current?')) return;
+      try {
+        await api.saveEnhancerPrompt(this.enhancerToUpdate, this.genParams.system_prompt);
+        this.enhancerToUpdate = '';
+        await this.loadEnhancerPrompts();
+      } catch (err) { alert('Failed: ' + err.message); }
     },
     
     applyPreset(name) {
@@ -597,7 +728,7 @@ document.addEventListener('alpine:init', () => {
     
     // Zoom controls
     updatePanCursor() {
-      const c = document.querySelector('.compare-container');
+      const c = this.getVisibleContainer();
       const isLocked = this.zoomLevel <= 1 && this.panX === 0 && this.panY === 0;
       if (c) c.classList.toggle('pan-mode', !isLocked);
     },
@@ -620,22 +751,21 @@ document.addEventListener('alpine:init', () => {
     },
     
     handleZoom(e) {
-      const container = document.querySelector('.compare-container');
+      const container = this.getVisibleContainer();
       if (!container) return;
-      
+
       const oldZoom = this.zoomLevel;
       const newZoom = e.deltaY < 0
         ? Math.min(oldZoom * 1.1, 5)
         : Math.max(oldZoom / 1.1, 0.25);
-      
-      // Zoom toward mouse cursor position
+
       const rect = container.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const ratio = (1 / newZoom) - (1 / oldZoom);
       this.panX += (mx - rect.width / 2) * ratio;
       this.panY += (my - rect.height / 2) * ratio;
-      
+
       this.zoomLevel = newZoom;
       this.updatePanCursor();
     },
@@ -645,7 +775,7 @@ document.addEventListener('alpine:init', () => {
     },
     
     toggleFullscreen() {
-      const el = document.querySelector('.compare-container');
+      const el = this.getVisibleContainer();
       if (!el) return;
       const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
       if (!fsEl) {
@@ -698,7 +828,16 @@ document.addEventListener('alpine:init', () => {
     stopPan() {
       this.isPanning = false;
     },
-    
+
+    getVisibleContainer() {
+      const containers = document.querySelectorAll('.compare-container');
+      for (const c of containers) {
+        const rect = c.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) return c;
+      }
+      return containers[0];
+    },
+
     // Show specific output
     showOutput(type) {
       this.displayedImage = type;
@@ -935,7 +1074,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     getAfterClipStyle() {
-      const container = document.querySelector('.compare-container');
+      const container = this.getVisibleContainer();
       if (!container) return `clip-path: polygon(${this.sliderPos}% 0, 100% 0, 100% 100%, ${this.sliderPos}% 100%)`;
       const W = container.getBoundingClientRect().width;
       // Container-relative slider position
@@ -963,7 +1102,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     updateSliderPos(e) {
-      const container = document.querySelector('.compare-container');
+      const container = this.getVisibleContainer();
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -1110,6 +1249,136 @@ document.addEventListener('alpine:init', () => {
       const m = Math.floor(seconds / 60);
       const s = seconds % 60;
       return `${m}:${s < 10 ? '0' : ''}${s}`;
+    },
+
+    // Krea2 Image Generation
+    updateResolutions() {
+      const choices = this.RES_CHOICES[this.genParams.base_size] || this.RES_CHOICES[1024];
+      this.genResolutions = [
+        choices[0],  // square
+        { label: '── Portrait ──', w: 0, h: 0, section: 'header' },
+        ...choices.filter(c => c.section === 'portrait'),
+        { label: '── Landscape ──', w: 0, h: 0, section: 'header' },
+        ...choices.filter(c => c.section === 'landscape'),
+      ];
+    },
+
+    applyResolutionLabel(label) {
+      const choices = this.RES_CHOICES[this.genParams.base_size] || this.RES_CHOICES[1024];
+      for (const c of [...choices, ...this.genResolutions]) {
+        if (c.label === label && c.w > 0) {
+          this.genParams.width = c.w;
+          this.genParams.height = c.h;
+          return;
+        }
+      }
+    },
+
+    async startGeneration() {
+      if (!this.genParams.prompt.trim()) return;
+      this.genProcessing = true;
+      this.genStatusText = 'Generating...';
+      this.genProcessTime = 0;
+      const genTimer = setInterval(() => { this.genProcessTime++; }, 1000);
+      try {
+        const res = await api.generateImage(this.genParams);
+        this.genOutputs.push({ url: res.output, prompt: this.genParams.prompt });
+        this.genViewedIndex = this.genOutputs.length - 1;
+        this.genOutput = res.output;
+        this.genStatusText = this.genOutputs.length + ' image' + (this.genOutputs.length !== 1 ? 's' : '') + ' generated';
+        if (res.enhanced_prompt) {
+          this.genParams.prompt = res.enhanced_prompt;
+        }
+      } catch (err) {
+        this.genStatusText = 'Error: ' + err.message;
+      }
+      clearInterval(genTimer);
+      this.genProcessing = false;
+    },
+
+    prevGenOutput() {
+      if (this.genViewedIndex > 0) {
+        this.genViewedIndex--;
+        this.genOutput = this.genOutputs[this.genViewedIndex].url;
+        this.resetZoom();
+      }
+    },
+
+    nextGenOutput() {
+      if (this.genViewedIndex < this.genOutputs.length - 1) {
+        this.genViewedIndex++;
+        this.genOutput = this.genOutputs[this.genViewedIndex].url;
+        this.resetZoom();
+      }
+    },
+
+    async sendToEnhancer() {
+      if (!this.genOutput) return;
+      try {
+        const blob = await fetch(this.genOutput).then(r => r.blob());
+        const file = new File([blob], 'senzu_gen_' + Date.now().toString(36) + '.png', { type: blob.type || 'image/png' });
+        this.activeTab = 'enhance';
+        this.addToQueue([file]);
+      } catch (err) {
+        alert('Failed to send to enhancer: ' + err.message);
+      }
+    },
+
+    discardGenOutput() {
+      if (this.genOutputs.length === 0) return;
+      this.genOutputs.splice(this.genViewedIndex, 1);
+      if (this.genOutputs.length === 0) {
+        this.genOutput = null;
+        this.genViewedIndex = 0;
+        this.genStatusText = 'Idle';
+        this.genProcessTime = 0;
+      } else {
+        this.genViewedIndex = Math.min(this.genViewedIndex, this.genOutputs.length - 1);
+        this.genOutput = this.genOutputs[this.genViewedIndex].url;
+      }
+    },
+
+    clearGenOutputs() {
+      if (!confirm('Discard all ' + this.genOutputs.length + ' generated results?')) return;
+      this.genOutputs = [];
+      this.genOutput = null;
+      this.genViewedIndex = 0;
+      this.genStatusText = 'Idle';
+      this.genProcessTime = 0;
+    },
+
+    async downloadGenOutput() {
+      if (!this.genOutput) return;
+      const tempFilename = this.genOutput.split('/').pop();
+      const ts = Date.now().toString(36);
+      const destName = `senzu_gen_${ts}.png`;
+
+      const saveFolder = this.appSettings.save_folder;
+      if (saveFolder && saveFolder.trim()) {
+        const genFolder = saveFolder.replace(/[\\/]$/, '') + '/gen';
+        try {
+          await api.saveOutputToFolder(tempFilename, genFolder, destName);
+          this.lastGenSaved = true;
+          setTimeout(() => { this.lastGenSaved = false; }, 2000);
+          return;
+        } catch (err) {
+          alert('Failed to save: ' + err.message);
+        }
+      }
+
+      const a = document.createElement('a');
+      a.href = this.genOutput;
+      a.download = destName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      this.lastGenSaved = true;
+      setTimeout(() => { this.lastGenSaved = false; }, 2000);
+    },
+
+    openGenOutputs() {
+      const folder = this.appSettings.save_folder || '';
+      api.openOutputs(folder);
     }
   }));
 });
