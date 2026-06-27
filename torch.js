@@ -58,7 +58,7 @@ module.exports = {
           "uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130 --force-reinstall",
           "uv pip install triton",
           "uv pip install https://huggingface.co/MonsterMMORPG/SECourses_Premium_Flash_Attention/resolve/main/sageattention-2.1.1-cp310-cp310-linux_x86_64.whl",
-          "uv pip install https://huggingface.co/MonsterMMORPG/SECourses_Premium_Flash_Attention/resolve/main/flash_attn-2.7.4.post1-cp310-cp310-linux_x86_64.whl"
+          "uv pip install flash_attn_3 --find-links https://windreamer.github.io/flash-attention3-wheels/cu130_torch2120"
         ]
       }
     },
