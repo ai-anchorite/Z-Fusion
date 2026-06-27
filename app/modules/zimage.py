@@ -135,15 +135,18 @@ def get_workflow_file(gen_type: str, use_gguf: bool, clip_type: str = "lumina2")
     Args:
         gen_type: "t2i" or "i2i"
         use_gguf: Whether to use GGUF workflow variant
-        clip_type: "lumina2" for Z-Image or "flux2" for Flux2 Klein
+        clip_type: "lumina2" for Z-Image, "flux2" for Flux2 Klein, "krea2" for Krea2
         
     Returns:
         Workflow filename matching pattern:
         - Z-Image: z_image_{gguf_}?{gen_type}_lora.json
         - Flux2: flux2_klein_{gguf_}?{gen_type}_lora.json
+        - Krea2:  krea2_{gen_type}_lora.json
     """
     if clip_type == "flux2":
         parts = ["flux2_klein"]
+    elif clip_type == "krea2":
+        parts = ["krea2"]
     else:
         parts = ["z_image"]
     if use_gguf:
@@ -717,7 +720,7 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
                 with gr.Accordion("Settings"):
                     with gr.Group():
                         with gr.Row():
-                            steps = gr.Slider(label="Steps", value=9, minimum=1, maximum=50, step=1)
+                            steps = gr.Slider(label="Steps", value=8, minimum=1, maximum=50, step=1)
                             cfg = gr.Slider(label="CFG", value=1.0, minimum=1.0, maximum=10.0, step=0.5)
                             shift = gr.Slider(label="Shift", value=3.0, minimum=1.0, maximum=10.0, step=0.5)
                     with gr.Group():

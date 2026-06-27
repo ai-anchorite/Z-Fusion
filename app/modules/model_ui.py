@@ -128,9 +128,20 @@ BASE_MODEL_TYPES = {
         supports_edit=True,
         description="Flux2 Klein 9B (uses 8B Qwen TE)"
     ),
+    "krea2": BaseModelType(
+        id="krea2",
+        label="Krea2",
+        clip_type="krea2",
+        default_diffusion="krea2_turbo_fp8_scaled.safetensors",
+        default_te="qwen3vl_4b_fp8_scaled.safetensors",
+        default_vae="qwen_image_vae.safetensors",
+        download_keys_standard=["krea2_diffusion", "krea2_te", "krea2_vae"],
+        supports_gguf=False,
+        description="Krea2 architecture (Qwen3-VL-4B based)"
+    ),
 }
 
-BASE_TYPE_ORDER = ["zimage", "flux2_klein_4b", "flux2_klein_9b"]
+BASE_TYPE_ORDER = ["zimage", "flux2_klein_4b", "flux2_klein_9b", "krea2"]
 
 
 # =============================================================================
@@ -191,7 +202,7 @@ def create_default_presets() -> list[UserPreset]:
         base = BASE_MODEL_TYPES[base_id]
         presets.append(UserPreset(
             id=f"default_{base_id}",
-            name=f"⚡ {base.label}" if base_id == "zimage" else f"🌊 {base.label}",
+            name=f"⚡ {base.label}" if base_id == "zimage" else f"🎨 {base.label}" if base_id == "krea2" else f"🌊 {base.label}",
             base_type=base_id,
             use_gguf=False,
             diffusion=base.default_diffusion,
@@ -248,6 +259,7 @@ def load_user_presets(settings_manager) -> tuple[list[UserPreset], str]:
                 # (handles cases where defaults changed, e.g. diffusion filename update)
                 for p in presets:
                     if p.id == dp.id:
+                        p.name = dp.name
                         p.diffusion = dp.diffusion
                         p.text_encoder = dp.text_encoder
                         p.vae = dp.vae
@@ -410,6 +422,31 @@ MODEL_DOWNLOADS = {
         "folder_key": "text_encoder",
         "label": "Qwen3 8B TE (BF16 GGUF)",
         "size_gb": 16,
+    },
+    # Krea2 Standard
+    "krea2_diffusion": {
+        "repo_id": "Comfy-Org/Krea-2",
+        "filename": "diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+        "local_name": "krea2_turbo_fp8_scaled.safetensors",
+        "folder_key": "diffusion",
+        "label": "Krea2 Diffusion (fp8)",
+        "size_gb": 13,
+    },
+    "krea2_te": {
+        "repo_id": "Comfy-Org/Krea-2",
+        "filename": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+        "local_name": "qwen3vl_4b_fp8_scaled.safetensors",
+        "folder_key": "text_encoder",
+        "label": "Qwen3-VL 4B TE (fp8)",
+        "size_gb": 5,
+    },
+    "krea2_vae": {
+        "repo_id": "Comfy-Org/Krea-2",
+        "filename": "vae/qwen_image_vae.safetensors",
+        "local_name": "qwen_image_vae.safetensors",
+        "folder_key": "vae",
+        "label": "Krea2 VAE",
+        "size_gb": 0.25,
     },
 }
 
@@ -1080,6 +1117,13 @@ def setup_model_handlers(
     # =========================================================================
     # Quick Preset Selection - Updates models for inference (not the editor name)
     # =========================================================================
+    def _gguf_radio_update(base_type_id, value=False):
+        base = BASE_MODEL_TYPES.get(base_type_id, BASE_MODEL_TYPES["zimage"])
+        choices = [("Standard", False)]
+        if base.supports_gguf:
+            choices.append(("GGUF", True))
+        return gr.update(choices=choices, value=value)
+    
     def on_quick_preset_change(preset_id: str, presets_data: list, current_base_type: str):
         """When user selects a preset, load its models for inference.
         
@@ -1090,7 +1134,7 @@ def setup_model_handlers(
             base = BASE_MODEL_TYPES.get(current_base_type, BASE_MODEL_TYPES["zimage"])
             return (
                 gr.update(),  # base_type - keep current
-                gr.update(),  # use_gguf - keep current
+                _gguf_radio_update(current_base_type),  # use_gguf - restricted choices
                 gr.update(),  # unet_name - keep current
                 gr.update(),  # clip_name - keep current
                 gr.update(),  # vae_name - keep current
@@ -1109,7 +1153,7 @@ def setup_model_handlers(
         if preset is None:
             return (
                 gr.update(),  # base_type
-                gr.update(),  # use_gguf
+                _gguf_radio_update("zimage"),  # use_gguf - restricted choices (default zimage)
                 gr.update(),  # unet_name
                 gr.update(),  # clip_name
                 gr.update(),  # vae_name
@@ -1147,7 +1191,7 @@ def setup_model_handlers(
         # Update editor to show this preset's config (but NOT the name field)
         return (
             preset.base_type,
-            preset.use_gguf,
+            _gguf_radio_update(preset.base_type, preset.use_gguf),
             gr.update(choices=diff_models, value=get_default_model(diff_models, preset.diffusion)),
             gr.update(choices=te_models, value=get_default_model(te_models, preset.text_encoder)),
             gr.update(choices=vae_models, value=get_default_model(vae_models, preset.vae)),
@@ -1219,6 +1263,7 @@ def setup_model_handlers(
             gr.update(choices=te_models, value=get_default_model(te_models, te_default)),
             gr.update(choices=vae_models, value=get_default_model(vae_models, vae_default)),
             base.clip_type,
+            _gguf_radio_update(base_type_id, False if not base.supports_gguf else is_gguf),
             gr.update(value=main_btn_label),
             gr.update(value=bf16_label, visible=show_bf16),
             gr.update(visible=show_note),
@@ -1235,6 +1280,7 @@ def setup_model_handlers(
             mc.clip_name,
             mc.vae_name,
             mc.clip_type_state,
+            mc.use_gguf,
             mc.base_type_dropdown._download_btn,
             mc.base_type_dropdown._download_bf16_btn,
             mc.base_type_dropdown._klein_9b_note,
