@@ -149,7 +149,7 @@
           <div x-show="!comfyOnline" style="color: var(--danger); font-size: 0.8rem; text-align: center; font-weight: 500;">
             <i class="fa-solid fa-circle-exclamation"></i> ComfyUI offline
           </div>
-          
+
         </div>
         
         <!-- Panel 2: Quick Preset + Settings Accordions -->
@@ -186,8 +186,9 @@
             <div x-show="activeAccordion === 'edit'" class="accordion-content">
               <div class="input-group">
                 <label class="input-label">Model Pack</label>
-                <select class="input-control" @change="applyModelPack($event.target.value)">
-                  <template x-for="(pack, name) in modelPacksList" :key="name">
+                <select class="input-control" x-model="params.model_pack" @change="applyModelPack(params.model_pack)">
+                  <option value="">-- Choose Pack --</option>
+                  <template x-for="(pack, name) in getPacksByCategory('edit')" :key="name">
                     <option :value="name" x-text="name"></option>
                   </template>
                 </select>
@@ -195,7 +196,7 @@
               
               <div class="input-group">
                 <label class="input-label">Load Prompt Template</label>
-                <select class="input-control" @change="applyPrompt($event.target.value)">
+                <select class="input-control" x-model="selectedPromptTemplate" @change="applyPrompt($event.target.value)">
                   <option value="">-- Choose Prompt Template --</option>
                   <template x-for="(content, name) in promptsList" :key="name">
                     <option :value="name" x-text="name"></option>
@@ -237,9 +238,26 @@
                     </div>
                     <div class="range-group">
                       <input type="range" class="range-slider" min="0.5" max="3.0" step="0.1" x-model="params.megapixels">
+              </div>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-glass); margin: 8px 0; padding-top: 8px;">
+              <div class="flex-switch" style="margin-bottom: 8px;">
+                <span class="switch-label">Randomize Seed</span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="genParams.randomize_seed">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="input-group" style="margin-bottom: 0;" x-show="!genParams.randomize_seed">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">Seed</span>
+                  <span class="range-val" x-text="genParams.seed"></span>
+                </div>
+                <input type="number" class="input-control" x-model="genParams.seed" style="padding: 6px 10px; font-size: 0.85rem;">
+              </div>
             </div>
           </div>
-              </div>
             </div>
           </div>
         </div>
@@ -543,11 +561,11 @@
               <div class="slider-handle">
                 <i class="fa-solid fa-arrows-left-right"></i>
               </div>
-            </div>
-            
+        </div>
+
           </div>
         </div>
-        
+
         <!-- Status + Controls -->
         <div x-show="isProcessing || outputImage || outputQueue.length > 0" class="glass-card" style="padding: 0.75rem;">
           <div class="progress-panel">
@@ -690,6 +708,40 @@
       </div>
     </div>
 
+    <!-- Generate Presets Tab View -->
+    <div x-show="activeTab === 'presets'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 class="card-title"><i class="fa-solid fa-bolt"></i> Generate Presets</h2>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">Save new presets from the Generate tab</span>
+      </div>
+      
+      <div class="presets-grid">
+        <template x-for="(data, name) in genPresetsList" :key="name">
+          <div class="preset-card glass-card" style="background: rgba(255,255,255,0.01);">
+            <div style="display: flex; justify-content: space-between; align-items: start; gap: 10px;">
+              <h3 x-text="name" style="font-size: 1.1rem; font-weight: 600;"></h3>
+              <button class="btn-danger-sm" @click="deleteGenPreset(name)" style="padding: 4px 8px;">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+            
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0;">
+              <span class="preset-badge" x-text="data.width + 'x' + data.height"></span>
+              <span class="preset-badge preset-badge-res" x-text="data.steps + ' steps'"></span>
+              <span x-show="data.enable_prompt_enhancer" class="preset-badge preset-badge-pack">Enhancer</span>
+              <span x-show="!data.enable_prompt_enhancer" class="preset-badge">Basic</span>
+            </div>
+            
+            <div x-show="data.prompt" style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 8px; max-height: 2.8em; overflow: hidden;" x-text="data.prompt.substring(0, 120)"></div>
+            
+            <button class="btn btn-sm" @click="applyGenPreset(name); activeTab = 'generate'" style="margin-top: auto; width: 100%;">
+              <i class="fa-solid fa-check"></i> Apply &amp; Go to Generate
+            </button>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- Prompts CRUD Tab View -->
     <div x-show="activeTab === 'prompts'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
       <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -707,7 +759,7 @@
           <div class="crud-list">
             <template x-for="(content, name) in promptsList" :key="name">
               <div class="crud-item">
-                <div style="cursor: pointer; flex-grow: 1;" @click="applyPrompt(name)">
+                <div style="cursor: pointer; flex-grow: 1;" @click="applyPrompt(name); editPrompt(name)">
                   <strong x-text="name" style="display: block; font-size: 0.9rem;"></strong>
                   <span x-text="content.substring(0, 50) + '...'" style="font-size: 0.75rem; color: var(--text-secondary);"></span>
                 </div>
@@ -770,14 +822,14 @@
 
       <!-- Recommended Model Packs -->
       <div>
-        <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;"><i class="fa-solid fa-star"></i> Recommended Model Packs</h3>
+        <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;"><i class="fa-solid fa-wand-magic-sparkles"></i> Enhancer Model Packs</h3>
         <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1.2rem;">
-          Pre-configured model stacks with one-click downloads. Pick one that matches your hardware — they include the essential LoRAs for the default Senzu Detail preset.
+          Flux2 Klein model stacks for the Enhance tab. Includes the essential LoRAs for the Adonis-refine preset.
         </p>
         
         <div class="model-packs-grid">
           <template x-for="(pack, name) in modelPacksList" :key="name">
-            <div x-show="pack.is_recommended" class="model-pack-card recommended" :class="packModelsInstalled(pack) ? 'all-installed' : 'has-missing'">
+            <div x-show="pack.is_recommended && (pack.category || 'edit') === 'edit'" class="model-pack-card recommended" :class="packModelsInstalled(pack) ? 'all-installed' : 'has-missing'">
               <div class="pack-header">
                 <div>
                   <h4 x-text="name" style="font-weight: 700; font-size: 1.05rem;"></h4>
@@ -872,6 +924,84 @@
         </div>
       </div>
 
+      <!-- Generate Model Packs -->
+      <div style="border-top: 1px solid var(--border-glass); padding-top: 1.5rem;">
+        <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;"><i class="fa-solid fa-bolt"></i> Generate Model Packs</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1.2rem;">
+          Image generation model stacks for the Generate tab. Download the Krea2 pack for T2I generation.
+        </p>
+        
+        <div class="model-packs-grid">
+          <template x-for="(pack, name) in modelPacksList" :key="name">
+            <div x-show="pack.is_recommended && pack.category === 'generate'" class="model-pack-card recommended" :class="packModelsInstalled(pack) ? 'all-installed' : 'has-missing'">
+              <div class="pack-header">
+                <div>
+                  <h4 x-text="name" style="font-weight: 700; font-size: 1.05rem;"></h4>
+                  <span class="pack-gguf-badge" :class="pack.use_gguf ? 'gguf-on' : 'gguf-off'" x-text="pack.use_gguf ? 'GGUF' : 'Standard'"></span>
+                </div>
+                <span class="model-status-badge" :class="packModelsInstalled(pack) ? 'installed' : 'missing'"
+                      x-text="packModelsInstalled(pack) ? 'Ready' : 'Setup Needed'" style="font-size: 0.7rem; padding: 3px 10px;"></span>
+              </div>
+
+              <p x-show="pack.description" class="pack-description" x-text="pack.description"></p>
+              
+              <div class="pack-model-row">
+                <div class="pack-model-info">
+                  <span class="pack-model-label">UNet</span>
+                  <span class="pack-model-name" x-text="pack.unet_name"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="model-status-badge" :class="modelExists(pack.unet_name, 'diffusion_models') ? 'installed' : 'missing'"
+                        x-text="modelExists(pack.unet_name, 'diffusion_models') ? 'Installed' : 'Missing'"></span>
+                  <button x-show="!modelExists(pack.unet_name, 'diffusion_models') && pack.downloads && pack.downloads.unet"
+                          class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 4px 10px;"
+                          @click="downloadPackModel(name, 'unet')" :disabled="downloadState.status === 'downloading'">
+                    <i class="fa-solid fa-download"></i>
+                  </button>
+                </div>
+              </div>
+              
+              <div class="pack-model-row">
+                <div class="pack-model-info">
+                  <span class="pack-model-label">CLIP</span>
+                  <span class="pack-model-name" x-text="pack.clip_name"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="model-status-badge" :class="modelExists(pack.clip_name, 'text_encoders') ? 'installed' : 'missing'"
+                        x-text="modelExists(pack.clip_name, 'text_encoders') ? 'Installed' : 'Missing'"></span>
+                  <button x-show="!modelExists(pack.clip_name, 'text_encoders') && pack.downloads && pack.downloads.clip"
+                          class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 4px 10px;"
+                          @click="downloadPackModel(name, 'clip')" :disabled="downloadState.status === 'downloading'">
+                    <i class="fa-solid fa-download"></i>
+                  </button>
+                </div>
+              </div>
+              
+              <div class="pack-model-row">
+                <div class="pack-model-info">
+                  <span class="pack-model-label">VAE</span>
+                  <span class="pack-model-name" x-text="pack.vae_name"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="model-status-badge" :class="modelExists(pack.vae_name, 'vae') ? 'installed' : 'missing'"
+                        x-text="modelExists(pack.vae_name, 'vae') ? 'Installed' : 'Missing'"></span>
+                  <button x-show="!modelExists(pack.vae_name, 'vae') && pack.downloads && pack.downloads.vae"
+                          class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 4px 10px;"
+                          @click="downloadPackModel(name, 'vae')" :disabled="downloadState.status === 'downloading'">
+                    <i class="fa-solid fa-download"></i>
+                  </button>
+                </div>
+              </div>
+
+              <button class="btn btn-sm" style="margin-top: 10px; width: 100%; background: var(--primary-soft); border-color: rgba(124, 77, 255, 0.3);"
+                      @click="downloadPack(name)" :disabled="downloadState.status === 'downloading' || packModelsInstalled(pack)">
+                <i class="fa-solid fa-download"></i> <span x-text="packModelsInstalled(pack) ? 'All Installed' : 'Download All'"></span>
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+
       <!-- Official & Full Quality Models Info -->
       <div style="border-top: 1px solid var(--border-glass); padding-top: 1.5rem;">
         <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 8px;"><i class="fa-solid fa-circle-info"></i> Quality Notes</h3>
@@ -912,6 +1042,14 @@
             <span class="switch-label">GGUF Mode</span>
             <label class="switch-control">
               <input type="checkbox" x-model="params.use_gguf">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <div class="flex-switch" style="margin-bottom: 12px;">
+            <span class="switch-label">Generate Pack</span>
+            <label class="switch-control">
+              <input type="checkbox" x-model="newPackCategory">
               <span class="switch-slider"></span>
             </label>
           </div>
@@ -1074,10 +1212,19 @@
           <!-- Resolution Selector -->
           <div>
             <span class="input-label">Resolution</span>
+            <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+              <span style="font-size: 0.68rem; color: var(--text-muted); align-self: center;">W</span>
+              <input type="range" class="range-slider" min="512" max="2560" step="8" x-model="genParams.width" style="flex: 1; height: 4px; min-width: 0;">
+              <span style="font-size: 0.72rem; color: var(--text-secondary); align-self: center; min-width: 32px; text-align: right;" x-text="genParams.width"></span>
+              <span style="font-size: 0.68rem; color: var(--text-muted); align-self: center;">H</span>
+              <input type="range" class="range-slider" min="512" max="2560" step="8" x-model="genParams.height" style="flex: 1; height: 4px; min-width: 0;">
+              <span style="font-size: 0.72rem; color: var(--text-secondary); align-self: center; min-width: 32px; text-align: right;" x-text="genParams.height"></span>
+            </div>
             <div style="display: flex; gap: 6px;">
-              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1024 ? 'active' : ''" @click="genParams.base_size = 1024; updateResolutions()">1024</button>
-              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1280 ? 'active' : ''" @click="genParams.base_size = 1280; updateResolutions()">1280</button>
-              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1536 ? 'active' : ''" @click="genParams.base_size = 1536; updateResolutions()">1536</button>
+              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1024 ? 'active' : ''" @click="genParams.base_size = 1024; updateResolutions(); genParams.width = 1024; genParams.height = 1024; genParams.selected_res = genResolutions[0].label">1024</button>
+              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1280 ? 'active' : ''" @click="genParams.base_size = 1280; updateResolutions(); genParams.width = 1280; genParams.height = 1280; genParams.selected_res = genResolutions[0].label">1280</button>
+              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1536 ? 'active' : ''" @click="genParams.base_size = 1536; updateResolutions(); genParams.width = 1536; genParams.height = 1536; genParams.selected_res = genResolutions[0].label">1536</button>
+              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 'hd' ? 'active' : ''" @click="genParams.base_size = 'hd'; updateResolutions(); genParams.width = genResolutions.filter(r => r.w > 0)[0].w; genParams.height = genResolutions.filter(r => r.w > 0)[0].h; genParams.selected_res = genResolutions.filter(r => r.w > 0)[0].label">HD</button>
               <select class="input-control" x-model="genParams.selected_res" @change="applyResolutionLabel(genParams.selected_res)" style="flex-grow: 1; min-width: 0;">
                 <template x-for="r in genResolutions" :key="r.label">
                   <option :value="r.label" :disabled="r.section === 'header'" x-text="r.label"></option>
@@ -1089,13 +1236,35 @@
         </div>
 
         <div>
+          <!-- Load Preset -->
+          <div class="input-group">
+            <label class="input-label">Load Preset</label>
+            <select class="input-control" @change="applyGenPreset($event.target.value)">
+              <option value="">-- Choose Preset --</option>
+              <template x-for="(data, name) in genPresetsList" :key="name">
+                <option :value="name" x-text="name"></option>
+              </template>
+            </select>
+          </div>
+
         <!-- Model Settings Accordion -->
         <div class="accordion" :class="activeAccordion === 'gen_model' ? 'active' : ''">
           <div class="accordion-header" @click="toggleAccordion('gen_model')">
             <h3><i class="fa-solid fa-microchip"></i> Model Settings</h3>
+            <button class="btn-icon-overlay" @click.stop="loadModels()" title="Refresh models" style="width: 26px; height: 26px; font-size: 0.7rem; margin-left: auto; margin-right: 4px;"><i class="fa-solid fa-rotate"></i></button>
             <i class="fa-solid fa-chevron-down accordion-icon"></i>
           </div>
           <div x-show="activeAccordion === 'gen_model'" class="accordion-content">
+            <div class="input-group">
+              <label class="input-label">Model Pack</label>
+              <select class="input-control" x-model="genParams.model_pack" @change="applyGenModelPack(genParams.model_pack)">
+                <option value="">-- Choose Pack --</option>
+                <template x-for="(pack, name) in getPacksByCategory('generate')" :key="name">
+                  <option :value="name" x-text="name"></option>
+                </template>
+              </select>
+            </div>
+
             <div class="input-group">
               <label class="input-label">UNet</label>
               <select class="input-control" x-model="genParams.unet_name">
@@ -1174,6 +1343,7 @@
         <div class="accordion" :class="activeAccordion === 'gen_lora' ? 'active' : ''">
           <div class="accordion-header" @click="toggleAccordion('gen_lora')">
             <h3><i class="fa-solid fa-layer-group"></i> LoRA Configuration</h3>
+            <button class="btn-icon-overlay" @click.stop="loadModels()" title="Refresh LoRAs" style="width: 26px; height: 26px; font-size: 0.7rem; margin-left: auto; margin-right: 4px;"><i class="fa-solid fa-rotate"></i></button>
             <i class="fa-solid fa-chevron-down accordion-icon"></i>
           </div>
           <div x-show="activeAccordion === 'gen_lora'" class="accordion-content" style="display: flex; flex-direction: column; gap: 12px;">
@@ -1257,10 +1427,40 @@
           </div>
         </div>
 
+        <!-- Generate Preset Controls Accordion -->
+        <div class="accordion" :class="activeAccordion === 'gen_preset' ? 'active' : ''">
+          <div class="accordion-header" @click="toggleAccordion('gen_preset')">
+            <h3><i class="fa-solid fa-floppy-disk"></i> Preset Controls</h3>
+            <i class="fa-solid fa-chevron-down accordion-icon"></i>
+          </div>
+          <div x-show="activeAccordion === 'gen_preset'" class="accordion-content">
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 12px;">
+              <input type="text" class="input-control" x-model="newGenPresetName" placeholder="New Preset Name..." style="flex-grow: 1;">
+              <button class="btn btn-primary btn-sm" @click="saveNewGenPreset()" :disabled="!newGenPresetName.trim()" style="white-space: nowrap;">
+                <i class="fa-solid fa-floppy-disk"></i> Save
+              </button>
+            </div>
+            <div style="border-top: 1px solid var(--border-glass); padding-top: 10px;">
+              <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Update existing preset:</span>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <select class="input-control" x-model="genPresetToUpdate">
+                  <option value="">-- Select --</option>
+                  <template x-for="(data, name) in genPresetsList" :key="name">
+                    <option :value="name" x-text="name"></option>
+                  </template>
+                </select>
+                <button class="btn btn-sm" @click="updateGenPreset()" :disabled="!genPresetToUpdate" style="white-space: nowrap;">
+                  <i class="fa-solid fa-rotate"></i> Overwrite
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         </div>
 
       </div>
-      
+
       <!-- Right Output Panel -->
       <div class="output-panel">
         

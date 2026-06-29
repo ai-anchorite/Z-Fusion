@@ -13,6 +13,7 @@ const modelPacks = require('./model-packs');
 const settings = require('./settings');
 const sysStats = require('./system-stats');
 const enhancerPrompts = require('./enhancer-prompts');
+const genPresets = require('./gen-presets');
 
 const app = express();
 const PORT = process.env.PORT || 4242;
@@ -271,6 +272,23 @@ app.post('/api/enhancer-prompts', (req, res) => {
 
 app.delete('/api/enhancer-prompts/:name', (req, res) => {
   const ok = enhancerPrompts.delete(req.params.name);
+  ok ? res.json({ success: true }) : res.status(404).json({ error: "Not found" });
+});
+
+// Generate Presets CRUD
+app.get('/api/gen-presets', (req, res) => {
+  res.json(genPresets.load());
+});
+
+app.post('/api/gen-presets', (req, res) => {
+  const { name, data } = req.body;
+  if (!name || !data) return res.status(400).json({ error: "Missing name or data" });
+  genPresets.save(name, data);
+  res.json({ success: true });
+});
+
+app.delete('/api/gen-presets/:name', (req, res) => {
+  const ok = genPresets.delete(req.params.name);
   ok ? res.json({ success: true }) : res.status(404).json({ error: "Not found" });
 });
 

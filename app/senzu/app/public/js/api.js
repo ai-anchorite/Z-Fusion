@@ -36,6 +36,27 @@ const api = {
     });
     return res.json();
   },
+
+  async getGenPresets() {
+    const res = await fetch(`${API_BASE}/gen-presets`);
+    return res.json();
+  },
+
+  async saveGenPreset(name, data) {
+    const res = await fetch(`${API_BASE}/gen-presets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, data })
+    });
+    return res.json();
+  },
+
+  async deleteGenPreset(name) {
+    const res = await fetch(`${API_BASE}/gen-presets/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    });
+    return res.json();
+  },
   
   async getPresets() {
     const res = await fetch(`${API_BASE}/presets`);

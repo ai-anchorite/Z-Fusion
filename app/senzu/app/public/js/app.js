@@ -2,7 +2,7 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('senzu', () => ({
     // UI states
     activeTab: 'enhance',
-    activeAccordion: 'edit',
+    activeAccordion: '',
     sidebarOpen: true,
     comfyOnline: false,
     isProcessing: false,
@@ -71,6 +71,7 @@ document.addEventListener('alpine:init', () => {
     
     // Prompts and presets libraries
     promptsList: {},
+    selectedPromptTemplate: '',
     presetsList: {},
     newPresetName: '',
     newPromptName: '',
@@ -80,6 +81,7 @@ document.addEventListener('alpine:init', () => {
     // Model packs
     modelPacksList: {},
     newPackName: '',
+    newPackCategory: false,
     presetToUpdate: '',
     
     // App settings
@@ -94,11 +96,12 @@ document.addEventListener('alpine:init', () => {
     // Krea2 Image Generation
     genParams: {
       prompt: '',
-      enable_prompt_enhancer: true,
+      enable_prompt_enhancer: false,
       width: 1024,
       height: 1024,
       base_size: 1024,
       selected_res: '1024x1024 ( 1:1 )',
+      model_pack: '',
       unet_name: 'krea2_turbo_fp8_scaled.safetensors',
       vae_name: 'qwen_image_vae.safetensors',
       clip_name: 'qwen3vl_4b_fp8_scaled.safetensors',
@@ -129,6 +132,9 @@ document.addEventListener('alpine:init', () => {
     enhancerPromptsList: {},
     newEnhancerName: '',
     enhancerToUpdate: '',
+    genPresetsList: {},
+    newGenPresetName: '',
+    genPresetToUpdate: '',
 
     RES_CHOICES: {
       1024: [
@@ -169,6 +175,21 @@ document.addEventListener('alpine:init', () => {
         { label: '1152x2048 ( 9:16 )', w: 1152, h: 2048, section: 'portrait' },
         { label: '2016x864 ( 21:9 )', w: 2016, h: 864, section: 'landscape' },
         { label: '864x2016 ( 9:21 )', w: 864, h: 2016, section: 'portrait' },
+      ],
+      hd: [
+        { label: '1920x1080 \u2014 1080p', w: 1920, h: 1080, section: 'wp-std' },
+        { label: '2560x1440 \u2014 1440p', w: 2560, h: 1440, section: 'wp-std' },
+        { label: '1280x540 \u2014 1080p UW (upscale \u2192 2560x1080)', w: 1280, h: 540, section: 'wp-uw' },
+        { label: '1720x720 \u2014 1440p UW (upscale \u2192 3440x1440)', w: 1720, h: 720, section: 'wp-uw' },
+        { label: '1920x540 \u2014 4K UW (upscale \u2192 3840x1080)', w: 1920, h: 540, section: 'wp-super' },
+        { label: '2560x1080 \u2014 5K2K (upscale \u2192 5120x2160)', w: 2560, h: 1080, section: 'wp-super' },
+        { label: '1080x1920 \u2014 Phone (9:16)', w: 1080, h: 1920, section: 'phone' },
+        { label: '720x1280 \u2014 Phone HQ (upscale \u2192 1440x2560)', w: 720, h: 1280, section: 'phone' },
+        { label: '1080x1080 ( 1:1 ) \u2014 IG Square', w: 1080, h: 1080, section: 'social' },
+        { label: '1080x1350 ( 4:5 ) \u2014 IG Portrait', w: 1080, h: 1350, section: 'social' },
+        { label: '1080x566 ( 1.91:1 ) \u2014 IG Landscape', w: 1080, h: 566, section: 'social' },
+        { label: '1920x1080 \u2014 Full HD (1080p)', w: 1920, h: 1080, section: 'video' },
+        { label: '1280x720 \u2014 HD (720p)', w: 1280, h: 720, section: 'video' },
       ],
     },
     
@@ -232,6 +253,7 @@ document.addEventListener('alpine:init', () => {
         this.updateResolutions();
         this.loadComfySamplers();
         this.loadEnhancerPrompts();
+        this.loadGenPresets();
         
         setInterval(() => this.checkStatus(), 5000);
         setInterval(() => this.checkSysStats(), 5000);
@@ -363,18 +385,61 @@ document.addEventListener('alpine:init', () => {
         await this.loadEnhancerPrompts();
       } catch (err) { alert('Failed: ' + err.message); }
     },
+
+    // Generate Presets
+    async loadGenPresets() {
+      try { this.genPresetsList = await api.getGenPresets(); }
+      catch (err) { console.error('Failed to load gen presets:', err); }
+    },
+
+    applyGenPreset(name) {
+      if (this.genPresetsList[name]) {
+        const p = this.genPresetsList[name];
+        Object.keys(p).forEach(key => {
+          if (this.genParams[key] !== undefined) {
+            this.genParams[key] = p[key];
+          }
+        });
+        this.updateResolutions();
+      }
+    },
+
+    async saveNewGenPreset() {
+      if (!this.newGenPresetName.trim()) return;
+      try {
+        const payload = JSON.parse(JSON.stringify(this.genParams));
+        await api.saveGenPreset(this.newGenPresetName.trim(), payload);
+        this.newGenPresetName = '';
+        await this.loadGenPresets();
+      } catch (err) { alert('Failed: ' + err.message); }
+    },
+
+    async deleteGenPreset(name) {
+      if (!confirm('Delete generate preset "' + name + '"?')) return;
+      try { await api.deleteGenPreset(name); await this.loadGenPresets(); }
+      catch (err) { alert('Failed: ' + err.message); }
+    },
+
+    async updateGenPreset() {
+      if (!this.genPresetToUpdate) return;
+      if (!confirm('Overwrite "' + this.genPresetToUpdate + '" with current settings?')) return;
+      try {
+        const payload = JSON.parse(JSON.stringify(this.genParams));
+        await api.saveGenPreset(this.genPresetToUpdate, payload);
+        this.genPresetToUpdate = '';
+        await this.loadGenPresets();
+      } catch (err) { alert('Failed: ' + err.message); }
+    },
     
     applyPreset(name) {
       if (this.presetsList[name]) {
         const p = this.presetsList[name];
-        // Merge preset values into active params
         Object.keys(p).forEach(key => {
           if (this.params[key] !== undefined) {
             this.params[key] = p[key];
           }
         });
-        
-        // Auto-select GGUF toggles if models match GGUF in preset
+        this.selectedPromptTemplate = '';
         if (this.params.unet_name.includes('.gguf')) {
           this.params.use_gguf = true;
         } else {
@@ -412,6 +477,13 @@ document.addEventListener('alpine:init', () => {
     applyPrompt(name) {
       if (this.promptsList[name]) {
         this.params.prompt = this.promptsList[name];
+      }
+    },
+
+    editPrompt(name) {
+      if (this.promptsList[name]) {
+        this.newPromptName = name;
+        this.newPromptContent = this.promptsList[name];
       }
     },
     
@@ -471,6 +543,15 @@ document.addEventListener('alpine:init', () => {
       }
       this.updateModelNag();
     },
+
+    applyGenModelPack(name) {
+      const pack = this.modelPacksList[name];
+      if (!pack) return;
+      this.genParams.model_pack = name;
+      this.genParams.unet_name = pack.unet_name;
+      this.genParams.clip_name = pack.clip_name;
+      this.genParams.vae_name = pack.vae_name;
+    },
     
     packModelsInstalled(pack) {
       if (!pack) return false;
@@ -500,6 +581,15 @@ document.addEventListener('alpine:init', () => {
       this.showModelNag = this.params.model_pack && this.modelPacksList[this.params.model_pack] && !this.anyPackInstalled();
     },
     
+    getPacksByCategory(cat) {
+      const result = {};
+      for (const [name, pack] of Object.entries(this.modelPacksList)) {
+        const pc = pack.category || 'edit';
+        if (pc === cat) result[name] = pack;
+      }
+      return result;
+    },
+
     async saveModelPack() {
       if (!this.newPackName.trim()) return;
       const data = {
@@ -507,7 +597,8 @@ document.addEventListener('alpine:init', () => {
         unet_name: this.params.unet_name,
         clip_name: this.params.clip_name,
         vae_name: this.params.vae_name,
-        is_recommended: false
+        is_recommended: false,
+        category: this.newPackCategory ? 'generate' : 'edit'
       };
       try {
         await api.saveModelPack(this.newPackName.trim(), data);
@@ -1254,13 +1345,30 @@ document.addEventListener('alpine:init', () => {
     // Krea2 Image Generation
     updateResolutions() {
       const choices = this.RES_CHOICES[this.genParams.base_size] || this.RES_CHOICES[1024];
-      this.genResolutions = [
-        choices[0],  // square
-        { label: '── Portrait ──', w: 0, h: 0, section: 'header' },
-        ...choices.filter(c => c.section === 'portrait'),
-        { label: '── Landscape ──', w: 0, h: 0, section: 'header' },
-        ...choices.filter(c => c.section === 'landscape'),
-      ];
+      if (this.genParams.base_size === 'hd') {
+        this.genResolutions = [
+          { label: '── Standard ──', w: 0, h: 0, section: 'header' },
+          ...choices.filter(c => c.section === 'wp-std'),
+          { label: '── Ultrawide ──', w: 0, h: 0, section: 'header' },
+          ...choices.filter(c => c.section === 'wp-uw'),
+          { label: '── Super Ultrawide ──', w: 0, h: 0, section: 'header' },
+          ...choices.filter(c => c.section === 'wp-super'),
+          { label: '── Phone ──', w: 0, h: 0, section: 'header' },
+          ...choices.filter(c => c.section === 'phone'),
+          { label: '── Social ──', w: 0, h: 0, section: 'header' },
+          ...choices.filter(c => c.section === 'social'),
+          { label: '── Video ──', w: 0, h: 0, section: 'header' },
+          ...choices.filter(c => c.section === 'video'),
+        ];
+      } else {
+        this.genResolutions = [
+          choices[0],
+          { label: '── Portrait ──', w: 0, h: 0, section: 'header' },
+          ...choices.filter(c => c.section === 'portrait'),
+          { label: '── Landscape ──', w: 0, h: 0, section: 'header' },
+          ...choices.filter(c => c.section === 'landscape'),
+        ];
+      }
     },
 
     applyResolutionLabel(label) {

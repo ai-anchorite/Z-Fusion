@@ -21,7 +21,11 @@ const DEFAULT_PROMPTS = {
 
   "Cyberpunk Night": "Reimagine this scene with a cyberpunk aesthetic. Introduce vibrant neon lighting in pink, cyan, and electric blue reflecting off wet surfaces and metallic elements. Add volumetric fog and atmospheric haze with floating particles. Deepen shadows to near-black while keeping neon highlights crisp. Add subtle holographic UI elements and lens flares. Preserve the original composition and subject identity.",
 
-  "Natural HDR Look": "Apply a natural HDR enhancement to this image. Recover detail from overexposed highlights and underexposed shadows. Expand the dynamic range while maintaining a natural, non-artificial appearance. Enhance local contrast and texture clarity. Improve saturation subtly without making colors look processed. The result should look like a well-exposed professional photograph, not an over-processed HDR composite."
+  "Natural HDR Look": "Apply a natural HDR enhancement to this image. Recover detail from overexposed highlights and underexposed shadows. Expand the dynamic range while maintaining a natural, non-artificial appearance. Enhance local contrast and texture clarity. Improve saturation subtly without making colors look processed. The result should look like a well-exposed professional photograph, not an over-processed HDR composite.",
+
+  "Photographic Translation": "Reskin this entire image into a raw, high-resolution photograph. Convert all stylized surfaces into their real-world material counterparts with organic textures, high-fidelity details, and natural light-wrap. Maintain the exact composition and elements, but render them with the optical clarity and color science of a professional full-frame camera sensor.",
+
+  "Optical Realism": "Render this scene as if captured through a high-quality 35mm lens. Apply realistic optical characteristics: a natural depth of field, and authentic light physics. Transform the current art style into a grounded, photographic reality without adding any new elements to the composition."
 };
 
 function ensurePromptsExist() {
