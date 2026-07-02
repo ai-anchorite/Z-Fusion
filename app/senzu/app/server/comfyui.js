@@ -276,6 +276,20 @@ async function runWorkflow(workflowPath, mode, params, progressCallback) {
   }
   
   if (!imageOutput) {
+    // Check for text-only output first (e.g. prompt enhancer workflow)
+    if (historyResult.outputs) {
+      for (const [nodeId, out] of Object.entries(historyResult.outputs)) {
+        if (out.text && out.text.length > 0) {
+          return {
+            filename: null,
+            subfolder: null,
+            type: null,
+            prompt_id: promptId,
+            text: out.text[0]
+          };
+        }
+      }
+    }
     throw new Error("No output image found in ComfyUI execution history.");
   }
 

@@ -1,0 +1,170 @@
+{
+  "2": {
+    "inputs": {
+      "image": "senzu_placeholder.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image (Reference)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Enable Enhancer"
+    }
+  },
+  "8": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Use Image Reference"
+    }
+  },
+  "9": {
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "batch_size": 1,
+      "color": 0
+    },
+    "class_type": "EmptyImage",
+    "_meta": {
+      "title": "Empty Image (fallback)"
+    }
+  },
+  "10": {
+    "inputs": {
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+      "type": "krea2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Enhancement LLM"
+    }
+  },
+  "13": {
+    "inputs": {
+      "value": "You are an expert Prompt Engineer and Visual Analyst. Your task is to enhance the user's prompt into a rich, detailed, natural-language description optimized for text-to-image models.\n\nRules:\n- Start directly with the main subject or scene. No meta phrases.\n- Preserve all original subjects, actions, colors, and spatial relationships.\n- Write one flowing paragraph with vivid, specific detail.\n- Do not invent new subjects or objects the user did not imply.\n- If the prompt is already detailed, lightly polish rather than heavily expand."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "System Prompt"
+    }
+  },
+  "14": {
+    "inputs": {
+      "string_a": [
+        "13",
+        0
+      ],
+      "string_b": [
+        "15",
+        0
+      ],
+      "delimiter": "\n\n---\n\nUser prompt to enhance:\n"
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "Concat (System + User)"
+    }
+  },
+  "15": {
+    "inputs": {
+      "value": "a photo of a ballerina in a complex dance position"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "User Prompt"
+    }
+  },
+  "16": {
+    "inputs": {
+      "switch": [
+        "7",
+        0
+      ],
+      "on_false": [
+        "15",
+        0
+      ],
+      "on_true": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "Enhancer On/Off"
+    }
+  },
+  "17": {
+    "inputs": {
+      "source": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  },
+  "18": {
+    "inputs": {
+      "prompt": [
+        "14",
+        0
+      ],
+      "max_length": 512,
+      "sampling_mode": "on",
+      "sampling_mode.temperature": 0.7,
+      "sampling_mode.top_k": 64,
+      "sampling_mode.top_p": 0.95,
+      "sampling_mode.min_p": 0.05,
+      "sampling_mode.repetition_penalty": 1.05,
+      "sampling_mode.seed": 0,
+      "sampling_mode.presence_penalty": 0,
+      "thinking": false,
+      "use_default_template": false,
+      "clip": [
+        "10",
+        0
+      ],
+      "image": [
+        "22",
+        0
+      ]
+    },
+    "class_type": "TextGenerate",
+    "_meta": {
+      "title": "Generate Text"
+    }
+  },
+  "22": {
+    "inputs": {
+      "switch": [
+        "8",
+        0
+      ],
+      "on_false": [
+        "9",
+        0
+      ],
+      "on_true": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "Image Ref Switch"
+    }
+  }
+}

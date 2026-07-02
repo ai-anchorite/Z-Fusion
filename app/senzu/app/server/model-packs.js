@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const DATA_DIR = path.join(__dirname, '../data');
 const MODEL_PACKS_FILE = path.join(DATA_DIR, 'senzu-model-packs.json');
-const PACKS_VERSION = 5;
+const PACKS_VERSION = 6;
 
 const DEFAULT_PACKS = {
   "FP8 Standard": {
@@ -60,6 +60,20 @@ const DEFAULT_PACKS = {
       ]
     }
   },
+  "Krea2 Int8": {
+    use_gguf: false,
+    unet_name: "krea2_turbo_int8_convrot.safetensors",
+    clip_name: "qwen3vl_4b_fp8_scaled.safetensors",
+    vae_name: "qwen_image_vae.safetensors",
+    is_recommended: true,
+    category: "generate",
+    description: "Optimized INT8 quantized Krea2 Turbo with convrot compression. Significantly faster inference than FP8 with equal or better quality.",
+    downloads: {
+      unet: { repo: "Comfy-Org/Krea-2", filename: "diffusion_models/krea2_turbo_int8_convrot.safetensors", dest_filename: "krea2_turbo_int8_convrot.safetensors", desc: "Krea2 Turbo Int8 ConvRot", size: "~7GB" },
+      clip: { repo: "Comfy-Org/Krea-2", filename: "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", dest_filename: "qwen3vl_4b_fp8_scaled.safetensors", desc: "Qwen3-VL 4B TE (FP8)", size: "~5GB" },
+      vae: { repo: "Comfy-Org/Krea-2", filename: "vae/qwen_image_vae.safetensors", dest_filename: "qwen_image_vae.safetensors", desc: "Krea2 VAE", size: "~0.25GB" }
+    }
+  },
   "Krea2 Standard": {
     use_gguf: false,
     unet_name: "krea2_turbo_fp8_scaled.safetensors",
@@ -101,6 +115,42 @@ const DEFAULT_PACKS = {
       clip: { repo: "Comfy-Org/vae-text-encorder-for-flux-klein-9b", filename: "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors", dest_filename: "qwen_3_8b_fp8mixed.safetensors", desc: "Qwen3 8B CLIP (FP8)", size: "~8.6GB" },
       vae: { repo: "Comfy-Org/vae-text-encorder-for-flux-klein-9b", filename: "split_files/vae/flux2-vae.safetensors", dest_filename: "flux2-vae.safetensors", desc: "Flux2 VAE", size: "~336MB" }
     }
+  },
+  "Prompt Refinement LLMs": {
+    use_gguf: false,
+    unet_name: "",
+    clip_name: "qwen3vl_4b_fp8_scaled.safetensors",
+    vae_name: "",
+    is_recommended: true,
+    category: "prompt",
+    description: "Text encoder models for prompt refinement. The default FP8 model works well for most users.",
+    downloads: {
+      clip: { repo: "Comfy-Org/Krea-2", filename: "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", dest_filename: "qwen3vl_4b_fp8_scaled.safetensors", desc: "Qwen3-VL 4B TE (FP8)", size: "~5GB" },
+      unet: null,
+      vae: null,
+      loras: [
+        { repo: "ethanfel/Krea-2-Base-Diffusers", filename: "comfyui/text_encoders/qwen3vl_4b_abliterated_fp8_comfy.safetensors", dest_filename: "qwen3vl_4b_abliterated_fp8.safetensors", desc: "Qwen3-VL 4B Abliterated (FP8) — uncensored + uncensored vision", size: "~5GB" },
+        { repo: "silveroxides/K2Q", filename: "qwen3vl_4b/qwen3vl_4b_uncensored_bf16.safetensors", dest_filename: "qwen3vl_4b_uncensored_bf16.safetensors", desc: "Qwen3-VL 4B Uncensored (BF16) — full precision uncensored", size: "~9GB" }
+      ]
+    }
+  },
+  "Prompt Description LLMs": {
+    use_gguf: false,
+    unet_name: "",
+    clip_name: "qwen3vl_4b_fp8_scaled.safetensors",
+    vae_name: "",
+    is_recommended: true,
+    category: "prompt",
+    description: "Vision-capable text encoder models for image description. Requires a model with visual understanding.",
+    downloads: {
+      clip: { repo: "Comfy-Org/Krea-2", filename: "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", dest_filename: "qwen3vl_4b_fp8_scaled.safetensors", desc: "Qwen3-VL 4B TE (FP8)", size: "~5GB" },
+      unet: null,
+      vae: null,
+      loras: [
+        { repo: "ethanfel/Krea-2-Base-Diffusers", filename: "comfyui/text_encoders/qwen3vl_4b_abliterated_fp8_comfy.safetensors", dest_filename: "qwen3vl_4b_abliterated_fp8.safetensors", desc: "Qwen3-VL 4B Abliterated (FP8) — uncensored + uncensored vision", size: "~5GB" },
+        { repo: "silveroxides/K2Q", filename: "qwen3vl_4b/qwen3vl_4b_uncensored_bf16.safetensors", dest_filename: "qwen3vl_4b_uncensored_bf16.safetensors", desc: "Qwen3-VL 4B Uncensored (BF16) — full precision uncensored", size: "~9GB" }
+      ]
+    }
   }
 };
 
@@ -122,9 +172,22 @@ function ensurePacksExist() {
     }
   }
   if (needsRegen) {
-    const defaults = { _version: PACKS_VERSION };
-    Object.assign(defaults, DEFAULT_PACKS);
-    fs.writeFileSync(MODEL_PACKS_FILE, JSON.stringify(defaults, null, 2), 'utf-8');
+    let existing = {};
+    try {
+      if (fs.existsSync(MODEL_PACKS_FILE)) {
+        existing = JSON.parse(fs.readFileSync(MODEL_PACKS_FILE, 'utf-8'));
+      }
+    } catch (_) {}
+    // Start with new recommended packs, then merge in user's custom packs
+    const merged = { _version: PACKS_VERSION };
+    Object.assign(merged, DEFAULT_PACKS);
+    for (const [name, pack] of Object.entries(existing)) {
+      if (name === '_version') continue;
+      if (!pack.is_recommended) {
+        merged[name] = pack;
+      }
+    }
+    fs.writeFileSync(MODEL_PACKS_FILE, JSON.stringify(merged, null, 2), 'utf-8');
   }
 }
 

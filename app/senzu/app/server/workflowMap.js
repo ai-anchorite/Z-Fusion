@@ -62,11 +62,13 @@ module.exports = {
     seed: { node: "63", field: "seed" },
     steps: { node: "63", field: "steps" },
     cfg: { node: "63", field: "cfg" },
+    denoise: { node: "63", field: "denoise" },
     sampler_name: { node: "63", field: "sampler_name" },
     scheduler: { node: "63", field: "scheduler" },
     prompt: { node: "59", field: "value" },
-    system_prompt: { node: "67", field: "value" },
-    enable_prompt_enhancer: { node: "65", field: "value" },
+    use_image_input: { node: "83", field: "value" },
+    megapixels: { node: "81", field: "megapixels" },
+    image: { node: "80", field: "image", upload: true },
     lora1_name: { node: "64", field: "lora_name" },
     lora1_strength: { node: "64", field: "strength_model" },
     lora2_name: { node: "73", field: "lora_name" },
@@ -79,5 +81,18 @@ module.exports = {
     lora5_strength: { node: "76", field: "strength_model" },
     lora6_name: { node: "77", field: "lora_name" },
     lora6_strength: { node: "77", field: "strength_model" }
+  },
+  prompt_enhancer: {
+    user_prompt: { node: "15", field: "value" },
+    system_prompt: { node: "13", field: "value" },
+    enable_enhancer: { node: "7", field: "value" },
+    use_image_ref: { node: "8", field: "value" },
+    llm_clip_name: { node: "10", field: "clip_name" },
+    image: { node: "2", field: "image", upload: true },
+    max_length: { node: "18", field: "max_length" },
+    temperature: { node: "18", field: "sampling_mode.temperature" },
+    top_k: { node: "18", field: "sampling_mode.top_k" },
+    top_p: { node: "18", field: "sampling_mode.top_p" },
+    repetition_penalty: { node: "18", field: "sampling_mode.repetition_penalty" }
   }
 };

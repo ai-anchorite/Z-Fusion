@@ -57,6 +57,43 @@ const api = {
     });
     return res.json();
   },
+
+  async enhancePrompt(prompt, parameters, imageFile) {
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    formData.append('parameters', JSON.stringify(parameters));
+    if (imageFile) formData.append('image', imageFile);
+    const res = await fetch(`${API_BASE}/enhance-prompt`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Enhancement failed');
+    }
+    return res.json();
+  },
+
+  async getGenEnhancerPrompts() {
+    const res = await fetch(`${API_BASE}/gen-enhancer-prompts`);
+    return res.json();
+  },
+
+  async saveGenEnhancerPrompt(name, content) {
+    const res = await fetch(`${API_BASE}/gen-enhancer-prompts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content })
+    });
+    return res.json();
+  },
+
+  async deleteGenEnhancerPrompt(name) {
+    const res = await fetch(`${API_BASE}/gen-enhancer-prompts/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    });
+    return res.json();
+  },
   
   async getPresets() {
     const res = await fetch(`${API_BASE}/presets`);
@@ -188,6 +225,15 @@ const api = {
     });
     return res.json();
   },
+
+  async openModelFolder(type) {
+    const res = await fetch(`${API_BASE}/models/open-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type })
+    });
+    return res.json();
+  },
   
   async saveOutputToFolder(filename, save_folder, destName) {
     const res = await fetch(`${API_BASE}/outputs/save`, {
@@ -245,11 +291,13 @@ const api = {
     return promise;
   },
 
-  async generateImage(parameters) {
+  async generateImage(parameters, imageFile) {
+    const formData = new FormData();
+    formData.append('parameters', JSON.stringify(parameters));
+    if (imageFile) formData.append('image', imageFile);
     const res = await fetch(`${API_BASE}/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parameters })
+      body: formData
     });
     if (!res.ok) {
       const err = await res.json();

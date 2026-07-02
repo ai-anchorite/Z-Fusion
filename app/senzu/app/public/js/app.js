@@ -90,13 +90,18 @@ document.addEventListener('alpine:init', () => {
       autosave: false,
       clear_temp_on_start: true,
       theme: 'Default',
-      default_model_pack: ''
+      default_model_pack: '',
+      enhancer_system_prompt: 'Refinement',
+      enhancer_llm_model: 'qwen3vl_4b_fp8_scaled.safetensors',
+      description_system_prompt: 'Description',
+      description_llm_model: 'qwen3vl_4b_fp8_scaled.safetensors',
+      enhancer_max_length: 512,
+      enhancer_temperature: 0.7
     },
 
     // Krea2 Image Generation
     genParams: {
       prompt: '',
-      enable_prompt_enhancer: false,
       width: 1024,
       height: 1024,
       base_size: 1024,
@@ -111,13 +116,17 @@ document.addEventListener('alpine:init', () => {
       scheduler: 'beta',
       seed: 0,
       randomize_seed: true,
-      lora1_enabled: false, lora1_name: 'none.safetensors', lora1_strength: 0,
-      lora2_enabled: false, lora2_name: 'none.safetensors', lora2_strength: 0,
-      lora3_enabled: false, lora3_name: 'none.safetensors', lora3_strength: 0,
-      lora4_enabled: false, lora4_name: 'none.safetensors', lora4_strength: 0,
-      lora5_enabled: false, lora5_name: 'none.safetensors', lora5_strength: 0,
-      lora6_enabled: false, lora6_name: 'none.safetensors', lora6_strength: 0,
-      system_prompt: `You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.\n\nThink step by step about the request before writing the answer:\n- What is the subject and mood?\n- What visual styles, mediums, and lighting options would fit? Consider two or three alternatives and pick the one that best serves the caption.\n- What composition, framing, and grounded details will help the text-to-image model?\n\nThen output a single expanded prompt paragraph.\n\nFollow these rules strictly:\n1. **Faithfulness First:** Preserve all original subjects, actions, colors, and spatial relationships. Do not add new objects, props, characters, or animals unless the user clearly implies them.\n2. **Practical T2I Structure:** Write a prompt that a text-to-image model can parse cleanly. Group subjects with their own attributes and actions. Use grounded phrasing for poses, interactions, and spatial layout.\n3. **Style Planning Stays Internal:** Use your internal reasoning to choose style, medium, framing, and lighting. Do not emit planning tags or wrappers in the visible answer body.\n4. **Text Rendering:** If the user requests visible text, quotes, labels, or typography, specify the exact text clearly and wrap requested words in quotes.\n5. **Avoid Over-Specification:** Do not invent highly specific clothing, colors, materials, or scene details unless the input supports them.\n6. **Structure:** Write one cohesive paragraph after the thinking block. No bullets, JSON, or markdown.\n7. **Respect Existing Detail:** If the user's prompt is already detailed, lightly polish and finalize rather than heavily expanding \u2014 preserve their phrasing and direction.\n8. **Preserve User Medium:** When the user explicitly requests a medium (e.g. \"photo of\", \"photograph of\", \"illustration of\", \"painting of\", \"sketch of\", \"3D render of\"), honor it. Do not pivot to a different medium to avoid difficulty \u2014 match the user's stated intent.\n\nUser's Input:\n`
+      lora1_enabled: false, lora1_name: 'none.safetensors', lora1_strength: 1.0,
+      lora2_enabled: false, lora2_name: 'none.safetensors', lora2_strength: 0.5,
+      lora3_enabled: false, lora3_name: 'none.safetensors', lora3_strength: 0.5,
+      lora4_enabled: false, lora4_name: 'none.safetensors', lora4_strength: 0.5,
+      lora5_enabled: false, lora5_name: 'none.safetensors', lora5_strength: 0.5,
+      lora6_enabled: false, lora6_name: 'none.safetensors', lora6_strength: 0.5,
+      system_prompt: ``,
+      chain_enhancer: false,
+      use_image_input: false,
+      megapixels: 1.0,
+      denoise: 0.6
     },
     genOutput: null,
     genOutputs: [],
@@ -135,6 +144,14 @@ document.addEventListener('alpine:init', () => {
     genPresetsList: {},
     newGenPresetName: '',
     genPresetToUpdate: '',
+    genEnhancerPromptsList: {},
+    newGenEnhancerName: '',
+    genEnhancerToUpdate: '',
+    enhancerImage: null,
+    imgInputImage: null,
+    imgInputPreview: null,
+    enhancer_result: '',
+    enhancingPrompt: false,
 
     RES_CHOICES: {
       1024: [
@@ -254,6 +271,7 @@ document.addEventListener('alpine:init', () => {
         this.loadComfySamplers();
         this.loadEnhancerPrompts();
         this.loadGenPresets();
+        this.loadGenEnhancerPrompts();
         
         setInterval(() => this.checkStatus(), 5000);
         setInterval(() => this.checkSysStats(), 5000);
@@ -555,13 +573,15 @@ document.addEventListener('alpine:init', () => {
     
     packModelsInstalled(pack) {
       if (!pack) return false;
-      let allInstalled = this.modelExists(pack.unet_name, 'diffusion_models') &&
-             this.modelExists(pack.clip_name, 'text_encoders') &&
-             this.modelExists(pack.vae_name, 'vae');
+      let allInstalled = true;
+      if (pack.unet_name) allInstalled = allInstalled && this.modelExists(pack.unet_name, 'diffusion_models');
+      if (pack.clip_name) allInstalled = allInstalled && this.modelExists(pack.clip_name, 'text_encoders');
+      if (pack.vae_name) allInstalled = allInstalled && this.modelExists(pack.vae_name, 'vae');
       if (pack.downloads && pack.downloads.loras && Array.isArray(pack.downloads.loras)) {
+        const modelType = pack.category === 'prompt' ? 'text_encoders' : 'loras';
         for (const lora of pack.downloads.loras) {
           const name = lora.dest_filename || lora.filename;
-          if (!this.modelExists(name, 'loras')) {
+          if (!this.modelExists(name, modelType)) {
             allInstalled = false;
             break;
           }
@@ -646,6 +666,19 @@ document.addEventListener('alpine:init', () => {
         alert('Download error: ' + err.message);
       }
     },
+
+    async downloadPromptLLM(packName, idx) {
+      const pack = this.modelPacksList[packName];
+      if (!pack || !pack.downloads || !pack.downloads.loras) return;
+      const dl = pack.downloads.loras[idx];
+      if (!dl) return;
+      try {
+        await api.startDownload(dl.repo, dl.filename, 'text_encoder', dl.dest_filename);
+        this.pollDownloadStatus();
+      } catch (err) {
+        alert('Download error: ' + err.message);
+      }
+    },
     
     async downloadPack(packName) {
       const pack = this.modelPacksList[packName];
@@ -656,8 +689,10 @@ document.addEventListener('alpine:init', () => {
                        { type: 'clip', category: 'text_encoders', dl: pack.downloads.clip },
                        { type: 'vae', category: 'vae', dl: pack.downloads.vae }];
       if (pack.downloads.loras && Array.isArray(pack.downloads.loras)) {
+        const extraType = pack.category === 'prompt' ? 'text_encoder' : 'lora';
+        const extraCategory = pack.category === 'prompt' ? 'text_encoders' : 'loras';
         pack.downloads.loras.forEach((lora, i) => {
-          allItems.push({ type: 'lora', category: 'loras', dl: lora });
+          allItems.push({ type: extraType, category: extraCategory, dl: lora });
         });
       }
 
@@ -665,7 +700,7 @@ document.addEventListener('alpine:init', () => {
         if (!item.dl) continue;
         const checkName = item.dl.dest_filename || item.dl.filename;
         if (this.modelExists(checkName, item.category)) continue;
-        const apiTypeMap = { unet: 'unet', clip: 'text_encoder', vae: 'vae', lora: 'lora' };
+        const apiTypeMap = { unet: 'unet', clip: 'text_encoder', vae: 'vae', lora: 'lora', text_encoder: 'text_encoder' };
         try {
           await api.startDownload(item.dl.repo, item.dl.filename, apiTypeMap[item.type], item.dl.dest_filename);
           this.pollDownloadStatus();
@@ -1216,6 +1251,12 @@ document.addEventListener('alpine:init', () => {
             this.appSettings.default_model_pack = s.default_model_pack;
             this.applyModelPack(s.default_model_pack, false);
           }
+          this.appSettings.enhancer_system_prompt = s.enhancer_system_prompt || 'Refinement';
+          this.appSettings.enhancer_llm_model = s.enhancer_llm_model || 'qwen3vl_4b_fp8_scaled.safetensors';
+          this.appSettings.description_system_prompt = s.description_system_prompt || 'Description';
+          this.appSettings.description_llm_model = s.description_llm_model || 'qwen3vl_4b_fp8_scaled.safetensors';
+          this.appSettings.enhancer_max_length = s.enhancer_max_length || 768;
+          this.appSettings.enhancer_temperature = s.enhancer_temperature || 0.7;
         }
         this.applyTheme();
       } catch (err) {
@@ -1239,7 +1280,13 @@ document.addEventListener('alpine:init', () => {
           autosave: this.appSettings.autosave,
           clear_temp_on_start: this.appSettings.clear_temp_on_start,
           theme: this.appSettings.theme,
-          default_model_pack: this.appSettings.default_model_pack
+          default_model_pack: this.appSettings.default_model_pack,
+          enhancer_system_prompt: this.appSettings.enhancer_system_prompt,
+          enhancer_llm_model: this.appSettings.enhancer_llm_model,
+          description_system_prompt: this.appSettings.description_system_prompt,
+          description_llm_model: this.appSettings.description_llm_model,
+          enhancer_max_length: this.appSettings.enhancer_max_length,
+          enhancer_temperature: this.appSettings.enhancer_temperature
         });
         this.applyTheme();
       } catch (err) {
@@ -1251,6 +1298,14 @@ document.addEventListener('alpine:init', () => {
       try {
         const folder = this.appSettings.save_folder || '';
         await api.openOutputs(folder);
+      } catch (err) {
+        alert('Failed to open folder: ' + err.message);
+      }
+    },
+
+    async openModelFolder(type) {
+      try {
+        await api.openModelFolder(type);
       } catch (err) {
         alert('Failed to open folder: ' + err.message);
       }
@@ -1336,6 +1391,112 @@ document.addEventListener('alpine:init', () => {
       }
     },
     
+
+    async enhancePromptButton() {
+      if (!this.genParams.prompt.trim() || this.enhancingPrompt) return;
+      this.enhancingPrompt = true;
+      try {
+        const systemPromptName = this.appSettings.enhancer_system_prompt || 'Refinement';
+        const system_prompt = this.genEnhancerPromptsList[systemPromptName] || '';
+        const res = await api.enhancePrompt(this.genParams.prompt, {
+          system_prompt: system_prompt,
+          llm_clip_name: this.appSettings.enhancer_llm_model || 'qwen3vl_4b_fp8_scaled.safetensors',
+          use_image_ref: false,
+          max_length: this.appSettings.enhancer_max_length,
+          temperature: this.appSettings.enhancer_temperature
+        });
+        if (res.enhanced_prompt) {
+          this.genParams.prompt = res.enhanced_prompt;
+        }
+      } catch (err) {
+        alert('Prompt refinement failed: ' + err.message);
+      }
+      this.enhancingPrompt = false;
+    },
+
+    async describeImage() {
+      if (!this.imgInputImage) return;
+      this.enhancingPrompt = true;
+      try {
+        const systemPromptName = this.appSettings.description_system_prompt || 'Description';
+        const system_prompt = this.genEnhancerPromptsList[systemPromptName] || '';
+        const res = await api.enhancePrompt('Describe this image in detail.', {
+          system_prompt: system_prompt,
+          llm_clip_name: this.appSettings.description_llm_model || 'qwen3vl_4b_fp8_scaled.safetensors',
+          use_image_ref: true,
+          max_length: this.appSettings.enhancer_max_length,
+          temperature: this.appSettings.enhancer_temperature
+        }, this.imgInputImage);
+        if (res.enhanced_prompt) {
+          this.genParams.prompt = res.enhanced_prompt;
+        }
+      } catch (err) {
+        alert('Image description failed: ' + err.message);
+      }
+      this.enhancingPrompt = false;
+    },
+
+    handleImgInput(e) {
+      const files = e.dataTransfer ? e.dataTransfer.files : (e.target ? e.target.files : null);
+      if (files && files[0]) {
+        this.imgInputImage = files[0];
+        const reader = new FileReader();
+        reader.onload = (ev) => { this.imgInputPreview = ev.target.result; };
+        reader.readAsDataURL(files[0]);
+      }
+    },
+
+    clearImgInput() {
+      this.imgInputImage = null;
+      this.imgInputPreview = null;
+    },
+
+    // Gen Enhancer Prompts
+    async loadGenEnhancerPrompts() {
+      try { this.genEnhancerPromptsList = await api.getGenEnhancerPrompts(); }
+      catch (err) { console.error('Failed to load gen enhancer prompts:', err); }
+    },
+
+    applyGenEnhancerPrompt(name) {
+      if (this.genEnhancerPromptsList[name]) {
+        this.genParams.system_prompt = this.genEnhancerPromptsList[name];
+        this.appSettings.enhancer_system_prompt = name;
+        this.saveSettings();
+      }
+    },
+
+    editGenEnhancerPrompt(name) {
+      if (!name) return;
+      if (this.genEnhancerPromptsList[name]) {
+        this.newGenEnhancerName = name;
+        this.genParams.system_prompt = this.genEnhancerPromptsList[name];
+      }
+    },
+
+    async saveNewGenEnhancerPrompt() {
+      if (!this.newGenEnhancerName.trim()) return;
+      try {
+        await api.saveGenEnhancerPrompt(this.newGenEnhancerName.trim(), this.genParams.system_prompt);
+        this.newGenEnhancerName = '';
+        await this.loadGenEnhancerPrompts();
+      } catch (err) { alert('Failed: ' + err.message); }
+    },
+
+    async deleteGenEnhancerPrompt(name) {
+      if (!confirm('Delete enhancer prompt "' + name + '"?')) return;
+      try { await api.deleteGenEnhancerPrompt(name); await this.loadGenEnhancerPrompts(); }
+      catch (err) { alert('Failed: ' + err.message); }
+    },
+
+    async updateGenEnhancerPrompt() {
+      if (!this.genEnhancerToUpdate) return;
+      if (!confirm('Overwrite "' + this.genEnhancerToUpdate + '" with current?')) return;
+      try {
+        await api.saveGenEnhancerPrompt(this.genEnhancerToUpdate, this.genParams.system_prompt);
+        this.genEnhancerToUpdate = '';
+        await this.loadGenEnhancerPrompts();
+      } catch (err) { alert('Failed: ' + err.message); }
+    },
     formatTime(seconds) {
       const m = Math.floor(seconds / 60);
       const s = seconds % 60;
@@ -1383,20 +1544,35 @@ document.addEventListener('alpine:init', () => {
     },
 
     async startGeneration() {
-      if (!this.genParams.prompt.trim()) return;
       this.genProcessing = true;
       this.genStatusText = 'Generating...';
       this.genProcessTime = 0;
       const genTimer = setInterval(() => { this.genProcessTime++; }, 1000);
       try {
-        const res = await api.generateImage(this.genParams);
+        // Chain enhancer: run standalone before T2I if enabled
+        if (this.genParams.chain_enhancer) {
+          this.genStatusText = 'Refining prompt...';
+          const systemPromptName = this.appSettings.enhancer_system_prompt || 'Refinement';
+          const system_prompt = this.genEnhancerPromptsList[systemPromptName] || '';
+          const enhRes = await api.enhancePrompt(this.genParams.prompt, {
+            system_prompt: system_prompt,
+            llm_clip_name: this.appSettings.enhancer_llm_model || 'qwen3vl_4b_fp8_scaled.safetensors',
+            use_image_ref: false,
+            max_length: this.appSettings.enhancer_max_length,
+            temperature: this.appSettings.enhancer_temperature
+          });
+          if (enhRes.enhanced_prompt) {
+            this.genParams.prompt = enhRes.enhanced_prompt;
+          }
+        }
+
+        this.genStatusText = 'Generating image...';
+        const image = (this.genParams.use_image_input && this.imgInputImage) ? this.imgInputImage : null;
+        const res = await api.generateImage(this.genParams, image || undefined);
         this.genOutputs.push({ url: res.output, prompt: this.genParams.prompt });
         this.genViewedIndex = this.genOutputs.length - 1;
         this.genOutput = res.output;
         this.genStatusText = this.genOutputs.length + ' image' + (this.genOutputs.length !== 1 ? 's' : '') + ' generated';
-        if (res.enhanced_prompt) {
-          this.genParams.prompt = res.enhanced_prompt;
-        }
       } catch (err) {
         this.genStatusText = 'Error: ' + err.message;
       }

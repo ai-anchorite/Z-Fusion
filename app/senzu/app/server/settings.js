@@ -4,38 +4,58 @@ const { exec } = require('child_process');
 
 const DATA_DIR = path.join(__dirname, '../data');
 const SETTINGS_FILE = path.join(DATA_DIR, 'senzu-settings.json');
+const SETTINGS_VERSION = 2;
 
 const DEFAULT_SETTINGS = {
   save_folder: '',
   autosave: false,
   clear_temp_on_start: true,
   theme: 'Default',
-  default_model_pack: ''
+  default_model_pack: '',
+  enhancer_system_prompt: 'Refinement',
+  enhancer_llm_model: 'qwen3vl_4b_fp8_scaled.safetensors',
+  description_system_prompt: 'Description',
+  description_llm_model: 'qwen3vl_4b_fp8_scaled.safetensors',
+  enhancer_max_length: 512,
+  enhancer_temperature: 0.7
 };
 
 function ensureSettingsExist() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
-  if (!fs.existsSync(SETTINGS_FILE)) {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(DEFAULT_SETTINGS, null, 2), 'utf-8');
+
+  let existing = {};
+  if (fs.existsSync(SETTINGS_FILE)) {
+    try {
+      existing = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+    } catch (_) {}
+  }
+
+  const version = existing._version || 0;
+  if (!fs.existsSync(SETTINGS_FILE) || version < SETTINGS_VERSION) {
+    const merged = { _version: SETTINGS_VERSION, ...DEFAULT_SETTINGS, ...existing };
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(merged, null, 2), 'utf-8');
   }
 }
 
 function loadSettings() {
   ensureSettingsExist();
   try {
-    const data = fs.readFileSync(SETTINGS_FILE, 'utf-8');
-    return JSON.parse(data);
+    const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+    delete data._version;
+    return data;
   } catch (err) {
     console.error("Error reading settings:", err);
-    return { ...DEFAULT_SETTINGS };
+    const copy = { ...DEFAULT_SETTINGS };
+    return copy;
   }
 }
 
 function saveSettings(data) {
   ensureSettingsExist();
   try {
+    data._version = SETTINGS_VERSION;
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2), 'utf-8');
     return { success: true };
   } catch (err) {

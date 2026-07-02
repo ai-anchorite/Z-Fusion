@@ -86,91 +86,13 @@
       "title": "ConditioningZeroOut"
     }
   },
-  "57": {
-    "inputs": {
-      "prompt": [
-        "58",
-        0
-      ],
-      "max_length": 768,
-      "sampling_mode": "on",
-      "sampling_mode.temperature": 0.7,
-      "sampling_mode.top_k": 64,
-      "sampling_mode.top_p": 0.95,
-      "sampling_mode.min_p": 0.05,
-      "sampling_mode.repetition_penalty": 1.05,
-      "sampling_mode.seed": 0,
-      "sampling_mode.presence_penalty": 0,
-      "thinking": false,
-      "use_default_template": true,
-      "clip": [
-        "69",
-        0
-      ]
-    },
-    "class_type": "TextGenerate",
-    "_meta": {
-      "title": "Generate Text"
-    }
-  },
-  "58": {
-    "inputs": {
-      "string_a": [
-        "67",
-        0
-      ],
-      "string_b": [
-        "59",
-        0
-      ],
-      "delimiter": ""
-    },
-    "class_type": "StringConcatenate",
-    "_meta": {
-      "title": "Concatenate Text"
-    }
-  },
   "59": {
     "inputs": {
       "value": "a happy cat"
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
-      "title": "Text String (User Prompt)"
-    }
-  },
-  "60": {
-    "inputs": {
-      "switch": [
-        "65",
-        0
-      ],
-      "on_false": [
-        "59",
-        0
-      ],
-      "on_true": [
-        "57",
-        0
-      ]
-    },
-    "class_type": "ComfySwitchNode",
-    "_meta": {
-      "title": "Switch"
-    }
-  },
-  "62": {
-    "inputs": {
-      "string_a": [
-        "79",
-        0
-      ],
-      "string_b": "",
-      "delimiter": ", "
-    },
-    "class_type": "StringConcatenate",
-    "_meta": {
-      "title": "Concatenate Text (LoRA Trigger Word)"
+      "title": "User Prompt"
     }
   },
   "63": {
@@ -194,7 +116,7 @@
         0
       ],
       "latent_image": [
-        "52",
+        "84",
         0
       ]
     },
@@ -217,41 +139,6 @@
       "title": "Load LoRA"
     }
   },
-  "65": {
-    "inputs": {
-      "value": true
-    },
-    "class_type": "PrimitiveBoolean",
-    "_meta": {
-      "title": "Boolean (Refine Prompt?)"
-    }
-  },
-  "67": {
-    "inputs": {
-      "value": "You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.\n\nThink step by step about the request before writing the answer:\n- What is the subject and mood?\n- What visual styles, mediums, and lighting options would fit? Consider two or three alternatives and pick the one that best serves the caption.\n- What composition, framing, and grounded details will help the text-to-image model?\n\nThen output a single expanded prompt paragraph.\n\nFollow these rules strictly:\n1. **Faithfulness First:** Preserve all original subjects, actions, colors, and spatial relationships. Do not add new objects, props, characters, or animals unless the user clearly implies them.\n2. **Practical T2I Structure:** Write a prompt that a text-to-image model can parse cleanly. Group subjects with their own attributes and actions. Use grounded phrasing for poses, interactions, and spatial layout.\n3. **Style Planning Stays Internal:** Use your internal reasoning to choose style, medium, framing, and lighting. Do not emit planning tags or wrappers in the visible answer body.\n4. **Text Rendering:** If the user requests visible text, quotes, labels, or typography, specify the exact text clearly and wrap requested words in quotes.\n5. **Avoid Over-Specification:** Do not invent highly specific clothing, colors, materials, or scene details unless the input supports them.\n6. **Structure:** Write one cohesive paragraph after the thinking block. No bullets, JSON, or markdown.\n7. **Respect Existing Detail:** If the user's prompt is already detailed, lightly polish and finalize rather than heavily expanding — preserve their phrasing and direction.\n8. **Preserve User Medium:** When the user explicitly requests a medium (e.g. \"photo of\", \"photograph of\", \"illustration of\", \"painting of\", \"sketch of\", \"3D render of\"), honor it. Do not pivot to a different medium to avoid difficulty — match the user's stated intent.\n\nUser's Input:\n\n"
-    },
-    "class_type": "PrimitiveStringMultiline",
-    "_meta": {
-      "title": "Text String (System Prompt)"
-    }
-  },
-  "68": {
-    "inputs": {
-      "switch": false,
-      "on_false": [
-        "79",
-        0
-      ],
-      "on_true": [
-        "62",
-        0
-      ]
-    },
-    "class_type": "ComfySwitchNode",
-    "_meta": {
-      "title": "Switch"
-    }
-  },
   "69": {
     "inputs": {
       "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
@@ -266,7 +153,7 @@
   "72": {
     "inputs": {
       "text": [
-        "68",
+        "59",
         0
       ],
       "clip": [
@@ -349,16 +236,73 @@
       "title": "Load LoRA"
     }
   },
-  "79": {
+  "80": {
     "inputs": {
-      "source": [
-        "60",
+      "image": "senzu_placeholder.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image (img2img input)"
+    }
+  },
+  "81": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "80",
         0
       ]
     },
-    "class_type": "PreviewAny",
+    "class_type": "ImageScaleToTotalPixels",
     "_meta": {
-      "title": "Preview as Text"
+      "title": "Scale Image to Megapixels"
+    }
+  },
+  "82": {
+    "inputs": {
+      "pixels": [
+        "81",
+        0
+      ],
+      "vae": [
+        "55",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "83": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Use Image Input"
+    }
+  },
+  "84": {
+    "inputs": {
+      "switch": [
+        "83",
+        0
+      ],
+      "on_false": [
+        "52",
+        0
+      ],
+      "on_true": [
+        "82",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "Img2Img / Txt2Img Switch"
     }
   }
 }

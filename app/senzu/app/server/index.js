@@ -14,6 +14,7 @@ const settings = require('./settings');
 const sysStats = require('./system-stats');
 const enhancerPrompts = require('./enhancer-prompts');
 const genPresets = require('./gen-presets');
+const genEnhancerPrompts = require('./gen-enhancer-prompts');
 
 const app = express();
 const PORT = process.env.PORT || 4242;
@@ -47,6 +48,18 @@ if (!fs.existsSync(SENZU_OUTPUTS)) {
 }
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+// Ensure ComfyUI input dir + placeholder image for prompt enhancer workflow
+const COMFY_INPUT = path.join(APP_ROOT, 'comfyui/input');
+const PLACEHOLDER = path.join(COMFY_INPUT, 'senzu_placeholder.png');
+if (!fs.existsSync(COMFY_INPUT)) {
+  fs.mkdirSync(COMFY_INPUT, { recursive: true });
+}
+if (!fs.existsSync(PLACEHOLDER)) {
+  // 1x1 white pixel PNG (valid, minimal)
+  const minPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
+  fs.writeFileSync(PLACEHOLDER, minPng);
+  console.log('[Init] Created placeholder image for prompt enhancer workflow');
 }
 const MULTER_TEMP = path.join(DATA_DIR, 'temp');
 if (!fs.existsSync(MULTER_TEMP)) {
@@ -292,6 +305,23 @@ app.delete('/api/gen-presets/:name', (req, res) => {
   ok ? res.json({ success: true }) : res.status(404).json({ error: "Not found" });
 });
 
+// Generate Enhancer Prompt Presets
+app.get('/api/gen-enhancer-prompts', (req, res) => {
+  res.json(genEnhancerPrompts.load());
+});
+
+app.post('/api/gen-enhancer-prompts', (req, res) => {
+  const { name, content } = req.body;
+  if (!name || !content) return res.status(400).json({ error: "Missing name or content" });
+  genEnhancerPrompts.save(name, content);
+  res.json({ success: true });
+});
+
+app.delete('/api/gen-enhancer-prompts/:name', (req, res) => {
+  const ok = genEnhancerPrompts.delete(req.params.name);
+  ok ? res.json({ success: true }) : res.status(404).json({ error: "Not found" });
+});
+
 // Model Packs CRUD APIs
 app.get('/api/model-packs', (req, res) => {
   const packs = modelPacks.loadModelPacks();
@@ -364,6 +394,21 @@ app.get('/api/models', (req, res) => {
   }
 
   res.json(result);
+});
+
+// Open a model folder
+app.post('/api/models/open-folder', (req, res) => {
+  const { type } = req.body;
+  const dirMap = {
+    diffusion_models: path.join(MODELS_ROOT, 'diffusion_models'),
+    text_encoders: path.join(MODELS_ROOT, 'text_encoders'),
+    vae: path.join(MODELS_ROOT, 'vae')
+  };
+  const folderPath = dirMap[type];
+  if (!folderPath) return res.status(400).json({ error: "Invalid model type" });
+  if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+  const result = settings.openFolder(folderPath);
+  result.success ? res.json(result) : res.status(500).json(result);
 });
 
 // Check if ComfyUI is online API
@@ -505,8 +550,60 @@ app.post('/api/outputs/clear-temp', (req, res) => {
   res.json(result);
 });
 
-// Image Generation API (Krea2 T2I)
-app.post('/api/generate', async (req, res) => {
+// Prompt Enhancement API (standalone)
+app.post('/api/enhance-prompt', upload.single('image'), async (req, res) => {
+  try {
+    const { prompt, parameters: rawParams } = req.body;
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({ error: "Prompt is required" });
+    }
+
+    let parsedParams = {};
+    if (rawParams) {
+      try {
+        parsedParams = typeof rawParams === 'string' ? JSON.parse(rawParams) : rawParams;
+      } catch (_) {}
+    }
+
+    const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_prompt_enhancer.json');
+    const enhancerParams = {
+      user_prompt: prompt,
+      system_prompt: parsedParams.system_prompt || '',
+      enable_enhancer: true,
+      use_image_ref: parsedParams.use_image_ref === true,
+      llm_clip_name: parsedParams.llm_clip_name || 'qwen3vl_4b_fp8_scaled.safetensors',
+      max_length: parseInt(parsedParams.max_length, 10) || 768,
+      temperature: parseFloat(parsedParams.temperature) || 0.7
+    };
+
+    if (req.file && parsedParams.use_image_ref) {
+      enhancerParams.image = req.file.path;
+    }
+
+    console.log(`[EnhancePrompt] Running standalone enhancer for: "${prompt.substring(0, 80)}..."`);
+    const result = await comfy.runWorkflow(workflowPath, 'prompt_enhancer', enhancerParams);
+
+    // Clean up uploaded image
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
+
+    res.json({
+      success: true,
+      enhanced_prompt: result.text || prompt
+    });
+  } catch (err) {
+    // Clean up uploaded image on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
+    console.error("Prompt enhancement error:", err);
+    res.status(500).json({ error: err.message || "Enhancement failed" });
+  }
+});
+
+// Image Generation API (Krea2 T2I / Img2Img)
+app.post('/api/generate', upload.single('image'), async (req, res) => {
   try {
     const isOnline = await comfy.checkComfyOnline();
     if (!isOnline) {
@@ -523,16 +620,13 @@ app.post('/api/generate', async (req, res) => {
       }
     }
 
-    if (!parsedParams.prompt || !parsedParams.prompt.trim()) {
-      return res.status(400).json({ error: "Prompt is required" });
-    }
-
     const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_krea2_t2i.json');
     const randomizeSeed = parsedParams.randomize_seed !== false;
     const seedVal = randomizeSeed ? Math.floor(Math.random() * 1000000000) : (parseInt(parsedParams.seed, 10) || 0);
 
     const width = parseInt(parsedParams.width, 10) || 1024;
     const height = parseInt(parsedParams.height, 10) || 1024;
+    const useImgInput = parsedParams.use_image_input === true;
 
     const genParams = {
       width,
@@ -543,10 +637,12 @@ app.post('/api/generate', async (req, res) => {
       seed: seedVal,
       steps: parseInt(parsedParams.steps, 10) || 8,
       cfg: parseFloat(parsedParams.cfg) || 1.0,
+      denoise: useImgInput ? (parseFloat(parsedParams.denoise) || 0.6) : 1.0,
       sampler_name: parsedParams.sampler_name || 'euler',
       scheduler: parsedParams.scheduler || 'beta',
       prompt: parsedParams.prompt,
-      enable_prompt_enhancer: parsedParams.enable_prompt_enhancer === true,
+      use_image_input: useImgInput,
+      megapixels: parseFloat(parsedParams.megapixels) || 1.0,
       lora1_name: parsedParams.lora1_enabled ? parsedParams.lora1_name : 'none.safetensors',
       lora1_strength: parsedParams.lora1_enabled ? parseFloat(parsedParams.lora1_strength) : 0,
       lora2_name: parsedParams.lora2_enabled ? parsedParams.lora2_name : 'none.safetensors',
@@ -560,12 +656,19 @@ app.post('/api/generate', async (req, res) => {
       lora6_name: parsedParams.lora6_enabled ? parsedParams.lora6_name : 'none.safetensors',
       lora6_strength: parsedParams.lora6_enabled ? parseFloat(parsedParams.lora6_strength) : 0
     };
-    if (parsedParams.system_prompt) {
-      genParams.system_prompt = parsedParams.system_prompt;
+
+    if (useImgInput && req.file) {
+      genParams.image = req.file.path;
     }
 
-    console.log(`[Generate] Running Krea2 T2I: "${parsedParams.prompt.substring(0, 80)}..."`);
+    const modeLabel = useImgInput ? 'Img2Img' : 'T2I';
+    console.log(`[Generate] Running Krea2 ${modeLabel}: "${parsedParams.prompt.substring(0, 80)}..."`);
     const result = await comfy.runWorkflow(workflowPath, 'krea2_t2i', genParams);
+
+    // Clean up uploaded image
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
 
     const timestamp = Date.now();
     const outPath = path.join(OUTPUT_TEMP_DIR, `gen_${timestamp}.png`);
@@ -574,11 +677,13 @@ app.post('/api/generate', async (req, res) => {
 
     res.json({
       success: true,
-      output: `/temp-outputs/${path.basename(outPath)}`,
-      enhanced_prompt: result.text || null
+      output: `/temp-outputs/${path.basename(outPath)}`
     });
 
   } catch (err) {
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
     console.error("Generation error:", err);
     res.status(500).json({ error: err.message || "An unexpected error occurred during generation." });
   }

@@ -1621,6 +1621,32 @@ input:checked + .switch-slider:before {
   flex-shrink: 0;
 }
 
+/* Compact number input next to LoRA strength slider */
+.lora-strength-input {
+  width: 56px;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-glass);
+  border-radius: 6px;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.lora-strength-input::-webkit-inner-spin-button,
+.lora-strength-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.lora-strength-input:focus {
+  border-color: var(--primary-neon);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
 /* Form layout two-column inputs inside accordions */
 .form-row {
   display: grid;

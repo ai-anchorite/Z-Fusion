@@ -257,8 +257,25 @@
                 <input type="number" class="input-control" x-model="genParams.seed" style="padding: 6px 10px; font-size: 0.85rem;">
               </div>
             </div>
-          </div>
+
+            <div style="border-top: 1px solid var(--border-glass); margin: 8px 0; padding-top: 8px;">
+              <div class="flex-switch" style="margin-bottom: 8px;">
+                <span class="switch-label">Randomize Seed</span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="genParams.randomize_seed">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="input-group" style="margin-bottom: 0;" x-show="!genParams.randomize_seed">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">Seed</span>
+                  <span class="range-val" x-text="genParams.seed"></span>
+                </div>
+                <input type="number" class="input-control" x-model="genParams.seed" style="padding: 6px 10px; font-size: 0.85rem;">
+              </div>
             </div>
+          </div>
+        </div>
           </div>
         </div>
           
@@ -290,7 +307,7 @@
                     </select>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                       <span class="input-label" style="font-size: 0.75rem;">Strength</span>
-                      <span class="range-val" style="font-size: 0.8rem;" x-text="parseFloat(params['lora' + idx + '_strength']).toFixed(1)"></span>
+                      <input type="number" class="lora-strength-input" x-model="params['lora' + idx + '_strength']" step="0.1" min="-99" max="99">
                     </div>
                     <input type="range" class="range-slider" min="-2.0" max="2.0" step="0.1" x-model="params['lora' + idx + '_strength']" style="height: 4px;">
                   </div>
@@ -560,8 +577,8 @@
                  @touchstart="startSliderDrag($event); $event.stopPropagation()">
               <div class="slider-handle">
                 <i class="fa-solid fa-arrows-left-right"></i>
-              </div>
         </div>
+      </div>
 
           </div>
         </div>
@@ -728,8 +745,8 @@
             <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0;">
               <span class="preset-badge" x-text="data.width + 'x' + data.height"></span>
               <span class="preset-badge preset-badge-res" x-text="data.steps + ' steps'"></span>
-              <span x-show="data.enable_prompt_enhancer" class="preset-badge preset-badge-pack">Enhancer</span>
-              <span x-show="!data.enable_prompt_enhancer" class="preset-badge">Basic</span>
+              <span x-show="data.chain_enhancer" class="preset-badge preset-badge-pack">Refiner</span>
+              <span x-show="!data.chain_enhancer" class="preset-badge">Basic</span>
             </div>
             
             <div x-show="data.prompt" style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 8px; max-height: 2.8em; overflow: hidden;" x-text="data.prompt.substring(0, 120)"></div>
@@ -745,7 +762,7 @@
     <!-- Prompts CRUD Tab View -->
     <div x-show="activeTab === 'prompts'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 class="card-title"><i class="fa-solid fa-paragraph"></i> Prompts Library</h2>
+        <h2 class="card-title"><i class="fa-solid fa-paragraph"></i> Edit Prompts Library</h2>
         
         <button class="btn btn-danger-sm" @click="resetPrompts()">
           <i class="fa-solid fa-rotate-left"></i> Reset to System Defaults
@@ -786,6 +803,106 @@
           <button class="btn btn-primary" @click="saveNewPrompt()" :disabled="!newPromptName.trim() || !newPromptContent.trim()">
             <i class="fa-solid fa-plus"></i> Save New Template
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- System Prompts -->
+    <div x-show="activeTab === 'prompts'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <h2 class="card-title"><i class="fa-solid fa-wand-magic-sparkles"></i> System Prompts</h2>
+
+      <!-- Two-panel: system prompts list + editor -->
+      <div class="main-grid" style="grid-template-columns: 4fr 6fr;">
+        <!-- Left Panel: system prompt list -->
+        <div class="glass-card" style="background: rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; gap: 1rem;">
+          <div class="crud-list">
+            <template x-for="(content, name) in genEnhancerPromptsList" :key="name">
+              <div class="crud-item">
+                <div style="cursor: pointer; flex-grow: 1;" @click="editGenEnhancerPrompt(name)">
+                  <strong x-text="name" style="display: block; font-size: 0.9rem;"></strong>
+                  <span x-text="content.substring(0, 60) + '...'" style="font-size: 0.72rem; color: var(--text-secondary);"></span>
+                </div>
+                <button class="btn-danger-sm" @click="deleteGenEnhancerPrompt(name)" style="padding: 4px 8px;"><i class="fa-solid fa-trash"></i></button>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Right Panel: edit form -->
+        <div class="glass-card" style="background: rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; gap: 1.2rem;">
+          <h3 style="font-size: 1.05rem; font-weight: 600;">Create or Edit System Prompts</h3>
+
+          <div class="input-group">
+            <label class="input-label">Preset Name</label>
+            <input type="text" class="input-control" x-model="newGenEnhancerName" placeholder="e.g. Default, Image Describer...">
+          </div>
+
+          <div class="input-group">
+            <label class="input-label">System Prompt Content</label>
+            <textarea class="input-control" x-model="genParams.system_prompt" style="min-height: 180px; font-size: 0.8rem;"
+              placeholder="Enter the system prompt instructions for the refinement LLM..."></textarea>
+          </div>
+
+          <button class="btn btn-primary" @click="saveNewGenEnhancerPrompt()" :disabled="!newGenEnhancerName.trim() || !genParams.system_prompt.trim()">
+            <i class="fa-solid fa-floppy-disk"></i> Save System Prompt
+          </button>
+        </div>
+      </div>
+
+      <!-- Compact controls row -->
+      <div style="border-top: 1px solid var(--border-glass); padding-top: 1.2rem;">
+        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 10px;">Default Settings</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+          <div class="input-group" style="margin-bottom: 0;">
+            <label class="input-label">Refinement Prompt</label>
+            <select class="input-control" x-model="appSettings.enhancer_system_prompt" @change="saveSettings()">
+              <template x-for="(content, name) in genEnhancerPromptsList" :key="name">
+                <option :value="name" x-text="name"></option>
+              </template>
+            </select>
+          </div>
+          <div class="input-group" style="margin-bottom: 0;">
+            <label class="input-label">Description Prompt</label>
+            <select class="input-control" x-model="appSettings.description_system_prompt" @change="saveSettings()">
+              <template x-for="(content, name) in genEnhancerPromptsList" :key="name">
+                <option :value="name" x-text="name"></option>
+              </template>
+            </select>
+          </div>
+          <div class="input-group" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between;">
+              <span class="input-label">Max Length <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Maximum output tokens for the refined prompt. Higher = more detail, but may ramble."></i></span>
+              <span class="range-val" x-text="appSettings.enhancer_max_length"></span>
+            </div>
+            <div class="range-group">
+              <input type="range" class="range-slider" min="128" max="1024" step="64" x-model="appSettings.enhancer_max_length" @change="saveSettings()">
+            </div>
+          </div>
+          <div class="input-group" style="margin-bottom: 0;">
+            <label class="input-label">Refinement LLM</label>
+            <select class="input-control" x-model="appSettings.enhancer_llm_model" @change="saveSettings()">
+              <template x-for="m in models.text_encoders" :key="m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+          </div>
+          <div class="input-group" style="margin-bottom: 0;">
+            <label class="input-label">Description LLM</label>
+            <select class="input-control" x-model="appSettings.description_llm_model" @change="saveSettings()">
+              <template x-for="m in models.text_encoders" :key="m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+          </div>
+          <div class="input-group" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between;">
+              <span class="input-label">Temperature <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Creativity of the refined output. Higher = more creative/varied, lower = more deterministic."></i></span>
+              <span class="range-val" x-text="parseFloat(appSettings.enhancer_temperature).toFixed(2)"></span>
+            </div>
+            <div class="range-group">
+              <input type="range" class="range-slider" min="0.1" max="2.0" step="0.05" x-model="appSettings.enhancer_temperature" @change="saveSettings()">
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1002,6 +1119,78 @@
         </div>
       </div>
 
+      <!-- Prompt LLM Models -->
+      <div style="border-top: 1px solid var(--border-glass); padding-top: 1.5rem;">
+        <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px;"><i class="fa-solid fa-microchip"></i> Prompt LLM Models</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1.2rem;">
+          Text encoder models used by the Prompt Refiner and Image Description features. Includes vision-capable and uncensored variants.
+        </p>
+
+        <div class="model-packs-grid">
+          <template x-for="(pack, name) in modelPacksList" :key="name">
+            <div x-show="pack.is_recommended && pack.category === 'prompt'" class="model-pack-card recommended" :class="packModelsInstalled(pack) ? 'all-installed' : 'has-missing'">
+              <div class="pack-header">
+                <div>
+                  <h4 x-text="name" style="font-weight: 700; font-size: 1.05rem;"></h4>
+                </div>
+                <span class="model-status-badge" :class="packModelsInstalled(pack) ? 'installed' : 'missing'"
+                      x-text="packModelsInstalled(pack) ? 'Ready' : 'Setup Needed'" style="font-size: 0.7rem; padding: 3px 10px;"></span>
+              </div>
+
+              <p x-show="pack.description" class="pack-description" x-text="pack.description"></p>
+
+              <!-- Primary CLIP model -->
+              <div class="pack-model-row" x-show="pack.clip_name">
+                <div class="pack-model-info">
+                  <span class="pack-model-label">CLIP</span>
+                  <span class="pack-model-name" x-text="pack.clip_name"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="model-status-badge" :class="modelExists(pack.clip_name, 'text_encoders') ? 'installed' : 'missing'"
+                        x-text="modelExists(pack.clip_name, 'text_encoders') ? 'Installed' : 'Missing'"></span>
+                  <button x-show="!modelExists(pack.clip_name, 'text_encoders') && pack.downloads && pack.downloads.clip"
+                          class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 4px 10px;"
+                          @click="downloadPackModel(name, 'clip')" :disabled="downloadState.status === 'downloading'">
+                    <i class="fa-solid fa-download"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Additional LLM downloads as loras-style list -->
+              <template x-if="pack.downloads && pack.downloads.loras && Array.isArray(pack.downloads.loras)">
+                <div style="border-top: 1px solid var(--border-glass); margin-top: 8px; padding-top: 8px;">
+                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">
+                    <i class="fa-solid fa-layer-group"></i> Additional LLMs
+                  </span>
+                  <template x-for="(lora, idx) in pack.downloads.loras" :key="idx">
+                    <div class="pack-model-row" style="padding: 4px 0;">
+                      <div class="pack-model-info">
+                        <span class="pack-model-name" style="font-size: 0.72rem;" x-text="lora.desc"></span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="model-status-badge" :class="modelExists(lora.dest_filename || lora.filename, 'text_encoders') ? 'installed' : 'missing'"
+                              style="font-size: 0.65rem; padding: 2px 8px;"
+                              x-text="modelExists(lora.dest_filename || lora.filename, 'text_encoders') ? 'Installed' : 'Missing'"></span>
+                        <button x-show="!modelExists(lora.dest_filename || lora.filename, 'text_encoders')"
+                                class="btn btn-sm btn-primary" style="font-size: 0.65rem; padding: 3px 8px;"
+                                @click="downloadPromptLLM(name, idx)" :disabled="downloadState.status === 'downloading'">
+                          <i class="fa-solid fa-download"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+
+              <button class="btn btn-sm" style="margin-top: 10px; width: 100%; background: var(--primary-soft); border-color: rgba(124, 77, 255, 0.3);"
+                      @click="downloadPack(name)" :disabled="downloadState.status === 'downloading' || packModelsInstalled(pack)">
+                <i class="fa-solid fa-download"></i> <span x-text="packModelsInstalled(pack) ? 'All Installed' : 'Download All'"></span>
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+
       <!-- Official & Full Quality Models Info -->
       <div style="border-top: 1px solid var(--border-glass); padding-top: 1.5rem;">
         <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 8px;"><i class="fa-solid fa-circle-info"></i> Quality Notes</h3>
@@ -1055,7 +1244,7 @@
           </div>
           
           <div class="input-group">
-            <label class="input-label">UNet Model</label>
+            <label class="input-label">UNet Model <button class="btn-icon-overlay" @click="openModelFolder('diffusion_models')" title="Open diffusion_models folder" style="display: inline-flex; width: 20px; height: 20px; font-size: 0.55rem; margin-left: 4px; vertical-align: middle;"><i class="fa-solid fa-folder-open"></i></button></label>
             <select class="input-control" x-model="params.unet_name">
               <template x-for="m in (params.use_gguf ? models.diffusion_models.filter(f => f.indexOf('.gguf') !== -1) : models.diffusion_models.filter(f => f.indexOf('.safetensors') !== -1))" :key="m">
                 <option :value="m" x-text="m"></option>
@@ -1064,7 +1253,7 @@
           </div>
           
           <div class="input-group">
-            <label class="input-label">CLIP Text Encoder</label>
+            <label class="input-label">CLIP Text Encoder <button class="btn-icon-overlay" @click="openModelFolder('text_encoders')" title="Open text_encoders folder" style="display: inline-flex; width: 20px; height: 20px; font-size: 0.55rem; margin-left: 4px; vertical-align: middle;"><i class="fa-solid fa-folder-open"></i></button></label>
             <select class="input-control" x-model="params.clip_name">
               <template x-for="m in (params.use_gguf ? models.text_encoders.filter(f => f.indexOf('.gguf') !== -1) : models.text_encoders.filter(f => f.indexOf('.safetensors') !== -1))" :key="m">
                 <option :value="m" x-text="m"></option>
@@ -1073,7 +1262,7 @@
           </div>
           
           <div class="input-group">
-            <label class="input-label">VAE Model</label>
+            <label class="input-label">VAE Model <button class="btn-icon-overlay" @click="openModelFolder('vae')" title="Open vae folder" style="display: inline-flex; width: 20px; height: 20px; font-size: 0.55rem; margin-left: 4px; vertical-align: middle;"><i class="fa-solid fa-folder-open"></i></button></label>
             <select class="input-control" x-model="params.vae_name">
               <template x-for="m in models.vae" :key="m">
                 <option :value="m" x-text="m"></option>
@@ -1185,54 +1374,132 @@
         
         <div class="glass-card" style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem;">
 
+          <!-- Image Input Toggle -->
+          <div class="flex-switch">
+            <div>
+              <span class="switch-label">Use Image Input <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Load an image for image-to-image generation and visual prompt description. Toggle off for text-to-image mode."></i></span>
+            </div>
+            <label class="switch-control">
+              <input type="checkbox" x-model="genParams.use_image_input">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <!-- Image Input Component -->
+          <div x-show="genParams.use_image_input" class="input-image-card" style="padding: 0.6rem; margin-bottom: 0;">
+            <input type="file" accept="image/*" @change="handleImgInput($event)" style="display: none;" id="generate-img-input">
+
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <!-- Image area: thumbnail or drop zone -->
+              <div style="flex: 1; min-width: 0;">
+                <!-- Has image: thumbnail + filename + remove -->
+                <div x-show="imgInputImage" style="display: flex; align-items: center; gap: 10px;">
+                  <div style="position: relative; width: 72px; height: 72px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-glass); flex-shrink: 0; background: rgba(0,0,0,0.2);">
+                    <img :src="imgInputPreview" style="width: 100%; height: 100%; object-fit: cover;">
+                    <button @click="clearImgInput()"
+                            style="position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: var(--danger); color: #fff; border: none; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0;">&times;</button>
+                  </div>
+                  <div style="min-width: 0;">
+                    <div style="font-size: 0.75rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" x-text="imgInputImage.name"></div>
+                    <div style="font-size: 0.65rem; color: var(--text-muted);">Drop a new image to replace</div>
+                  </div>
+                </div>
+
+                <!-- No image: drop zone -->
+                <div x-show="!imgInputImage" class="compact-upload" @click="document.getElementById('generate-img-input').click()"
+                     @dragover.prevent="" @drop.prevent="handleImgInput($event)"
+                     style="padding: 0.5rem; cursor: pointer;">
+                  <i class="fa-solid fa-cloud-arrow-up" style="font-size: 1.2rem;"></i>
+                  <span style="font-size: 0.75rem;">Drop image or click to browse</span>
+                </div>
+              </div>
+
+              <!-- Describe button -->
+              <button class="btn btn-sm" @click="describeImage()" :disabled="!imgInputImage || enhancingPrompt || genProcessing || !comfyOnline"
+                      style="padding: 8px 12px; flex-shrink: 0;">
+                <span x-show="!enhancingPrompt"><i class="fa-solid fa-eye"></i> Describe</span>
+                <span x-show="enhancingPrompt"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+              </button>
+            </div>
+          </div>
+
           <!-- Prompt -->
           <div class="input-group" style="margin-bottom: 0;">
             <label class="input-label">Prompt</label>
             <textarea class="input-control" x-model="genParams.prompt" placeholder="Describe the image you want to generate..." style="min-height: 120px;"></textarea>
           </div>
 
-          <!-- Prompt Enhancer Toggle -->
-          <div class="flex-switch">
-            <div>
-              <span class="switch-label">Prompt Enhancer</span>
-              <span style="display: block; font-size: 0.68rem; color: var(--text-muted);">Auto-expand prompt for better results</span>
+          <!-- Chain Refiner + Refine Row -->
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="flex-switch" style="flex: 1;">
+              <div>
+                <span class="switch-label">Chain Refiner <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Automatically runs the prompt refiner before generation. Uses the Refinement System Prompt and LLM configured in the Prompts tab."></i></span>
+              </div>
+              <label class="switch-control">
+                <input type="checkbox" x-model="genParams.chain_enhancer">
+                <span class="switch-slider"></span>
+              </label>
             </div>
-            <label class="switch-control">
-              <input type="checkbox" x-model="genParams.enable_prompt_enhancer">
-              <span class="switch-slider"></span>
-            </label>
+            <button class="btn btn-sm" @click="enhancePromptButton()" :disabled="genProcessing || enhancingPrompt || !genParams.prompt.trim() || !comfyOnline" title="Refine Prompt" style="padding: 8px 12px; flex-shrink: 0;">
+              <span x-show="!enhancingPrompt"><i class="fa-solid fa-wand-magic-sparkles"></i> Refine</span>
+              <span x-show="enhancingPrompt"><i class="fa-solid fa-circle-notch fa-spin"></i> Refining...</span>
+            </button>
           </div>
 
           <!-- Generate Button -->
-          <button class="btn btn-primary" :disabled="genProcessing || !genParams.prompt.trim() || !comfyOnline" @click="startGeneration()" style="padding: 14px 20px; font-size: 1.05rem;">
+          <button class="btn btn-primary" :disabled="genProcessing || !comfyOnline" @click="startGeneration()" style="padding: 14px 20px; font-size: 1.05rem;">
             <span x-show="!genProcessing"><i class="fa-solid fa-bolt"></i> Generate</span>
             <span x-show="genProcessing"><i class="fa-solid fa-circle-notch fa-spin"></i> Generating...</span>
           </button>
 
-          <!-- Resolution Selector -->
-          <div>
-            <span class="input-label">Resolution</span>
-            <div style="display: flex; gap: 8px; margin-bottom: 6px;">
-              <span style="font-size: 0.68rem; color: var(--text-muted); align-self: center;">W</span>
-              <input type="range" class="range-slider" min="512" max="2560" step="8" x-model="genParams.width" style="flex: 1; height: 4px; min-width: 0;">
-              <span style="font-size: 0.72rem; color: var(--text-secondary); align-self: center; min-width: 32px; text-align: right;" x-text="genParams.width"></span>
-              <span style="font-size: 0.68rem; color: var(--text-muted); align-self: center;">H</span>
-              <input type="range" class="range-slider" min="512" max="2560" step="8" x-model="genParams.height" style="flex: 1; height: 4px; min-width: 0;">
-              <span style="font-size: 0.72rem; color: var(--text-secondary); align-self: center; min-width: 32px; text-align: right;" x-text="genParams.height"></span>
+        </div>
+
+        <!-- Resolution Controls (txt2img) -->
+        <div x-show="!genParams.use_image_input" class="glass-card" style="padding: 0.75rem;">
+          <span class="input-label">Resolution</span>
+          <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+            <span style="font-size: 0.68rem; color: var(--text-muted); align-self: center;">W</span>
+            <input type="range" class="range-slider" min="512" max="2560" step="8" x-model="genParams.width" style="flex: 1; height: 4px; min-width: 0;">
+            <span style="font-size: 0.72rem; color: var(--text-secondary); align-self: center; min-width: 32px; text-align: right;" x-text="genParams.width"></span>
+            <span style="font-size: 0.68rem; color: var(--text-muted); align-self: center;">H</span>
+            <input type="range" class="range-slider" min="512" max="2560" step="8" x-model="genParams.height" style="flex: 1; height: 4px; min-width: 0;">
+            <span style="font-size: 0.72rem; color: var(--text-secondary); align-self: center; min-width: 32px; text-align: right;" x-text="genParams.height"></span>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1024 ? 'active' : ''" @click="genParams.base_size = 1024; updateResolutions(); genParams.width = 1024; genParams.height = 1024; genParams.selected_res = genResolutions[0].label">1024</button>
+            <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1280 ? 'active' : ''" @click="genParams.base_size = 1280; updateResolutions(); genParams.width = 1280; genParams.height = 1280; genParams.selected_res = genResolutions[0].label">1280</button>
+            <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1536 ? 'active' : ''" @click="genParams.base_size = 1536; updateResolutions(); genParams.width = 1536; genParams.height = 1536; genParams.selected_res = genResolutions[0].label">1536</button>
+            <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 'hd' ? 'active' : ''" @click="genParams.base_size = 'hd'; updateResolutions(); genParams.width = genResolutions.filter(r => r.w > 0)[0].w; genParams.height = genResolutions.filter(r => r.w > 0)[0].h; genParams.selected_res = genResolutions.filter(r => r.w > 0)[0].label">HD</button>
+            <select class="input-control" x-model="genParams.selected_res" @change="applyResolutionLabel(genParams.selected_res)" style="flex-grow: 1; min-width: 0;">
+              <template x-for="r in genResolutions" :key="r.label">
+                <option :value="r.label" :disabled="r.section === 'header'" x-text="r.label"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <!-- Image Controls (img2img) -->
+        <div x-show="genParams.use_image_input" class="glass-card" style="padding: 0.75rem;">
+          <div class="form-row">
+            <div class="input-group" style="margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between;">
+                <span class="input-label">Image Scale (MP) <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Controls the output resolution. The input image is scaled to this megapixel target before generation, preserving aspect ratio."></i></span>
+                <span class="range-val" x-text="parseFloat(genParams.megapixels).toFixed(2)"></span>
+              </div>
+              <div class="range-group">
+                <input type="range" class="range-slider" min="0.5" max="2.5" step="0.25" x-model="genParams.megapixels">
+              </div>
             </div>
-            <div style="display: flex; gap: 6px;">
-              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1024 ? 'active' : ''" @click="genParams.base_size = 1024; updateResolutions(); genParams.width = 1024; genParams.height = 1024; genParams.selected_res = genResolutions[0].label">1024</button>
-              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1280 ? 'active' : ''" @click="genParams.base_size = 1280; updateResolutions(); genParams.width = 1280; genParams.height = 1280; genParams.selected_res = genResolutions[0].label">1280</button>
-              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 1536 ? 'active' : ''" @click="genParams.base_size = 1536; updateResolutions(); genParams.width = 1536; genParams.height = 1536; genParams.selected_res = genResolutions[0].label">1536</button>
-              <button class="mode-toggle-btn mode-toggle-btn-sm" :class="genParams.base_size === 'hd' ? 'active' : ''" @click="genParams.base_size = 'hd'; updateResolutions(); genParams.width = genResolutions.filter(r => r.w > 0)[0].w; genParams.height = genResolutions.filter(r => r.w > 0)[0].h; genParams.selected_res = genResolutions.filter(r => r.w > 0)[0].label">HD</button>
-              <select class="input-control" x-model="genParams.selected_res" @change="applyResolutionLabel(genParams.selected_res)" style="flex-grow: 1; min-width: 0;">
-                <template x-for="r in genResolutions" :key="r.label">
-                  <option :value="r.label" :disabled="r.section === 'header'" x-text="r.label"></option>
-                </template>
-              </select>
+            <div class="input-group" style="margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between;">
+                <span class="input-label">Denoise <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="How much the output image diverges from the input. 0.1 = nearly identical, 1.0 = full regeneration."></i></span>
+                <span class="range-val" x-text="parseFloat(genParams.denoise).toFixed(2)"></span>
+              </div>
+              <div class="range-group">
+                <input type="range" class="range-slider" min="0.1" max="1.0" step="0.01" x-model="genParams.denoise">
+              </div>
             </div>
           </div>
-
         </div>
 
         <div>
@@ -1336,6 +1603,24 @@
                 </div>
               </div>
             </div>
+
+            <div style="border-top: 1px solid var(--border-glass); margin: 8px 0; padding-top: 8px;">
+              <div class="flex-switch" style="margin-bottom: 8px;">
+                <span class="switch-label">Randomize Seed</span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="genParams.randomize_seed">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="input-group" style="margin-bottom: 0;" x-show="!genParams.randomize_seed">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">Seed</span>
+                  <span class="range-val" x-text="genParams.seed"></span>
+                </div>
+                <input type="number" class="input-control" x-model="genParams.seed" style="padding: 6px 10px; font-size: 0.85rem;">
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1364,7 +1649,7 @@
                   </select>
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span class="input-label" style="font-size: 0.75rem;">Strength</span>
-                    <span class="range-val" style="font-size: 0.8rem;" x-text="parseFloat(genParams['lora' + idx + '_strength']).toFixed(1)"></span>
+                    <input type="number" class="lora-strength-input" x-model="genParams['lora' + idx + '_strength']" step="0.1" min="-99" max="99">
                   </div>
                   <input type="range" class="range-slider" min="-2.0" max="2.0" step="0.1" x-model="genParams['lora' + idx + '_strength']" style="height: 4px;">
                 </div>
@@ -1372,57 +1657,6 @@
             </template>
             <div style="text-align: center; font-size: 0.75rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px; margin-top: 4px;">
               <i class="fa-solid fa-circle-info"></i> Up to 6 LoRA slots. Place LoRAs in <code>comfyui/models/loras/</code>.
-            </div>
-          </div>
-        </div>
-
-        <!-- Prompt Enhancer Accordion -->
-        <div class="accordion" :class="activeAccordion === 'gen_enhancer' ? 'active' : ''">
-          <div class="accordion-header" @click="toggleAccordion('gen_enhancer')">
-            <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Prompt Enhancer</h3>
-            <i class="fa-solid fa-chevron-down accordion-icon"></i>
-          </div>
-          <div x-show="activeAccordion === 'gen_enhancer'" class="accordion-content">
-            <div class="input-group">
-              <label class="input-label">Load Enhancer Prompt</label>
-              <select class="input-control" @change="applyEnhancerPrompt($event.target.value)">
-                <option value="">-- Choose --</option>
-                <template x-for="(content, name) in enhancerPromptsList" :key="name">
-                  <option :value="name" x-text="name"></option>
-                </template>
-              </select>
-            </div>
-
-            <div class="input-group">
-              <label class="input-label">System Prompt</label>
-              <textarea class="input-control" x-model="genParams.system_prompt" style="min-height: 150px; font-size: 0.8rem;"
-                placeholder="Instructions for the prompt enhancement model..."></textarea>
-              <span style="font-size: 0.68rem; color: var(--text-muted); display: block; margin-top: 4px;">
-                Defines how the prompt enhancer expands user prompts. Leave empty to use the built-in default.
-              </span>
-            </div>
-
-            <div style="border-top: 1px solid var(--border-glass); padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="text" class="input-control" x-model="newEnhancerName" placeholder="New Preset Name..." style="flex-grow: 1;">
-                <button class="btn btn-primary btn-sm" @click="saveNewEnhancerPrompt()" :disabled="!newEnhancerName.trim()" style="white-space: nowrap;">
-                  <i class="fa-solid fa-floppy-disk"></i> Save
-                </button>
-              </div>
-              <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Update existing preset:</span>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                  <select class="input-control" x-model="enhancerToUpdate">
-                    <option value="">-- Select --</option>
-                    <template x-for="(content, name) in enhancerPromptsList" :key="name">
-                      <option :value="name" x-text="name"></option>
-                    </template>
-                  </select>
-                  <button class="btn btn-sm" @click="updateEnhancerPrompt()" :disabled="!enhancerToUpdate" style="white-space: nowrap;">
-                    <i class="fa-solid fa-rotate"></i> Overwrite
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>
