@@ -1,7 +1,7 @@
 module.exports = {
   daemon: true,
   run: [
-/*     // Check for nodes added in the latest update — notify user if missing
+    // Check for nodes added in the latest update — notify user if missing
     {
       when: "{{!exists('app/comfyui/custom_nodes/ComfyUI-JoyCaption')}}",
       method: "notify",
@@ -9,14 +9,14 @@ module.exports = {
         html: "<b>⚠️ One more Update needed!</b><br>Please run <b>Update once more</b> to finish installing the new nodes and workflows. This is a one-time thing!",
         type: "warning"
       }
-    }, */
-/*     {
+    },
+    {
       when: "{{!exists('app/comfyui/custom_nodes/ComfyUI-JoyCaption')}}",
       method: "log",
       params: {
         text: "⚠️ ONE MORE UPDATE NEEDED — Run Update once more to finish installing new nodes."
       }
-    }, */
+    },
 
     // Start ComfyUI backend first
     {
@@ -79,10 +79,10 @@ module.exports = {
     // Install Senzu dependencies if not already present
     {
       "id": "install_senzu_deps",
-      when: "{{!exists('app/node_modules')}}",
+      when: "{{!exists('app/senzu/app/node_modules/better-sqlite3')}}",
       method: "shell.run",
       params: {
-        path: "app",
+        path: "app/senzu/app",
         message: [
           "npm install"
         ]
@@ -94,7 +94,7 @@ module.exports = {
       "id": "start_senzu",
       method: "shell.run",
       params: {
-        path: "app",
+        path: "app/senzu/app",
         message: [
           "node server/index.js"
         ],
