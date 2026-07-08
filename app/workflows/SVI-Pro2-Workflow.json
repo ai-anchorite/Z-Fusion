@@ -1,0 +1,2296 @@
+{
+  "84": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "90": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "128": {
+    "inputs": {
+      "step": 2,
+      "sigmas": [
+        "298",
+        0
+      ]
+    },
+    "class_type": "SplitSigmas",
+    "_meta": {
+      "title": "SplitSigmas"
+    }
+  },
+  "294": {
+    "inputs": {
+      "image": "ComfyUI_temp_zjmbn_00015_.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "295": {
+    "inputs": {
+      "pixels": [
+        "480",
+        0
+      ],
+      "vae": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "297": {
+    "inputs": {
+      "shift": 8,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "298": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 4,
+      "denoise": 1,
+      "model": [
+        "297",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "299": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "300": {
+    "inputs": {
+      "lora_name": "SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "301",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoraLoaderModelOnly"
+    }
+  },
+  "301": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "653",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoraLoaderModelOnly"
+    }
+  },
+  "304": {
+    "inputs": {
+      "lora_name": "SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "306",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoraLoaderModelOnly"
+    }
+  },
+  "306": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "654",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoraLoaderModelOnly"
+    }
+  },
+  "314": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_initial_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "315:313",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "470": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_1initial_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "469:328",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "479": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_1extend_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "469:329",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "480": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 0.6,
+      "resolution_steps": 1,
+      "image": [
+        "294",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "ImageScaleToTotalPixels"
+    }
+  },
+  "483": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "484",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "1_lora2-high"
+    }
+  },
+  "484": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "1_lora1-high"
+    }
+  },
+  "485": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "486",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "1_lora2-low"
+    }
+  },
+  "486": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "1_lora1-low"
+    }
+  },
+  "519": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "524",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "2_lora2-low"
+    }
+  },
+  "520": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "523",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "2_lora1-low"
+    }
+  },
+  "523": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "2_lora1-high"
+    }
+  },
+  "524": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "2_lora2-low"
+    }
+  },
+  "554": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "7_lora1-high"
+    }
+  },
+  "555": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "554",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "7_lora2-high"
+    }
+  },
+  "556": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "7_lora1-low"
+    }
+  },
+  "557": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "556",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "7_lora2-low"
+    }
+  },
+  "559": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_6extend_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "558:329",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "560": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_6initial_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "558:328",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "569": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_2extend_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "571:329",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "570": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_2initial_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "571:328",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "572": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "3_lora1-high"
+    }
+  },
+  "573": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "572",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "3_lora2-high"
+    }
+  },
+  "574": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "3_lora1-low"
+    }
+  },
+  "575": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "574",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "3_lora2-low"
+    }
+  },
+  "616": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_3initial_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "621:328",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "617": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "620",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "4_lora2-high"
+    }
+  },
+  "618": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "4_lora1-low"
+    }
+  },
+  "619": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "618",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "4_lora2-low"
+    }
+  },
+  "620": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "4_lora1-high"
+    }
+  },
+  "622": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_3extend_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "621:329",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "631": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_4initial_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "636:328",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "632": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "635",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "5_lora2-high"
+    }
+  },
+  "633": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "5_lora1-low"
+    }
+  },
+  "634": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "633",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "5_lora2-low"
+    }
+  },
+  "635": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "5_lora1-high"
+    }
+  },
+  "637": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_4extend_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "636:329",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "645": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_5initial_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "650:328",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "646": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "649",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "6_lora2-high"
+    }
+  },
+  "647": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "6_lora1-low"
+    }
+  },
+  "648": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "647",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "6_lora2-low"
+    }
+  },
+  "649": {
+    "inputs": {
+      "lora_name": "none.safetensors",
+      "strength_model": 0,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "6_lora1-high"
+    }
+  },
+  "651": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SVI2_5extend_260104_200111",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "650:329",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "653": {
+    "inputs": {
+      "unet_name": "smoothMixWan22I2V14B_i2vHigh.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "wan22_HIGH"
+    }
+  },
+  "654": {
+    "inputs": {
+      "unet_name": "smoothMixWan22I2V14B_i2vLow.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "wan22_LOW"
+    }
+  },
+  "655": {
+    "inputs": {
+      "unet_name": "Wan2.2-I2V-A14B-HighNoise-Q8_0.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "GGUF_wan22_HIGH"
+    }
+  },
+  "656": {
+    "inputs": {
+      "unet_name": "Wan2.2-I2V-A14B-LowNoise-Q8_0.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "GGUF_wan22_LOW"
+    }
+  },
+  "315:312": {
+    "inputs": {},
+    "class_type": "DisableNoise",
+    "_meta": {
+      "title": "DisableNoise"
+    }
+  },
+  "315:308": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "315:310": {
+    "inputs": {
+      "noise": [
+        "315:309",
+        0
+      ],
+      "guider": [
+        "315:121",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        0
+      ],
+      "latent_image": [
+        "315:134",
+        2
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "315:307": {
+    "inputs": {
+      "text": "The woman smiles warmly",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "315:313": {
+    "inputs": {
+      "samples": [
+        "315:311",
+        0
+      ],
+      "vae": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "315:311": {
+    "inputs": {
+      "noise": [
+        "315:312",
+        0
+      ],
+      "guider": [
+        "315:124",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        1
+      ],
+      "latent_image": [
+        "315:310",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "315:309": {
+    "inputs": {
+      "noise_seed": 2226
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "315:121": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "483",
+        0
+      ],
+      "positive": [
+        "315:134",
+        0
+      ],
+      "negative": [
+        "315:134",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "315:134": {
+    "inputs": {
+      "length": 81,
+      "motion_latent_count": 1,
+      "positive": [
+        "315:307",
+        0
+      ],
+      "negative": [
+        "315:308",
+        0
+      ],
+      "anchor_samples": [
+        "295",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideoSVIPro",
+    "_meta": {
+      "title": "WanImageToVideoSVIPro"
+    }
+  },
+  "315:124": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "485",
+        0
+      ],
+      "positive": [
+        "315:134",
+        0
+      ],
+      "negative": [
+        "315:134",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "469:331": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "519",
+        0
+      ],
+      "positive": [
+        "469:333",
+        0
+      ],
+      "negative": [
+        "469:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "469:332": {
+    "inputs": {
+      "noise_seed": 4063
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "469:328": {
+    "inputs": {
+      "samples": [
+        "469:327",
+        0
+      ],
+      "vae": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "469:326": {
+    "inputs": {
+      "noise": [
+        "469:332",
+        0
+      ],
+      "guider": [
+        "469:330",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        0
+      ],
+      "latent_image": [
+        "469:333",
+        2
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "469:327": {
+    "inputs": {
+      "noise": [
+        "469:325",
+        0
+      ],
+      "guider": [
+        "469:331",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        1
+      ],
+      "latent_image": [
+        "469:326",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "469:329": {
+    "inputs": {
+      "overlap": 5,
+      "overlap_side": "source",
+      "overlap_mode": "linear_blend",
+      "source_images": [
+        "315:313",
+        0
+      ],
+      "new_images": [
+        "469:328",
+        0
+      ]
+    },
+    "class_type": "ImageBatchExtendWithOverlap",
+    "_meta": {
+      "title": "Image Batch Extend With Overlap"
+    }
+  },
+  "469:335": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走\n",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "469:334": {
+    "inputs": {
+      "text": "the woman turns to stand squarely in front of the viewer",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "469:325": {
+    "inputs": {},
+    "class_type": "DisableNoise",
+    "_meta": {
+      "title": "DisableNoise"
+    }
+  },
+  "469:330": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "520",
+        0
+      ],
+      "positive": [
+        "469:333",
+        0
+      ],
+      "negative": [
+        "469:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "469:333": {
+    "inputs": {
+      "length": 81,
+      "motion_latent_count": 1,
+      "positive": [
+        "469:334",
+        0
+      ],
+      "negative": [
+        "469:335",
+        0
+      ],
+      "anchor_samples": [
+        "295",
+        0
+      ],
+      "prev_samples": [
+        "315:311",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideoSVIPro",
+    "_meta": {
+      "title": "WanImageToVideoSVIPro"
+    }
+  },
+  "571:331": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "575",
+        0
+      ],
+      "positive": [
+        "571:333",
+        0
+      ],
+      "negative": [
+        "571:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "571:332": {
+    "inputs": {
+      "noise_seed": 2925
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "571:328": {
+    "inputs": {
+      "samples": [
+        "571:327",
+        0
+      ],
+      "vae": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "571:326": {
+    "inputs": {
+      "noise": [
+        "571:332",
+        0
+      ],
+      "guider": [
+        "571:330",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        0
+      ],
+      "latent_image": [
+        "571:333",
+        2
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "571:327": {
+    "inputs": {
+      "noise": [
+        "571:325",
+        0
+      ],
+      "guider": [
+        "571:331",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        1
+      ],
+      "latent_image": [
+        "571:326",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "571:329": {
+    "inputs": {
+      "overlap": 5,
+      "overlap_side": "source",
+      "overlap_mode": "linear_blend",
+      "source_images": [
+        "469:328",
+        0
+      ],
+      "new_images": [
+        "571:328",
+        0
+      ]
+    },
+    "class_type": "ImageBatchExtendWithOverlap",
+    "_meta": {
+      "title": "Image Batch Extend With Overlap"
+    }
+  },
+  "571:335": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走\n",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "571:334": {
+    "inputs": {
+      "text": "the woman waves and smiles",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "571:325": {
+    "inputs": {},
+    "class_type": "DisableNoise",
+    "_meta": {
+      "title": "DisableNoise"
+    }
+  },
+  "571:330": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "573",
+        0
+      ],
+      "positive": [
+        "571:333",
+        0
+      ],
+      "negative": [
+        "571:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "571:333": {
+    "inputs": {
+      "length": 81,
+      "motion_latent_count": 1,
+      "positive": [
+        "571:334",
+        0
+      ],
+      "negative": [
+        "571:335",
+        0
+      ],
+      "anchor_samples": [
+        "295",
+        0
+      ],
+      "prev_samples": [
+        "469:327",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideoSVIPro",
+    "_meta": {
+      "title": "WanImageToVideoSVIPro"
+    }
+  },
+  "621:331": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "619",
+        0
+      ],
+      "positive": [
+        "621:333",
+        0
+      ],
+      "negative": [
+        "621:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "621:332": {
+    "inputs": {
+      "noise_seed": 2925
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "621:328": {
+    "inputs": {
+      "samples": [
+        "621:327",
+        0
+      ],
+      "vae": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "621:326": {
+    "inputs": {
+      "noise": [
+        "621:332",
+        0
+      ],
+      "guider": [
+        "621:330",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        0
+      ],
+      "latent_image": [
+        "621:333",
+        2
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "621:327": {
+    "inputs": {
+      "noise": [
+        "621:325",
+        0
+      ],
+      "guider": [
+        "621:331",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        1
+      ],
+      "latent_image": [
+        "621:326",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "621:329": {
+    "inputs": {
+      "overlap": 5,
+      "overlap_side": "source",
+      "overlap_mode": "linear_blend",
+      "source_images": [
+        "571:328",
+        0
+      ],
+      "new_images": [
+        "621:328",
+        0
+      ]
+    },
+    "class_type": "ImageBatchExtendWithOverlap",
+    "_meta": {
+      "title": "Image Batch Extend With Overlap"
+    }
+  },
+  "621:335": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走\n",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "621:334": {
+    "inputs": {
+      "text": "the woman does a dance",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "621:325": {
+    "inputs": {},
+    "class_type": "DisableNoise",
+    "_meta": {
+      "title": "DisableNoise"
+    }
+  },
+  "621:330": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "617",
+        0
+      ],
+      "positive": [
+        "621:333",
+        0
+      ],
+      "negative": [
+        "621:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "621:333": {
+    "inputs": {
+      "length": 81,
+      "motion_latent_count": 1,
+      "positive": [
+        "621:334",
+        0
+      ],
+      "negative": [
+        "621:335",
+        0
+      ],
+      "anchor_samples": [
+        "295",
+        0
+      ],
+      "prev_samples": [
+        "571:327",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideoSVIPro",
+    "_meta": {
+      "title": "WanImageToVideoSVIPro"
+    }
+  },
+  "636:331": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "634",
+        0
+      ],
+      "positive": [
+        "636:333",
+        0
+      ],
+      "negative": [
+        "636:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "636:332": {
+    "inputs": {
+      "noise_seed": 2925
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "636:328": {
+    "inputs": {
+      "samples": [
+        "636:327",
+        0
+      ],
+      "vae": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "636:326": {
+    "inputs": {
+      "noise": [
+        "636:332",
+        0
+      ],
+      "guider": [
+        "636:330",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        0
+      ],
+      "latent_image": [
+        "636:333",
+        2
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "636:327": {
+    "inputs": {
+      "noise": [
+        "636:325",
+        0
+      ],
+      "guider": [
+        "636:331",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        1
+      ],
+      "latent_image": [
+        "636:326",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "636:329": {
+    "inputs": {
+      "overlap": 5,
+      "overlap_side": "source",
+      "overlap_mode": "linear_blend",
+      "source_images": [
+        "621:328",
+        0
+      ],
+      "new_images": [
+        "636:328",
+        0
+      ]
+    },
+    "class_type": "ImageBatchExtendWithOverlap",
+    "_meta": {
+      "title": "Image Batch Extend With Overlap"
+    }
+  },
+  "636:335": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走\n",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "636:334": {
+    "inputs": {
+      "text": "the woman poses ",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "636:325": {
+    "inputs": {},
+    "class_type": "DisableNoise",
+    "_meta": {
+      "title": "DisableNoise"
+    }
+  },
+  "636:330": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "632",
+        0
+      ],
+      "positive": [
+        "636:333",
+        0
+      ],
+      "negative": [
+        "636:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "636:333": {
+    "inputs": {
+      "length": 81,
+      "motion_latent_count": 1,
+      "positive": [
+        "636:334",
+        0
+      ],
+      "negative": [
+        "636:335",
+        0
+      ],
+      "anchor_samples": [
+        "295",
+        0
+      ],
+      "prev_samples": [
+        "621:327",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideoSVIPro",
+    "_meta": {
+      "title": "WanImageToVideoSVIPro"
+    }
+  },
+  "650:331": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "648",
+        0
+      ],
+      "positive": [
+        "650:333",
+        0
+      ],
+      "negative": [
+        "650:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "650:332": {
+    "inputs": {
+      "noise_seed": 2925
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "650:328": {
+    "inputs": {
+      "samples": [
+        "650:327",
+        0
+      ],
+      "vae": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "650:326": {
+    "inputs": {
+      "noise": [
+        "650:332",
+        0
+      ],
+      "guider": [
+        "650:330",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        0
+      ],
+      "latent_image": [
+        "650:333",
+        2
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "650:327": {
+    "inputs": {
+      "noise": [
+        "650:325",
+        0
+      ],
+      "guider": [
+        "650:331",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        1
+      ],
+      "latent_image": [
+        "650:326",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "650:329": {
+    "inputs": {
+      "overlap": 5,
+      "overlap_side": "source",
+      "overlap_mode": "linear_blend",
+      "source_images": [
+        "636:328",
+        0
+      ],
+      "new_images": [
+        "650:328",
+        0
+      ]
+    },
+    "class_type": "ImageBatchExtendWithOverlap",
+    "_meta": {
+      "title": "Image Batch Extend With Overlap"
+    }
+  },
+  "650:335": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走\n",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "650:334": {
+    "inputs": {
+      "text": "the woman smirks and flips the bird",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "650:325": {
+    "inputs": {},
+    "class_type": "DisableNoise",
+    "_meta": {
+      "title": "DisableNoise"
+    }
+  },
+  "650:330": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "646",
+        0
+      ],
+      "positive": [
+        "650:333",
+        0
+      ],
+      "negative": [
+        "650:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "650:333": {
+    "inputs": {
+      "length": 81,
+      "motion_latent_count": 1,
+      "positive": [
+        "650:334",
+        0
+      ],
+      "negative": [
+        "650:335",
+        0
+      ],
+      "anchor_samples": [
+        "295",
+        0
+      ],
+      "prev_samples": [
+        "636:327",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideoSVIPro",
+    "_meta": {
+      "title": "WanImageToVideoSVIPro"
+    }
+  },
+  "558:331": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "557",
+        0
+      ],
+      "positive": [
+        "558:333",
+        0
+      ],
+      "negative": [
+        "558:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "558:332": {
+    "inputs": {
+      "noise_seed": 2925
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "558:328": {
+    "inputs": {
+      "samples": [
+        "558:327",
+        0
+      ],
+      "vae": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "558:326": {
+    "inputs": {
+      "noise": [
+        "558:332",
+        0
+      ],
+      "guider": [
+        "558:330",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        0
+      ],
+      "latent_image": [
+        "558:333",
+        2
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "558:327": {
+    "inputs": {
+      "noise": [
+        "558:325",
+        0
+      ],
+      "guider": [
+        "558:331",
+        0
+      ],
+      "sampler": [
+        "299",
+        0
+      ],
+      "sigmas": [
+        "128",
+        1
+      ],
+      "latent_image": [
+        "558:326",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "558:329": {
+    "inputs": {
+      "overlap": 5,
+      "overlap_side": "source",
+      "overlap_mode": "linear_blend",
+      "source_images": [
+        "650:328",
+        0
+      ],
+      "new_images": [
+        "558:328",
+        0
+      ]
+    },
+    "class_type": "ImageBatchExtendWithOverlap",
+    "_meta": {
+      "title": "Image Batch Extend With Overlap"
+    }
+  },
+  "558:335": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走\n",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "558:334": {
+    "inputs": {
+      "text": "the woman smirks and extends her middle finger rudely towards the viewer",
+      "clip": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "558:325": {
+    "inputs": {},
+    "class_type": "DisableNoise",
+    "_meta": {
+      "title": "DisableNoise"
+    }
+  },
+  "558:330": {
+    "inputs": {
+      "cfg": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "555",
+        0
+      ],
+      "positive": [
+        "558:333",
+        0
+      ],
+      "negative": [
+        "558:333",
+        1
+      ]
+    },
+    "class_type": "ScheduledCFGGuidance",
+    "_meta": {
+      "title": "Scheduled CFG Guidance"
+    }
+  },
+  "558:333": {
+    "inputs": {
+      "length": 81,
+      "motion_latent_count": 1,
+      "positive": [
+        "558:334",
+        0
+      ],
+      "negative": [
+        "558:335",
+        0
+      ],
+      "anchor_samples": [
+        "295",
+        0
+      ],
+      "prev_samples": [
+        "650:327",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideoSVIPro",
+    "_meta": {
+      "title": "WanImageToVideoSVIPro"
+    }
+  }
+}

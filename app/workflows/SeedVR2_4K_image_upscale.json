@@ -1,0 +1,105 @@
+{
+  "10": {
+    "inputs": {
+      "seed": 42,
+      "resolution": 4096,
+      "max_resolution": 4096,
+      "batch_size": 1,
+      "uniform_batch_size": false,
+      "color_correction": "lab",
+      "temporal_overlap": 0,
+      "prepend_frames": 0,
+      "input_noise_scale": 0.000,
+      "latent_noise_scale": 0,
+      "offload_device": "cpu",
+      "enable_debug": false,
+      "image": [
+        "17",
+        0
+      ],
+      "dit": [
+        "14",
+        0
+      ],
+      "vae": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "SeedVR2VideoUpscaler",
+    "_meta": {
+      "title": "Upscaler, $seed, $resolution, $max_resolution, $batch_size, $uniform_batch_size, $color_correction, $temporal_overlap, $input_noise_scale, $latent_noise_scale, $offload_device"
+    }
+  },
+  "13": {
+    "inputs": {
+      "model": "ema_vae_fp16.safetensors",
+      "device": "",
+      "encode_tiled": true,
+      "encode_tile_size": 1024,
+      "encode_tile_overlap": 128,
+      "decode_tiled": true,
+      "decode_tile_size": 1024,
+      "decode_tile_overlap": 128,
+      "tile_debug": "false",
+      "offload_device": "cpu",
+      "cache_model": false
+    },
+    "class_type": "SeedVR2LoadVAEModel",
+    "_meta": {
+      "title": "VAE, $encode_tiled, $encode_tile_size, $encode_tile_overlap, $decode_tiled, $decode_tile_size, $decode_tile_overlap, $device, $offload_device"
+    }
+  },
+  "14": {
+    "inputs": {
+      "model": "seedvr2_ema_7b_sharp-Q4_K_M.gguf",
+      "device": "cuda:0",
+      "blocks_to_swap": 36,
+      "swap_io_components": false,
+      "offload_device": "cpu",
+      "cache_model": false,
+      "attention_mode": "sdpa"
+    },
+    "class_type": "SeedVR2LoadDiTModel",
+    "_meta": {
+      "title": "$dit_model.model, $blocks_to_swap, $attention_mode, $device, $offload_device"
+    }
+  },
+  "16": {
+    "inputs": {
+      "image": "placeholder.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "$image!"
+    }
+  },
+  "17": {
+    "inputs": {
+      "image": [
+        "16",
+        0
+      ],
+      "alpha": [
+        "16",
+        1
+      ]
+    },
+    "class_type": "JoinImageWithAlpha",
+    "_meta": {
+      "title": "Join Image with Alpha"
+    }
+  },
+  "23": {
+    "inputs": {
+      "images": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "$output.result"
+    }
+  }
+}

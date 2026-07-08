@@ -1,0 +1,77 @@
+{
+  "26": {
+    "inputs": {
+      "image": "input.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "$image.image!"
+    }
+  },
+  "25": {
+    "inputs": {
+      "exclude_people_info": false,
+      "include_lighting": true,
+      "include_camera_angle": true,
+      "include_watermark": false,
+      "include_JPEG_artifacts": false,
+      "include_exif": false,
+      "exclude_sexual": false,
+      "exclude_image_resolution": false,
+      "include_aesthetic_quality": false,
+      "include_composition_style": false,
+      "exclude_text": false,
+      "specify_depth_field": false,
+      "specify_lighting_sources": false,
+      "do_not_use_ambiguous_language": false,
+      "include_nsfw": false,
+      "only_describe_most_important_elements": false,
+      "do_not_include_artist_name_or_title": false,
+      "identify_image_orientation": false,
+      "use_vulgar_slang_and_profanity": false,
+      "do_not_use_polite_euphemisms": false,
+      "include_character_age": false,
+      "include_camera_shot_type": false,
+      "exclude_mood_feeling": true,
+      "include_camera_vantage_height": false,
+      "mention_watermark": false,
+      "avoid_meta_descriptive_phrases": false,
+      "refer_character_name": false,
+      "character_name": ""
+    },
+    "class_type": "JC_ExtraOptions",
+    "_meta": {
+      "title": "$exclude_people_info.exclude_people_info, $include_lighting.include_lighting, $include_camera_angle.include_camera_angle, $include_watermark.include_watermark, $include_JPEG_artifacts.include_JPEG_artifacts, $include_exif.include_exif, $exclude_sexual.exclude_sexual, $exclude_image_resolution.exclude_image_resolution, $include_aesthetic_quality.include_aesthetic_quality, $include_composition_style.include_composition_style, $exclude_text.exclude_text, $specify_depth_field.specify_depth_field, $specify_lighting_sources.specify_lighting_sources, $do_not_use_ambiguous_language.do_not_use_ambiguous_language, $include_nsfw.include_nsfw, $only_describe_most_important_elements.only_describe_most_important_elements, $do_not_include_artist_name_or_title.do_not_include_artist_name_or_title, $identify_image_orientation.identify_image_orientation, $use_vulgar_slang_and_profanity.use_vulgar_slang_and_profanity, $do_not_use_polite_euphemisms.do_not_use_polite_euphemisms, $include_character_age.include_character_age, $include_camera_shot_type.include_camera_shot_type, $exclude_mood_feeling.exclude_mood_feeling, $include_camera_vantage_height.include_camera_vantage_height, $mention_watermark.mention_watermark, $avoid_meta_descriptive_phrases.avoid_meta_descriptive_phrases, $refer_character_name.refer_character_name, $character_name.character_name"
+    }
+  },
+  "23": {
+    "inputs": {
+      "model": "joycaption-beta-one",
+      "quantization": "Balanced (8-bit)",
+      "prompt_style": "Descriptive",
+      "caption_length": "any",
+      "max_new_tokens": 512,
+      "temperature": 0.6,
+      "top_p": 0.9,
+      "top_k": 0,
+      "custom_prompt": "",
+      "memory_management": "Keep in Memory",
+      "image": ["26", 0],
+      "extra_options": ["25", 0]
+    },
+    "class_type": "JC_adv",
+    "_meta": {
+      "title": "$model.model, $quantization.quantization, $prompt_style.prompt_style, $caption_length.caption_length, $max_new_tokens.max_new_tokens, $temperature.temperature, $top_p.top_p, $top_k.top_k, $custom_prompt.custom_prompt, $memory_management.memory_management"
+    }
+  },
+  "27": {
+    "inputs": {
+      "source": ["23", 1]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "$output.result"
+    }
+  }
+}
