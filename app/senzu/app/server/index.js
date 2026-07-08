@@ -16,13 +16,16 @@ const enhancerPrompts = require('./enhancer-prompts');
 const genPresets = require('./gen-presets');
 const genEnhancerPrompts = require('./gen-enhancer-prompts');
 
+const GalleryDatabase = require('./database');
+const { createGalleryRouter } = require('./gallery');
+const scanner = require('./scanner');
+const Parser = require('./crawler/parser');
+
 const app = express();
 const PORT = process.env.PORT || 4242;
 
-// Auto-detect project root: standalone vs nested inside z-fusion
 const candidateRoots = [
-  path.resolve(__dirname, '../../../'),    // nested:     server/ → app/ → Senzu/ → Z-Fusion/
-  path.resolve(__dirname, '../'),          // standalone: server/ → app/ → Senzu/n/
+  path.resolve(__dirname, '../'),
 ];
 let APP_ROOT = candidateRoots[0];
 for (const r of candidateRoots) {
@@ -888,10 +891,104 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
   }
 });
 
-app.listen(PORT, '127.0.0.1', () => {
+// ============================================================
+// Gallery: SQLite index + metadata crawler + file watcher + Socket.IO
+// ============================================================
+const GALLERY_DB_PATH = path.join(DATA_DIR, 'senzu.db');
+const GALLERY_TRASH_DIR = path.join(DATA_DIR, 'gallery-trash');
+if (!fs.existsSync(GALLERY_TRASH_DIR)) {
+  fs.mkdirSync(GALLERY_TRASH_DIR, { recursive: true });
+}
+
+const galleryDb = new GalleryDatabase(GALLERY_DB_PATH);
+const galleryParser = new Parser();
+
+// Bump PARSER_VERSION whenever metadata extraction improves — existing rows
+// are then re-parsed once on startup (fingerprint unchanged, so tags survive).
+const PARSER_VERSION = '2';
+
+// Connected folders: default to the Senzu outputs folder (protected — cannot
+// be disconnected from the UI). Users can connect additional folders anywhere.
+galleryDb.addFolder(SENZU_OUTPUTS, true);
+const GALLERY_PROTECTED_FOLDERS = [SENZU_OUTPUTS];
+
+// HTTP server + Socket.IO (shares the Express app)
+const server = http.createServer(app);
+const io = require('socket.io')(server, { cors: { origin: '*' } });
+io.on('connection', (socket) => {
+  socket.emit('gallery-count', { count: galleryDb.getCount() });
+});
+
+// Scan/watch manager — owns the live watcher and the connected-folder set.
+const galleryManager = scanner.createManager({
+  db: galleryDb,
+  parser: galleryParser,
+  io,
+  staticRoot: OUTPUTS_ROOT
+});
+
+// Full re-index: re-parse metadata for every indexed file. Used on the parser
+// version bump and by the "Re-index Images" button.
+async function reindexGallery() {
+  await galleryManager.reindexAll();
+  galleryDb.setSetting('parser_version', PARSER_VERSION);
+  return galleryDb.getCount();
+}
+
+// Native OS folder picker (Windows dialog / macOS osascript / Linux zenity).
+// Returns { path } on selection, { cancelled } if dismissed, or
+// { unavailable } if no native picker exists (client offers a path input).
+function pickFolder() {
+  return new Promise((resolve) => {
+    const { execFile } = require('child_process');
+    const platform = process.platform;
+    let cmd, args;
+    if (platform === 'win32') {
+      const ps = "Add-Type -AssemblyName System.Windows.Forms | Out-Null; " +
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog; " +
+        "$d.Description = 'Select a folder to connect to the Senzu gallery'; " +
+        "$d.ShowNewFolderButton = $false; " +
+        "$top = New-Object System.Windows.Forms.Form; $top.TopMost = $true; " +
+        "if ($d.ShowDialog($top) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.SelectedPath) }";
+      cmd = 'powershell';
+      args = ['-STA', '-NoProfile', '-NonInteractive', '-Command', ps];
+    } else if (platform === 'darwin') {
+      cmd = 'osascript';
+      args = ['-e', 'POSIX path of (choose folder with prompt "Select a folder to connect to the Senzu gallery")'];
+    } else {
+      cmd = 'zenity';
+      args = ['--file-selection', '--directory', '--title=Select a folder to connect to the Senzu gallery'];
+    }
+    execFile(cmd, args, { windowsHide: true, timeout: 180000, maxBuffer: 1024 * 64 }, (err, stdout) => {
+      const picked = (stdout || '').trim();
+      if (picked) return resolve({ path: picked });
+      if (err && err.code === 'ENOENT') return resolve({ unavailable: true });
+      resolve({ cancelled: true });
+    });
+  });
+}
+
+app.use('/api/gallery', createGalleryRouter({
+  db: galleryDb,
+  outputsRoot: OUTPUTS_ROOT,
+  trashDir: GALLERY_TRASH_DIR,
+  reindex: reindexGallery,
+  openFolder: settings.openFolder,
+  manager: galleryManager,
+  pickFolder,
+  protectedFolders: GALLERY_PROTECTED_FOLDERS
+}));
+
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`=================================================`);
   console.log(`Senzu Backend is running on port ${PORT}`);
   console.log(`Access at http://localhost:${PORT}`);
   console.log(`comfyui endpoint: ${comfy.COMFY_URL}`);
   console.log(`=================================================`);
+
+  // Kick off the gallery scan + watcher after the server is listening.
+  const forceReindex = galleryDb.getSetting('parser_version') !== PARSER_VERSION;
+  galleryManager.start({ force: forceReindex })
+    .then(() => galleryDb.setSetting('parser_version', PARSER_VERSION))
+    .catch(err => console.error('[Gallery] Initial scan failed:', err.message));
 });

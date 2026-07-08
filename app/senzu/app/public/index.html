@@ -30,6 +30,10 @@
   <!-- Client API & App Core -->
   <script src="js/api.js"></script>
   <script src="js/app.js"></script>
+
+  <!-- Socket.IO client (served by the backend) + Gallery component -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/components/gallery.js"></script>
 </head>
 <body x-data="senzu">
 
@@ -61,24 +65,27 @@
       
       <div class="logo-section">
         <nav>
-          <button class="nav-btn" :class="activeTab === 'enhance' ? 'active' : ''" @click="activeTab = 'enhance'">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Enhancer
+          <button class="nav-btn" title="Enhancer" :class="activeTab === 'enhance' ? 'active' : ''" @click="activeTab = 'enhance'">
+            <i class="fa-solid fa-wand-magic-sparkles"></i><span class="nav-btn-label">Enhancer</span>
           </button>
-          <button class="nav-btn" :class="activeTab === 'generate' ? 'active' : ''" @click="activeTab = 'generate'">
-            <i class="fa-solid fa-bolt"></i> Generate
+          <button class="nav-btn" title="Generate" :class="activeTab === 'generate' ? 'active' : ''" @click="activeTab = 'generate'">
+            <i class="fa-solid fa-bolt"></i><span class="nav-btn-label">Generate</span>
           </button>
-          <button class="nav-btn" :class="activeTab === 'presets' ? 'active' : ''" @click="activeTab = 'presets'">
-            <i class="fa-solid fa-sliders"></i> Presets
+          <button class="nav-btn" title="Gallery" :class="activeTab === 'gallery' ? 'active' : ''" @click="activeTab = 'gallery'">
+            <i class="fa-solid fa-images"></i><span class="nav-btn-label">Gallery</span>
           </button>
-          <button class="nav-btn" :class="activeTab === 'prompts' ? 'active' : ''" @click="activeTab = 'prompts'">
-            <i class="fa-solid fa-paragraph"></i> Prompts
+          <button class="nav-btn" title="Presets" :class="activeTab === 'presets' ? 'active' : ''" @click="activeTab = 'presets'">
+            <i class="fa-solid fa-sliders"></i><span class="nav-btn-label">Presets</span>
           </button>
-          <button class="nav-btn" :class="activeTab === 'models' ? 'active' : ''" @click="activeTab = 'models'; loadModels()">
-            <i class="fa-solid fa-download"></i> Models
+          <button class="nav-btn" title="Prompts" :class="activeTab === 'prompts' ? 'active' : ''" @click="activeTab = 'prompts'">
+            <i class="fa-solid fa-paragraph"></i><span class="nav-btn-label">Prompts</span>
+          </button>
+          <button class="nav-btn" title="Models" :class="activeTab === 'models' ? 'active' : ''" @click="activeTab = 'models'; loadModels()">
+            <i class="fa-solid fa-download"></i><span class="nav-btn-label">Models</span>
             <span x-show="downloadState.status === 'downloading'" class="indicator-dot" style="background-color: var(--warning); margin-left: 5px;"></span>
           </button>
-          <button class="nav-btn" :class="activeTab === 'settings' ? 'active' : ''" @click="activeTab = 'settings'">
-            <i class="fa-solid fa-gear"></i> Settings
+          <button class="nav-btn" title="Settings" :class="activeTab === 'settings' ? 'active' : ''" @click="activeTab = 'settings'">
+            <i class="fa-solid fa-gear"></i><span class="nav-btn-label">Settings</span>
           </button>
         </nav>
       </div>
@@ -1798,6 +1805,309 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- Gallery Tab View -->
+    <div x-show="activeTab === 'gallery'">
+      <div class="gallery-tab" x-data="gallery">
+
+        <!-- Toolbar -->
+        <div class="gallery-toolbar glass-card">
+          <button class="btn btn-sm gallery-icon-btn" :class="isFavoritesActive ? 'active' : ''"
+                  @click="toggleFavorites()" title="Show favorites (tag:favorite)">
+            <i class="fa-solid fa-heart"></i>
+          </button>
+          <button class="btn btn-sm gallery-icon-btn" @click="refresh()" title="Refresh — clear search">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+          <span class="gallery-count" x-text="total + ' image' + (total === 1 ? '' : 's')"></span>
+          <div class="gallery-search-wrap">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input class="gallery-search" type="text" x-model="searchQuery" @input="debouncedSearch()"
+                   @keydown.enter="search(false)"
+                   placeholder="Search prompt… or tag:favorite  model_name:krea  width:>1024  -tag:nsfw">
+            <button x-show="searchQuery" class="gallery-search-clear" @click="clearSearch()"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <button class="btn btn-sm gallery-icon-btn" @click="saveBookmark()" title="Bookmark this search">
+            <i class="fa-regular fa-star"></i>
+          </button>
+          <div class="gallery-sort">
+            <select class="input-control" x-model="sortKey" @change="search(false)">
+              <option value="btime">Date created</option>
+              <option value="mtime">Date modified</option>
+              <option value="model_name">Model</option>
+              <option value="width">Width</option>
+              <option value="height">Height</option>
+              <option value="steps">Steps</option>
+              <option value="seed">Seed</option>
+              <option value="filename">Filename</option>
+            </select>
+            <button class="btn btn-sm" @click="sortDir = (sortDir === -1 ? 1 : -1); search(false)"
+                    :title="sortDir === -1 ? 'Descending' : 'Ascending'">
+              <i class="fa-solid" :class="sortDir === -1 ? 'fa-arrow-down-wide-short' : 'fa-arrow-up-short-wide'"></i>
+            </button>
+          </div>
+          <button class="btn btn-sm gallery-icon-btn gallery-toolbar-push" @click="openFolders()" title="Connected folders">
+            <i class="fa-solid fa-folder-tree"></i>
+          </button>
+          <span class="gallery-toolbar-sep"></span>
+          <button class="btn btn-sm gallery-icon-btn" :class="settings.showBookmarks ? 'active' : ''"
+                  @click="settings.showBookmarks = !settings.showBookmarks; saveSettings()" title="Toggle bookmarks bar">
+            <i class="fa-solid fa-bookmark"></i>
+          </button>
+          <button class="btn btn-sm gallery-icon-btn" @click="openSettings()" title="Gallery settings"><i class="fa-solid fa-sliders"></i></button>
+        </div>
+
+        <!-- Bookmarks bar (browser-style nested chips) -->
+        <div class="gallery-bookmarkbar" x-show="settings.showBookmarks" x-cloak @click.outside="openChip = null">
+
+          <!-- Saved searches, grouped under a Bookmarks folder chip -->
+          <div class="gallery-bmk" x-show="bookmarks.length > 0">
+            <button class="gallery-bmk-head" :class="openChip === '__bmk' ? 'open' : ''" @click="toggleChip('__bmk')">
+              <i class="fa-solid fa-star"></i> <span>Bookmarks</span>
+              <span class="gallery-bmk-count" x-text="bookmarks.length"></span>
+              <i class="fa-solid fa-caret-down gallery-bmk-caret"></i>
+            </button>
+            <div class="gallery-bmk-menu" x-show="openChip === '__bmk'" x-cloak>
+              <template x-for="b in bookmarks" :key="b.id">
+                <div class="gallery-bmk-item">
+                  <button class="gallery-bmk-item-btn" @click="applyBookmark(b.query); openChip = null" :title="b.query">
+                    <i class="fa-solid fa-magnifying-glass"></i> <span x-text="b.label || b.query"></span>
+                  </button>
+                  <i class="fa-solid fa-xmark gallery-bmk-item-remove" @click.stop="deleteBookmark(b.id)" title="Remove bookmark"></i>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Connected folders (each expandable to its subfolders) -->
+          <template x-for="f in folders" :key="f.path">
+            <div class="gallery-bmk">
+              <button class="gallery-bmk-head" :class="openChip === f.path ? 'open' : ''" @click="filterByFolder(f)">
+                <i class="fa-solid fa-folder"></i> <span x-text="f.name"></span>
+                <span class="gallery-bmk-count" x-text="f.count"></span>
+                <i class="fa-solid fa-caret-down gallery-bmk-caret" x-show="f.subfolders && f.subfolders.length"
+                   @click.stop="toggleChip(f.path)"></i>
+              </button>
+              <div class="gallery-bmk-menu" x-show="openChip === f.path" x-cloak>
+                <template x-for="sf in f.subfolders" :key="sf.subfolder">
+                  <div class="gallery-bmk-item">
+                    <button class="gallery-bmk-item-btn" @click="filterBySubfolder(f, sf.subfolder); openChip = null" :title="sf.subfolder">
+                      <i class="fa-solid fa-folder"></i> <span x-text="sf.subfolder"></span>
+                      <span class="gallery-bmk-count" x-text="sf.count"></span>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <span x-show="bookmarks.length === 0 && folders.length === 0" class="gallery-bookmark-empty">
+            No bookmarks yet — save a search with <i class="fa-regular fa-star"></i>, or connect a folder with <i class="fa-solid fa-folder-tree"></i>.
+          </span>
+        </div>
+
+        <!-- Scan progress -->
+        <div class="gallery-scan" x-show="scan.active">
+          <i class="fa-solid fa-circle-notch fa-spin"></i>
+          Indexing images… <span x-text="scan.current"></span> / <span x-text="scan.total"></span>
+        </div>
+
+        <!-- Grid (rendered manually for performance) -->
+        <div class="gallery-grid-scroll" x-ref="gridScroll" @scroll="onGridScroll($event)">
+          <div class="gallery-grid" x-ref="grid"></div>
+        </div>
+        <!-- Empty state -->
+        <div class="gallery-empty" x-show="!loading && items.length === 0">
+          <i class="fa-solid fa-images"></i>
+          <p>No images found</p>
+          <span x-show="searchQuery">Try a different search query.</span>
+          <span x-show="!searchQuery">Enhanced and generated images appear here automatically.</span>
+        </div>
+
+        <!-- Selection footer -->
+        <div class="gallery-selection-footer" x-show="selectedFps.length > 0" x-cloak>
+          <strong x-text="selectedFps.length"></strong> <span>selected</span>
+          <button class="btn btn-sm" @click="bulkAddTag()"><i class="fa-solid fa-tag"></i> Tag</button>
+          <button class="btn btn-sm" @click="bulkDelete()" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);"><i class="fa-solid fa-trash"></i> Delete</button>
+          <button class="btn btn-sm" @click="clearSelection()"><i class="fa-solid fa-xmark"></i> Clear</button>
+        </div>
+
+        <!-- Settings slide-out -->
+        <div class="gallery-settings-panel" x-show="settingsOpen" x-cloak @click.self="settingsOpen = false">
+          <div class="gallery-settings-inner glass-card">
+            <div class="gallery-settings-head">
+              <h3><i class="fa-solid fa-sliders"></i> Gallery Settings</h3>
+              <button class="btn-icon-overlay" @click="settingsOpen = false"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="input-group" style="margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between;">
+                <span class="input-label">Card Size</span>
+                <span class="range-val" x-text="settings.cardWidth + 'px'"></span>
+              </div>
+              <input type="range" class="range-slider" min="140" max="480" step="20"
+                     x-model.number="settings.cardWidth" @input="saveSettings()">
+            </div>
+
+            <div class="input-group" style="margin-bottom: 0;">
+              <span class="input-label">Layout</span>
+              <div class="gallery-layout-toggle">
+                <button class="mode-toggle-btn" :class="settings.layout === 'masonry' ? 'active' : ''"
+                        @click="settings.layout = 'masonry'; saveSettings()">Masonry</button>
+                <button class="mode-toggle-btn" :class="settings.layout === 'grid' ? 'active' : ''"
+                        @click="settings.layout = 'grid'; saveSettings()">Uniform Grid</button>
+              </div>
+            </div>
+
+            <div class="flex-switch">
+              <span class="switch-label">Show metadata on hover</span>
+              <label class="switch-control">
+                <input type="checkbox" x-model="settings.showMeta" @change="saveSettings()">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="input-group" style="margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between;">
+                <span class="input-label">Images per page</span>
+                <span class="range-val" x-text="settings.imageLimit"></span>
+              </div>
+              <input type="range" class="range-slider" min="50" max="500" step="50"
+                     x-model.number="settings.imageLimit" @change="saveSettings(); search(false)">
+            </div>
+
+            <!-- Image Viewer -->
+            <div class="gallery-settings-section">
+              <span class="gallery-settings-section-title"><i class="fa-solid fa-expand"></i> Image Viewer</span>
+
+              <div class="flex-switch">
+                <span class="switch-label">Start with info panel hidden</span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="settings.hidePanel" @change="saveSettings()">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+
+              <div class="input-group" style="margin-bottom: 0; margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">Slideshow interval</span>
+                  <span class="range-val" x-text="(settings.slideshowInterval / 1000).toFixed(2) + 's'"></span>
+                </div>
+                <input type="range" class="range-slider" min="500" max="10000" step="250"
+                       x-model.number="settings.slideshowInterval" @change="saveSettings()">
+              </div>
+            </div>
+
+            <!-- Deleted Files -->
+            <div class="gallery-settings-section">
+              <span class="gallery-settings-section-title"><i class="fa-regular fa-trash-can"></i> Deleted Files (<span x-text="trashItems.length"></span>)</span>
+
+              <div class="flex-switch">
+                <div>
+                  <span class="switch-label">Ask before deleting</span>
+                  <span style="display:block; font-size:0.68rem; color:var(--text-muted); margin-top:2px;">Show a confirmation before moving images to trash.</span>
+                </div>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="settings.confirmDelete" @change="saveSettings()">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+
+              <div style="display:flex; gap:8px; margin-top:10px;">
+                <button class="btn btn-sm" @click="openTrashFolder()" style="flex:1;"><i class="fa-solid fa-folder-open"></i> Open Folder</button>
+                <button class="btn btn-sm" x-show="trashItems.length > 0" @click="restoreAll()" style="flex:1;"><i class="fa-solid fa-rotate-left"></i> Restore All</button>
+              </div>
+
+              <div x-show="trashItems.length === 0" class="gallery-trash-empty">Trash is empty.</div>
+              <div class="gallery-trash-list" x-show="trashItems.length > 0">
+                <template x-for="item in trashItems" :key="item.fingerprint">
+                  <div class="gallery-trash-item">
+                    <span x-text="item.original_path.split(/[\\/]/).pop()"></span>
+                    <button class="btn btn-sm" @click="restoreTrash(item.fingerprint)" title="Restore"><i class="fa-solid fa-rotate-left"></i></button>
+                  </div>
+                </template>
+              </div>
+
+              <button x-show="trashItems.length > 0" class="btn btn-sm" @click="emptyTrash()"
+                      style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger); width:100%; margin-top:8px;">
+                <i class="fa-solid fa-trash"></i> Empty Trash Permanently
+              </button>
+            </div>
+
+            <!-- Maintenance -->
+            <div class="gallery-settings-section">
+              <span class="gallery-settings-section-title"><i class="fa-solid fa-screwdriver-wrench"></i> Maintenance</span>
+              <button class="btn btn-sm" @click="reindexImages()" :disabled="reindexing" style="width: 100%;">
+                <span x-show="!reindexing"><i class="fa-solid fa-arrows-rotate"></i> Re-index Images</span>
+                <span x-show="reindexing"><i class="fa-solid fa-circle-notch fa-spin"></i> Re-indexing…</span>
+              </button>
+              <span style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 6px;">
+                Re-scan the outputs folder and re-extract metadata for every image. Use this if some images show missing prompts or details. Tags and favorites are preserved.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connected folders slide-out -->
+        <div class="gallery-settings-panel" x-show="foldersOpen" x-cloak @click.self="foldersOpen = false">
+          <div class="gallery-settings-inner glass-card">
+            <div class="gallery-settings-head">
+              <h3><i class="fa-solid fa-folder-tree"></i> Connected Folders</h3>
+              <button class="btn-icon-overlay" @click="foldersOpen = false"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex-switch">
+              <span class="switch-label">Include subfolders</span>
+              <label class="switch-control">
+                <input type="checkbox" x-model="newFolderRecursive">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <button class="btn btn-primary btn-sm" @click="connectFolder()" :disabled="connecting" style="width:100%;">
+              <span x-show="!connecting"><i class="fa-solid fa-folder-plus"></i> Connect a Folder</span>
+              <span x-show="connecting"><i class="fa-solid fa-circle-notch fa-spin"></i> Working…</span>
+            </button>
+
+            <!-- Manual path fallback (shown if no native picker is available) -->
+            <div x-show="pickerUnavailable" x-cloak>
+              <span style="font-size:0.7rem; color:var(--text-muted); display:block; margin-bottom:4px;">
+                Native folder picker unavailable — paste an absolute folder path:
+              </span>
+              <div style="display:flex; gap:8px;">
+                <input type="text" class="input-control" x-model="folderPathInput" placeholder="e.g. D:\AI\images" style="flex:1;"
+                       @keydown.enter="addFolderPath()">
+                <button class="btn btn-sm" @click="addFolderPath()" :disabled="connecting || !folderPathInput.trim()">Add</button>
+              </div>
+            </div>
+
+            <div class="gallery-settings-section">
+              <span class="gallery-settings-section-title"><i class="fa-solid fa-list"></i> Folders (<span x-text="folders.length"></span>)</span>
+              <div class="gallery-folder-list">
+                <template x-for="f in folders" :key="f.path">
+                  <div class="gallery-folder-item">
+                    <div class="gallery-folder-info">
+                      <div class="gallery-folder-name">
+                        <i class="fa-solid fa-folder"></i> <span x-text="f.name"></span>
+                        <span class="gallery-bmk-count" x-text="f.count"></span>
+                      </div>
+                      <div class="gallery-folder-path" x-text="f.path" :title="f.path"></div>
+                    </div>
+                    <div class="gallery-folder-actions">
+                      <button class="btn btn-sm" @click="reindexFolder(f.path)" title="Re-index this folder"><i class="fa-solid fa-arrows-rotate"></i></button>
+                      <button class="btn btn-sm" x-show="f.removable" @click="removeFolder(f.path)" title="Disconnect folder"
+                              style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);"><i class="fa-solid fa-xmark"></i></button>
+                      <span x-show="!f.removable" class="gallery-folder-locked" title="Default folder — always connected"><i class="fa-solid fa-lock"></i></span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
 

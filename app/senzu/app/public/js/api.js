@@ -304,5 +304,179 @@ const api = {
       throw new Error(err.error || 'Generation failed');
     }
     return res.json();
+  },
+
+  // ===== Gallery =====
+  gallery: {
+    async search({ q = '', sort = 'btime', direction = -1, offset = 0, limit = 100 } = {}) {
+      const params = new URLSearchParams({ q, sort, direction, offset, limit });
+      const res = await fetch(`${API_BASE}/gallery/search?${params.toString()}`);
+      return res.json();
+    },
+
+    async get(fingerprint) {
+      const res = await fetch(`${API_BASE}/gallery/${encodeURIComponent(fingerprint)}`);
+      if (!res.ok) throw new Error('Not found');
+      return res.json();
+    },
+
+    async count() {
+      const res = await fetch(`${API_BASE}/gallery/count`);
+      return res.json();
+    },
+
+    async tags() {
+      const res = await fetch(`${API_BASE}/gallery/tags`);
+      return res.json();
+    },
+
+    async addTags(fingerprints, tags) {
+      const res = await fetch(`${API_BASE}/gallery/tags/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints, tags })
+      });
+      return res.json();
+    },
+
+    async removeTags(fingerprints, tags) {
+      const res = await fetch(`${API_BASE}/gallery/tags/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints, tags })
+      });
+      return res.json();
+    },
+
+    async delete(fingerprints) {
+      const res = await fetch(`${API_BASE}/gallery/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints })
+      });
+      return res.json();
+    },
+
+    async restore(fingerprints) {
+      const res = await fetch(`${API_BASE}/gallery/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints })
+      });
+      return res.json();
+    },
+
+    async trash() {
+      const res = await fetch(`${API_BASE}/gallery/trash`);
+      return res.json();
+    },
+
+    async emptyTrash() {
+      const res = await fetch(`${API_BASE}/gallery/trash/empty`, { method: 'POST' });
+      return res.json();
+    },
+
+    async openFolder(fingerprint) {
+      const res = await fetch(`${API_BASE}/gallery/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint })
+      });
+      return res.json();
+    },
+
+    async openTrashFolder() {
+      const res = await fetch(`${API_BASE}/gallery/trash/open`, { method: 'POST' });
+      return res.json();
+    },
+
+    async reindex() {
+      const res = await fetch(`${API_BASE}/gallery/reindex`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Re-index failed');
+      }
+      return res.json();
+    },
+
+    async folders() {
+      const res = await fetch(`${API_BASE}/gallery/folders`);
+      return res.json();
+    },
+
+    async pickFolder() {
+      const res = await fetch(`${API_BASE}/gallery/pick-folder`, { method: 'POST' });
+      return res.json();
+    },
+
+    async addFolder(path, recursive) {
+      const res = await fetch(`${API_BASE}/gallery/folders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, recursive })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to add folder');
+      }
+      return res.json();
+    },
+
+    async removeFolder(path) {
+      const res = await fetch(`${API_BASE}/gallery/folders`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to remove folder');
+      }
+      return res.json();
+    },
+
+    async reindexFolder(path) {
+      const res = await fetch(`${API_BASE}/gallery/folders/reindex`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
+      return res.json();
+    },
+
+    async getSetting(key) {
+      const res = await fetch(`${API_BASE}/gallery/settings/${encodeURIComponent(key)}`);
+      return res.json();
+    },
+
+    async setSetting(key, val) {
+      const res = await fetch(`${API_BASE}/gallery/settings/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ val })
+      });
+      return res.json();
+    },
+
+    async favorites() {
+      const res = await fetch(`${API_BASE}/gallery/favorites`);
+      return res.json();
+    },
+
+    async addFavorite(query, label, isGlobal) {
+      const res = await fetch(`${API_BASE}/gallery/favorites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, label, isGlobal })
+      });
+      return res.json();
+    },
+
+    async removeFavorite(id) {
+      const res = await fetch(`${API_BASE}/gallery/favorites/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      return res.json();
+    }
   }
 };
