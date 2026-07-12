@@ -143,11 +143,17 @@
             </button>
           </div>
           
-          <!-- Enhance Button -->
-          <button class="btn btn-primary" :disabled="isProcessing || !hasPendingImages() || !comfyOnline" @click="startQueue()" style="padding: 14px 20px; font-size: 1.05rem;">
-            <span x-show="!isProcessing"><i class="fa-solid fa-wand-magic-sparkles"></i> <span x-text="imageQueue.length > 0 ? 'Enhance (' + imageQueue.filter(i => i.status==='pending').length + ')' : 'Enhance'">Enhance</span></span>
-            <span x-show="isProcessing"><i class="fa-solid fa-circle-notch fa-spin"></i> Processing...</span>
-          </button>
+          <!-- Enhance / Stop Button -->
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary" :disabled="isProcessing || !hasPendingImages() || !comfyOnline" @click="startQueue()" style="flex: 1; padding: 14px 20px; font-size: 1.05rem;">
+              <span x-show="!isProcessing"><i class="fa-solid fa-wand-magic-sparkles"></i> <span x-text="imageQueue.length > 0 ? 'Enhance (' + imageQueue.filter(i => i.status==='pending').length + ')' : 'Enhance'">Enhance</span></span>
+              <span x-show="isProcessing"><i class="fa-solid fa-circle-notch fa-spin"></i> Processing...</span>
+            </button>
+            <button x-show="isProcessing" @click="stopQueue()" :disabled="enhanceCancelRequested" class="btn" title="Stop processing" style="flex-shrink: 0; padding: 14px 20px; font-size: 1.05rem; background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);">
+              <span x-show="!enhanceCancelRequested"><i class="fa-solid fa-stop"></i> Stop</span>
+              <span x-show="enhanceCancelRequested"><i class="fa-solid fa-circle-notch fa-spin"></i> Stopping...</span>
+            </button>
+          </div>
           
           <div x-show="isProcessing && imageQueue.length > 0" style="display: flex; gap: 8px;">
             <span style="font-size: 0.75rem; color: var(--text-muted);" x-text="imageQueue.filter(i => i.status==='pending').length + ' remaining'"></span>
@@ -1436,12 +1442,15 @@
             <textarea class="input-control" x-model="genParams.prompt" placeholder="Describe the image you want to generate..." style="min-height: 120px;"></textarea>
           </div>
 
-          <!-- Chain Refiner + Refine Row -->
+          <!-- Batch + Chain Refiner + Refine Row -->
           <div style="display: flex; align-items: center; gap: 10px;">
-            <div class="flex-switch" style="flex: 1;">
-              <div>
-                <span class="switch-label">Chain Refiner <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Automatically runs the prompt refiner before generation. Uses the Refinement System Prompt and LLM configured in the Prompts tab."></i></span>
-              </div>
+            <div style="flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <span class="switch-label" style="white-space: nowrap;">Batch</span>
+              <input type="range" class="range-slider" min="1" max="500" step="1" x-model.number="genParams.batch_size" style="flex: 1; height: 4px; min-width: 0;">
+              <input type="number" class="input-control" min="1" max="500" step="1" x-model.number="genParams.batch_size" style="width: 56px; padding: 4px 6px; font-size: 0.8rem; flex-shrink: 0; text-align: center;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+              <span class="switch-label">Chain Refiner <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Automatically runs the prompt refiner before generation. Uses the Refinement System Prompt and LLM configured in the Prompts tab."></i></span>
               <label class="switch-control">
                 <input type="checkbox" x-model="genParams.chain_enhancer">
                 <span class="switch-slider"></span>
@@ -1453,11 +1462,17 @@
             </button>
           </div>
 
-          <!-- Generate Button -->
-          <button class="btn btn-primary" :disabled="genProcessing || !comfyOnline" @click="startGeneration()" style="padding: 14px 20px; font-size: 1.05rem;">
-            <span x-show="!genProcessing"><i class="fa-solid fa-bolt"></i> Generate</span>
-            <span x-show="genProcessing"><i class="fa-solid fa-circle-notch fa-spin"></i> Generating...</span>
-          </button>
+          <!-- Generate / Stop Button -->
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary" :disabled="genProcessing || !comfyOnline" @click="startGeneration()" style="flex: 1; padding: 14px 20px; font-size: 1.05rem;">
+              <span x-show="!genProcessing"><i class="fa-solid fa-bolt"></i> Generate<span x-show="genParams.batch_size > 1" x-text="' ×' + genParams.batch_size"></span></span>
+              <span x-show="genProcessing"><i class="fa-solid fa-circle-notch fa-spin"></i> Generating...</span>
+            </button>
+            <button x-show="genProcessing" @click="stopGeneration()" :disabled="genCancelRequested" class="btn" title="Stop generation" style="flex-shrink: 0; padding: 14px 20px; font-size: 1.05rem; background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);">
+              <span x-show="!genCancelRequested"><i class="fa-solid fa-stop"></i> Stop</span>
+              <span x-show="genCancelRequested"><i class="fa-solid fa-circle-notch fa-spin"></i> Stopping...</span>
+            </button>
+          </div>
 
         </div>
 
@@ -1625,6 +1640,42 @@
                   <span class="range-val" x-text="genParams.seed"></span>
                 </div>
                 <input type="number" class="input-control" x-model="genParams.seed" style="padding: 6px 10px; font-size: 0.85rem;">
+              </div>
+            </div>
+
+            <!-- AMD INT8 Loader (W8A8) — shown only when the INT8-Fast-ROCm node is installed -->
+            <div x-show="sysStats.int8_available" style="border-top: 1px solid var(--border-glass); margin: 8px 0; padding-top: 8px;">
+              <div class="flex-switch" style="margin-bottom: 8px;">
+                <span class="switch-label"><i class="fa-solid fa-bolt" style="color: var(--primary-neon);"></i> AMD INT8 Loader (W8A8)</span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="genParams.use_int8_loader">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div x-show="genParams.use_int8_loader">
+                <div class="form-row">
+                  <div class="input-group">
+                    <label class="input-label">Model Type</label>
+                    <select class="input-control" x-model="genParams.int8_model_type">
+                      <template x-for="t in INT8_MODEL_TYPES" :key="t">
+                        <option :value="t" x-text="t"></option>
+                      </template>
+                    </select>
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">ConvRot</label>
+                    <div class="flex-switch" style="padding-top: 6px;">
+                      <span class="switch-label" style="font-size: 0.8rem;">Enable</span>
+                      <label class="switch-control">
+                        <input type="checkbox" x-model="genParams.int8_enable_convrot">
+                        <span class="switch-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px; margin-top: 4px;">
+                  <i class="fa-solid fa-circle-info"></i> Routes the selected UNet through the INT8 W8A8 loader for faster ROCm inference. Use a prequantized INT8 model and set the matching model type. ConvRot is ~1.1x slower but near-Q8 quality.
+                </div>
               </div>
             </div>
 

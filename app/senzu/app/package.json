@@ -18,5 +18,8 @@
     "sharp": "^0.33.5",
     "socket.io": "^4.8.1"
   },
-  "private": true
+  "private": true,
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
 }

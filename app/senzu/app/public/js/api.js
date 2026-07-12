@@ -6,6 +6,11 @@ const api = {
     return res.json();
   },
 
+  async interrupt() {
+    const res = await fetch(`${API_BASE}/interrupt`, { method: 'POST' });
+    return res.json();
+  },
+
   async getSystemStats() {
     const res = await fetch(`${API_BASE}/system-stats`);
     return res.json();

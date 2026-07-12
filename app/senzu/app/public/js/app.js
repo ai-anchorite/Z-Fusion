@@ -9,9 +9,10 @@ document.addEventListener('alpine:init', () => {
     processTime: 0,
     processTimer: null,
     statusText: 'Idle',
+    enhanceCancelRequested: false,
 
     // System monitor
-    sysStats: { gpu: null, ram: { used: 0, total: 0 }, available: false },
+    sysStats: { gpu: null, int8_available: false, ram: { used: 0, total: 0 }, available: false },
     
     // File upload — input queue
     imageQueue: [],           // { id, file, preview, name, status }
@@ -116,6 +117,7 @@ document.addEventListener('alpine:init', () => {
       scheduler: 'beta',
       seed: 0,
       randomize_seed: true,
+      batch_size: 1,
       lora1_enabled: false, lora1_name: 'none.safetensors', lora1_strength: 1.0,
       lora2_enabled: false, lora2_name: 'none.safetensors', lora2_strength: 0.5,
       lora3_enabled: false, lora3_name: 'none.safetensors', lora3_strength: 0.5,
@@ -126,12 +128,17 @@ document.addEventListener('alpine:init', () => {
       chain_enhancer: false,
       use_image_input: false,
       megapixels: 1.0,
-      denoise: 0.6
+      denoise: 0.6,
+      use_int8_loader: false,
+      int8_model_type: 'krea2',
+      int8_enable_convrot: true
     },
+    INT8_MODEL_TYPES: ['krea2', 'flux2', 'z-image', 'ideogram4', 'chroma', 'wan', 'ltx2', 'qwen', 'ernie', 'anima', 'hidream o1', 'boogu'],
     genOutput: null,
     genOutputs: [],
     genViewedIndex: 0,
     genProcessing: false,
+    genCancelRequested: false,
     lastGenSaved: false,
     genStatusText: 'Idle',
     genProcessTime: 0,
@@ -1073,6 +1080,7 @@ document.addEventListener('alpine:init', () => {
       
       this.queueRunning = true;
       this.isProcessing = true;
+      this.enhanceCancelRequested = false;
       this.processTime = 0;
       
       if (this.processTimer) clearInterval(this.processTimer);
@@ -1085,6 +1093,7 @@ document.addEventListener('alpine:init', () => {
       const mode = payload.mode;
       
       while (true) {
+        if (this.enhanceCancelRequested) break;
         const idx = this.imageQueue.findIndex(i => i.status === 'pending');
         if (idx === -1) break;
         
@@ -1128,15 +1137,19 @@ document.addEventListener('alpine:init', () => {
             ? `${this.outputQueue.length} complete, ${stillPending} remaining`
             : `${this.outputQueue.length} image${this.outputQueue.length !== 1 ? 's' : ''} processed`;
         } catch (err) {
-          item.status = 'error';
-          item.error = err.message;
-          this.statusText = this.outputQueue.length > 0
-            ? `${item.name} failed: ${err.message}`
-            : 'Error: ' + err.message;
-          if (this.outputQueue.length === 0) {
-            alert('Enhancement failed:\n' + err.message);
+          if (this.enhanceCancelRequested) {
+            item.status = 'cancelled';
           } else {
-            this.loadOutputView(this.viewedIndex);
+            item.status = 'error';
+            item.error = err.message;
+            this.statusText = this.outputQueue.length > 0
+              ? `${item.name} failed: ${err.message}`
+              : 'Error: ' + err.message;
+            if (this.outputQueue.length === 0) {
+              alert('Enhancement failed:\n' + err.message);
+            } else {
+              this.loadOutputView(this.viewedIndex);
+            }
           }
         }
         
@@ -1156,19 +1169,23 @@ document.addEventListener('alpine:init', () => {
       this.queueRunning = false;
       clearInterval(this.processTimer);
       this.processTimer = null;
-      if (this.statusText.indexOf('Error:') === -1) {
+      if (this.enhanceCancelRequested) {
+        const remaining = this.imageQueue.filter(i => i.status === 'pending').length;
+        this.statusText = `Stopped — ${this.outputQueue.length} processed` + (remaining ? `, ${remaining} remaining` : '');
+      } else if (this.statusText.indexOf('Error:') === -1) {
         this.statusText = this.outputQueue.length > 0 
           ? `Done: ${this.outputQueue.length} image${this.outputQueue.length !== 1 ? 's' : ''}`
           : 'Idle';
       }
+      this.enhanceCancelRequested = false;
     },
     
-    stopQueue() {
-      // Mark all pending items as cancelled
-      for (const item of this.imageQueue) {
-        if (item.status === 'pending') item.status = 'done';
-      }
-      this.queueRunning = false;
+    async stopQueue() {
+      // Halt the queue loop and abort the in-flight ComfyUI step. Pending items
+      // are left as-is so the run can be resumed with the Enhance button.
+      this.enhanceCancelRequested = true;
+      this.statusText = 'Stopping...';
+      try { await api.interrupt(); } catch (_) {}
     },
     
     hasPendingImages() {
@@ -1544,12 +1561,15 @@ document.addEventListener('alpine:init', () => {
     },
 
     async startGeneration() {
+      const total = Math.max(1, Math.min(500, parseInt(this.genParams.batch_size, 10) || 1));
       this.genProcessing = true;
+      this.genCancelRequested = false;
       this.genStatusText = 'Generating...';
       this.genProcessTime = 0;
       const genTimer = setInterval(() => { this.genProcessTime++; }, 1000);
+      let done = 0;
       try {
-        // Chain enhancer: run standalone before T2I if enabled
+        // Chain enhancer: run standalone once before the batch if enabled
         if (this.genParams.chain_enhancer) {
           this.genStatusText = 'Refining prompt...';
           const systemPromptName = this.appSettings.enhancer_system_prompt || 'Refinement';
@@ -1566,18 +1586,42 @@ document.addEventListener('alpine:init', () => {
           }
         }
 
-        this.genStatusText = 'Generating image...';
         const image = (this.genParams.use_image_input && this.imgInputImage) ? this.imgInputImage : null;
-        const res = await api.generateImage(this.genParams, image || undefined);
-        this.genOutputs.push({ url: res.output, prompt: this.genParams.prompt });
-        this.genViewedIndex = this.genOutputs.length - 1;
-        this.genOutput = res.output;
-        this.genStatusText = this.genOutputs.length + ' image' + (this.genOutputs.length !== 1 ? 's' : '') + ' generated';
+        // The INT8 W8A8 loader needs the ROCm-only custom node; skip it when absent.
+        const payload = { ...this.genParams };
+        if (!this.sysStats.int8_available) payload.use_int8_loader = false;
+
+        // Batch: the server re-randomizes the seed (and re-resolves {a|b|c}
+        // wildcards) per request, so each pass yields a fresh image.
+        for (let n = 0; n < total; n++) {
+          if (this.genCancelRequested) break;
+          this.genStatusText = total > 1 ? `Generating ${n + 1} / ${total}...` : 'Generating image...';
+          const res = await api.generateImage(payload, image || undefined);
+          done++;
+          this.genOutputs.push({ url: res.output, prompt: this.genParams.prompt });
+          this.genViewedIndex = this.genOutputs.length - 1;
+          this.genOutput = res.output;
+        }
+
+        const noun = this.genOutputs.length === 1 ? 'image' : 'images';
+        this.genStatusText = this.genCancelRequested
+          ? `Stopped — ${done} of ${total} generated`
+          : `${this.genOutputs.length} ${noun} generated`;
       } catch (err) {
-        this.genStatusText = 'Error: ' + err.message;
+        this.genStatusText = this.genCancelRequested
+          ? `Stopped — ${done} of ${total} generated`
+          : 'Error: ' + err.message;
       }
       clearInterval(genTimer);
       this.genProcessing = false;
+      this.genCancelRequested = false;
+    },
+
+    async stopGeneration() {
+      // Halt the batch loop between passes and abort the in-flight image.
+      this.genCancelRequested = true;
+      this.genStatusText = 'Stopping...';
+      try { await api.interrupt(); } catch (_) {}
     },
 
     prevGenOutput() {

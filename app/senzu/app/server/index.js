@@ -15,6 +15,7 @@ const sysStats = require('./system-stats');
 const enhancerPrompts = require('./enhancer-prompts');
 const genPresets = require('./gen-presets');
 const genEnhancerPrompts = require('./gen-enhancer-prompts');
+const { processDynamicPrompt } = require('./dynamicPrompt');
 
 const GalleryDatabase = require('./database');
 const { createGalleryRouter } = require('./gallery');
@@ -420,6 +421,16 @@ app.get('/api/status', async (req, res) => {
   res.json({ comfyOnline: isOnline });
 });
 
+// Interrupt the currently executing ComfyUI prompt (Stop button)
+app.post('/api/interrupt', async (req, res) => {
+  try {
+    const result = await comfy.interrupt();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed to interrupt' });
+  }
+});
+
 // System hardware stats
 app.get('/api/system-stats', (req, res) => {
   res.json(sysStats.getStats());
@@ -623,7 +634,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       }
     }
 
-    const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_krea2_t2i.json');
+    const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_gen1.json');
     const randomizeSeed = parsedParams.randomize_seed !== false;
     const seedVal = randomizeSeed ? Math.floor(Math.random() * 1000000000) : (parseInt(parsedParams.seed, 10) || 0);
 
@@ -631,10 +642,17 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     const height = parseInt(parsedParams.height, 10) || 1024;
     const useImgInput = parsedParams.use_image_input === true;
 
+    // Resolve {a|b|c} dynamic prompts here — ComfyUI only does this in its own
+    // web UI, so via the API the raw braces would otherwise reach the encoder.
+    const resolvedPrompt = processDynamicPrompt(parsedParams.prompt || '', seedVal);
+
     const genParams = {
       width,
       height,
       unet_name: parsedParams.unet_name || 'krea2_turbo_fp8_scaled.safetensors',
+      use_int8_loader: parsedParams.use_int8_loader === true,
+      int8_model_type: parsedParams.int8_model_type || 'krea2',
+      int8_enable_convrot: parsedParams.int8_enable_convrot !== false,
       vae_name: parsedParams.vae_name || 'qwen_image_vae.safetensors',
       clip_name: parsedParams.clip_name || 'qwen3vl_4b_fp8_scaled.safetensors',
       seed: seedVal,
@@ -643,7 +661,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       denoise: useImgInput ? (parseFloat(parsedParams.denoise) || 0.6) : 1.0,
       sampler_name: parsedParams.sampler_name || 'euler',
       scheduler: parsedParams.scheduler || 'beta',
-      prompt: parsedParams.prompt,
+      prompt: resolvedPrompt,
       use_image_input: useImgInput,
       megapixels: parseFloat(parsedParams.megapixels) || 1.0,
       lora1_name: parsedParams.lora1_enabled ? parsedParams.lora1_name : 'none.safetensors',
@@ -665,8 +683,8 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     }
 
     const modeLabel = useImgInput ? 'Img2Img' : 'T2I';
-    console.log(`[Generate] Running Krea2 ${modeLabel}: "${parsedParams.prompt.substring(0, 80)}..."`);
-    const result = await comfy.runWorkflow(workflowPath, 'krea2_t2i', genParams);
+    console.log(`[Generate] Running Krea2 ${modeLabel}: "${resolvedPrompt.substring(0, 80)}..."`);
+    const result = await comfy.runWorkflow(workflowPath, 'gen1', genParams);
 
     // Clean up uploaded image
     if (req.file && fs.existsSync(req.file.path)) {

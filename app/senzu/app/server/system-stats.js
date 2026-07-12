@@ -1,9 +1,17 @@
 const { execSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 const os = require('os');
+
+// install.js only clones the INT8-Fast-ROCm custom node when Pinokio detects an
+// AMD/ROCm system, so the node's presence is the gate for the INT8 loader UI.
+// Without it, switching the workflow to OTUNetLoaderW8A8 would fail anyway.
+const INT8_NODE_DIR = path.resolve(__dirname, '../comfyui/custom_nodes/ComfyUI-INT8-Fast-ROCM');
 
 function getStats() {
   const result = {
     gpu: null,
+    int8_available: fs.existsSync(INT8_NODE_DIR),
     ram: { used: 0, total: 0 },
     available: false
   };

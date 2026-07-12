@@ -53,10 +53,17 @@ module.exports = {
     blocks_to_swap: { node: "14", field: "blocks_to_swap" },
     attention_mode: { node: "14", field: "attention_mode" }
   },
-  krea2_t2i: {
+  gen1: {
     width: { node: "52", field: "width" },
     height: { node: "52", field: "height" },
-    unet_name: { node: "54", field: "unet_name" },
+    // The selected model feeds both loaders; the INT8 switch decides which one runs.
+    unet_name: [
+      { node: "54", field: "unet_name" },
+      { node: "85", field: "unet_name" }
+    ],
+    use_int8_loader: { node: "86", field: "value" },
+    int8_model_type: { node: "85", field: "model_type" },
+    int8_enable_convrot: { node: "85", field: "enable_convrot" },
     vae_name: { node: "55", field: "vae_name" },
     clip_name: { node: "69", field: "clip_name" },
     seed: { node: "63", field: "seed" },
@@ -65,7 +72,7 @@ module.exports = {
     denoise: { node: "63", field: "denoise" },
     sampler_name: { node: "63", field: "sampler_name" },
     scheduler: { node: "63", field: "scheduler" },
-    prompt: { node: "59", field: "value" },
+    prompt: { node: "72", field: "text" },
     use_image_input: { node: "83", field: "value" },
     megapixels: { node: "81", field: "megapixels" },
     image: { node: "80", field: "image", upload: true },

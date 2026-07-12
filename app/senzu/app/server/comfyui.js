@@ -181,25 +181,27 @@ async function injectParams(workflowJson, mode, params) {
   
   for (const [key, val] of Object.entries(params)) {
     const entry = map[key];
-    if (entry) {
-      const { node, field, upload } = entry;
-      if (patched[node]) {
-        if (!patched[node].inputs) patched[node].inputs = {};
-        
-        if (upload && val) {
-          // If it is a file path, upload it first
-          if (fs.existsSync(val)) {
-            console.log(`Uploading input image ${key}: ${val}...`);
-            const uploadResult = await uploadImage(val);
-            patched[node].inputs[field] = uploadResult.name;
-            console.log(`Uploaded successfully as ${uploadResult.name}`);
-          } else {
-            // Already uploaded filename
-            patched[node].inputs[field] = val;
-          }
+    if (!entry) continue;
+
+    // A param can target multiple nodes (e.g. one model name feeding two loaders).
+    const targets = Array.isArray(entry) ? entry : [entry];
+    for (const { node, field, upload } of targets) {
+      if (!patched[node]) continue;
+      if (!patched[node].inputs) patched[node].inputs = {};
+
+      if (upload && val) {
+        // If it is a file path, upload it first
+        if (fs.existsSync(val)) {
+          console.log(`Uploading input image ${key}: ${val}...`);
+          const uploadResult = await uploadImage(val);
+          patched[node].inputs[field] = uploadResult.name;
+          console.log(`Uploaded successfully as ${uploadResult.name}`);
         } else {
-          patched[node].inputs[field] = normalizeWorkflowValue(field, val);
+          // Already uploaded filename
+          patched[node].inputs[field] = val;
         }
+      } else {
+        patched[node].inputs[field] = normalizeWorkflowValue(field, val);
       }
     }
   }
@@ -327,11 +329,33 @@ async function fetchSamplers() {
   }
 }
 
+// Interrupt the prompt ComfyUI is currently executing. /interrupt returns an
+// empty 200 body, so we resolve on status rather than parsing JSON.
+function interrupt() {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(COMFY_URL);
+    const req = http.request({
+      method: 'POST',
+      host: parsedUrl.hostname,
+      port: parsedUrl.port,
+      path: '/interrupt',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': 2 }
+    }, (res) => {
+      res.on('data', () => {});
+      res.on('end', () => resolve({ success: res.statusCode >= 200 && res.statusCode < 300 }));
+    });
+    req.on('error', reject);
+    req.write('{}');
+    req.end();
+  });
+}
+
 module.exports = {
   checkComfyOnline,
   uploadImage,
   downloadComfyImage,
   runWorkflow,
   fetchSamplers,
+  interrupt,
   COMFY_URL
 };
