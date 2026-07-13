@@ -36,7 +36,7 @@ const app = express();
 const PORT = process.env.PORT || 4242;
 
 const candidateRoots = [
-  path.resolve(__dirname, '../'),
+  path.resolve(__dirname, '../../../'), 
 ];
 let APP_ROOT = candidateRoots[0];
 for (const r of candidateRoots) {
