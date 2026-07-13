@@ -36,7 +36,7 @@ const app = express();
 const PORT = process.env.PORT || 4242;
 
 const candidateRoots = [
-  path.resolve(__dirname, '../../../'), 
+  path.resolve(__dirname, '../'),
 ];
 let APP_ROOT = candidateRoots[0];
 for (const r of candidateRoots) {
@@ -692,9 +692,15 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       genParams.image = req.file.path;
     }
 
+    // On non-ROCm installs the INT8 custom node isn't cloned; ComfyUI rejects
+    // the workflow if it references the missing class. Strip the three INT8
+    // nodes (85/86/87) and rewire the LoRA chain straight to the standard
+    // UNet loader so the workflow validates correctly everywhere.
+    const int8Available = fs.existsSync(path.resolve(__dirname, '../comfyui/custom_nodes/ComfyUI-INT8-Fast-ROCM'));
+
     const modeLabel = useImgInput ? 'Img2Img' : 'T2I';
     console.log(`[Generate] Running Krea2 ${modeLabel}: "${resolvedPrompt.substring(0, 80)}..."`);
-    const result = await comfy.runWorkflow(workflowPath, 'gen1', genParams);
+    const result = await comfy.runWorkflow(workflowPath, 'gen1', genParams, undefined, !int8Available);
 
     // Clean up uploaded image
     if (req.file && fs.existsSync(req.file.path)) {

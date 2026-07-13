@@ -227,13 +227,31 @@ function pollHistory(promptId, intervalMs = 1000) {
   });
 }
 
+// The INT8-Fast-ROCM custom node may not be installed (NVIDIA / macOS / no-AMD
+// install). ComfyUI validates every node in the prompt, even ones behind a switch,
+// so leaving nodes 85 (OTUNetLoaderW8A8), 86 (PrimitiveBoolean) and 87
+// (ComfySwitchNode) in the graph causes queue-time rejection. Strip them and
+// rewire the LoRA chain (node 64) straight to the standard loader (node 54).
+function stripInt8Nodes(workflow) {
+  if (!workflow['85'] && !workflow['87']) return workflow; // not a gen1 workflow / already stripped
+  delete workflow['85'];
+  delete workflow['86'];
+  delete workflow['87'];
+  // Re-route: LoRA 1 (node 64) model input was "87" (the removed switch) -> 54 (standard loader)
+  if (workflow['64']?.inputs?.model) {
+    workflow['64'].inputs.model = ['54', 0];
+  }
+  return workflow;
+}
+
 // Main execution helper
-async function runWorkflow(workflowPath, mode, params, progressCallback) {
+async function runWorkflow(workflowPath, mode, params, progressCallback, stripInt8 = false) {
   if (!fs.existsSync(workflowPath)) {
     throw new Error(`Workflow file not found: ${workflowPath}`);
   }
   
   const rawWorkflow = JSON.parse(fs.readFileSync(workflowPath, 'utf-8'));
+  if (stripInt8) stripInt8Nodes(rawWorkflow);
   
   if (progressCallback) progressCallback("Preparing workflow...");
   const patchedWorkflow = await injectParams(rawWorkflow, mode, params);
@@ -356,6 +374,7 @@ module.exports = {
   downloadComfyImage,
   runWorkflow,
   fetchSamplers,
+  stripInt8Nodes,
   interrupt,
   COMFY_URL
 };
