@@ -43,10 +43,24 @@ async function indexFile(db, parser, filePath, rootPath) {
 }
 
 // Create a gallery scan/watch manager. `staticRoot` is the dir served at
-// /outputs (used to build web src URLs for in-tree files).
-function createManager({ db, parser, io, staticRoot }) {
+// /outputs (used to build web src URLs for in-tree files). `watchPaths` are the
+// only folders we live-watch — currently just the Senzu output dir. Other
+// connected folders stay indexed but are neither walked nor watched on startup,
+// which keeps launch fast and stops fs.watch from crashing on huge external
+// trees. A per-folder "watch" toggle can revisit this later.
+function createManager({ db, parser, io, staticRoot, watchPaths = [] }) {
   let roots = [];      // [{ path, recursive }]
   let watcher = null;
+
+  const normCase = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const watchDirs = [];
+  const watchSet = new Set();
+  for (const p of watchPaths) {
+    const resolved = path.resolve(p);
+    const key = normCase(resolved);
+    if (!watchSet.has(key)) { watchSet.add(key); watchDirs.push(resolved); }
+  }
+  const shouldWatch = (p) => watchSet.has(normCase(path.resolve(p)));
 
   function rootFor(filePath) {
     let best = null;
@@ -147,11 +161,18 @@ function createManager({ db, parser, io, staticRoot }) {
     watcher = chokidar.watch([], {
       ignoreInitial: true,
       persistent: true,
-      depth: 20,
+      depth: 12,
+      ignorePermissionErrors: true,
       awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 100 },
     });
     watcher.on('add', onAdd);
     watcher.on('unlink', onUnlink);
+    // Without this, a Windows fs.watch failure (e.g. errno -4094 on a large or
+    // unwatchable tree) is re-thrown as an uncaught 'error' event and kills the
+    // whole backend. Log and keep running instead.
+    watcher.on('error', (err) => {
+      console.error(`[Gallery] Watcher error (ignored): ${err && err.message ? err.message : err}`);
+    });
   }
 
   function loadRootsFromDb() {
@@ -159,13 +180,20 @@ function createManager({ db, parser, io, staticRoot }) {
   }
 
   return {
-    // Initial scan of all connected folders + start watching.
+    // Initial scan + watch of the Senzu output dir only. Other connected
+    // folders remain in the DB (and still show in the gallery) but are not
+    // re-walked or watched here.
     async start({ force = false } = {}) {
       loadRootsFromDb();
       ensureWatcher();
-      for (const r of roots) await scanFolder(r.path, r.recursive, force);
-      for (const r of roots) if (fs.existsSync(r.path)) watcher.add(r.path);
-      glog(`[Gallery] Watching ${roots.length} folder(s).`);
+      for (const dir of watchDirs) {
+        if (!fs.existsSync(dir)) continue;
+        await scanFolder(dir, true, force);
+        try { watcher.add(dir); } catch (err) {
+          console.error(`[Gallery] Failed to watch ${dir}: ${err.message}`);
+        }
+      }
+      glog(`[Gallery] Watching ${watchDirs.length} output folder(s); ${roots.length} connected.`);
     },
 
     async addFolder(folderPath, recursive = true) {
@@ -173,7 +201,13 @@ function createManager({ db, parser, io, staticRoot }) {
       if (!roots.some(r => r.path === folderPath)) roots.push({ path: folderPath, recursive });
       ensureWatcher();
       await scanFolder(folderPath, recursive, false);
-      if (fs.existsSync(folderPath)) watcher.add(folderPath);
+      // Only live-watch the designated output dir(s); external folders are
+      // indexed once on connect and left unwatched for now.
+      if (shouldWatch(folderPath) && fs.existsSync(folderPath)) {
+        try { watcher.add(folderPath); } catch (err) {
+          console.error(`[Gallery] Failed to watch ${folderPath}: ${err.message}`);
+        }
+      }
     },
 
     removeFolder(folderPath) {

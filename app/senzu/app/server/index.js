@@ -22,6 +22,16 @@ const { createGalleryRouter } = require('./gallery');
 const scanner = require('./scanner');
 const Parser = require('./crawler/parser');
 
+// Last-resort guards: the backend also serves the web UI and the /api/status
+// endpoint, so a stray async error must never take the whole process down
+// (e.g. a filesystem-watcher failure). Log loudly and keep serving.
+process.on('uncaughtException', (err) => {
+  console.error('[Senzu] Uncaught exception (continuing):', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Senzu] Unhandled rejection (continuing):', reason && reason.stack ? reason.stack : reason);
+});
+
 const app = express();
 const PORT = process.env.PORT || 4242;
 
@@ -938,11 +948,18 @@ io.on('connection', (socket) => {
 });
 
 // Scan/watch manager — owns the live watcher and the connected-folder set.
+// For now we only live-watch the Senzu output dir (the in-app save folder, or
+// the default app/outputs/senzu). Other connected folders stay indexed but are
+// not watched, so a huge external gallery folder can't crash the watcher.
+const galleryWatchDir = (appSettings.save_folder && appSettings.save_folder.trim())
+  ? path.resolve(appSettings.save_folder)
+  : SENZU_OUTPUTS;
 const galleryManager = scanner.createManager({
   db: galleryDb,
   parser: galleryParser,
   io,
-  staticRoot: OUTPUTS_ROOT
+  staticRoot: OUTPUTS_ROOT,
+  watchPaths: [SENZU_OUTPUTS, galleryWatchDir]
 });
 
 // Full re-index: re-parse metadata for every indexed file. Used on the parser
