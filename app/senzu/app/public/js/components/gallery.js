@@ -606,6 +606,9 @@ document.addEventListener('alpine:init', () => {
             <span class="gv-sep"></span>
             <button class="gv-btn gv-slideshow" title="Slideshow (Space)"><i class="fa-solid fa-play"></i></button>
             <button class="gv-btn gv-panel" title="Info (i)"><i class="fa-solid fa-circle-info"></i></button>
+            <span class="gv-sep"></span>
+            <button class="gv-btn gv-enhance" title="Send to Enhancer"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+            <button class="gv-btn gv-img2img" title="Send to Generate (img2img)"><i class="fa-solid fa-image"></i></button>
             <button class="gv-btn gv-close" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>
@@ -622,6 +625,8 @@ document.addEventListener('alpine:init', () => {
       $('.gv-zoom-reset').addEventListener('click', (e) => { e.stopPropagation(); this.viewerReset(); });
       $('.gv-slideshow').addEventListener('click', (e) => { e.stopPropagation(); this.toggleSlideshow(); });
       $('.gv-panel').addEventListener('click', (e) => { e.stopPropagation(); this.togglePanel(); });
+      $('.gv-enhance').addEventListener('click', (e) => { e.stopPropagation(); this.sendToTab('enhance'); });
+      $('.gv-img2img').addEventListener('click', (e) => { e.stopPropagation(); this.sendToTab('generate'); });
       $('.gv-close').addEventListener('click', (e) => { e.stopPropagation(); this.closeViewer(); });
       $('.gallery-viewer-panel').addEventListener('click', (e) => e.stopPropagation());
       $('.gallery-viewer-toolbar').addEventListener('click', (e) => e.stopPropagation());
@@ -681,6 +686,20 @@ document.addEventListener('alpine:init', () => {
     closeViewer() {
       this.destroyViewerOverlay();
       if (this._keyHandler) { document.removeEventListener('keydown', this._keyHandler); this._keyHandler = null; }
+    },
+
+    async sendToTab(target) {
+      const item = this.items[this._viewerIndex];
+      if (!item || !item.src) return;
+      try {
+        const blob = await fetch(item.src).then(r => r.blob());
+        const name = item.filename || ('gallery_' + Date.now().toString(36) + '.png');
+        const file = new File([blob], name, { type: blob.type || 'image/png' });
+        this.closeViewer();
+        window.dispatchEvent(new CustomEvent('senzu:route-image', { detail: { file, target } }));
+      } catch (err) {
+        alert('Failed to send image: ' + (err.message || err));
+      }
     },
 
     viewerNav(dir) {

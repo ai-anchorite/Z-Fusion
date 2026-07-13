@@ -312,6 +312,24 @@ document.addEventListener('alpine:init', () => {
             this.handleZoom(e);
           }, { passive: false });
         });
+
+        // Gallery viewer → route image to Enhance or Generate (img2img)
+        window.addEventListener('senzu:route-image', (e) => {
+          const { file, target } = e.detail || {};
+          if (!file) return;
+          if (target === 'enhance') {
+            if (this.imageQueue.length === 0 && this.outputQueue.length === 0) this.activeTab = 'enhance';
+            this.addToQueue([file]);
+          } else if (target === 'generate') {
+            const isFirst = !this.imgInputImage;
+            this.genParams.use_image_input = true;
+            this.imgInputImage = file;
+            const reader = new FileReader();
+            reader.onload = (ev) => { this.imgInputPreview = ev.target.result; };
+            reader.readAsDataURL(file);
+            if (isFirst) this.activeTab = 'generate';
+          }
+        });
       } catch (e) {
         console.error('Init error:', e);
       }
@@ -1645,7 +1663,11 @@ document.addEventListener('alpine:init', () => {
       try {
         const blob = await fetch(this.genOutput).then(r => r.blob());
         const file = new File([blob], 'senzu_gen_' + Date.now().toString(36) + '.png', { type: blob.type || 'image/png' });
-        this.activeTab = 'enhance';
+        // Only switch tabs the first image; subsequent sends just add to the
+        // queue silently so the user can keep working in the Generate tab.
+        if (this.imageQueue.length === 0 && this.outputQueue.length === 0) {
+          this.activeTab = 'enhance';
+        }
         this.addToQueue([file]);
       } catch (err) {
         alert('Failed to send to enhancer: ' + err.message);
