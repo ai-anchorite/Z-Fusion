@@ -244,6 +244,22 @@ function stripInt8Nodes(workflow) {
   return workflow;
 }
 
+// The krea2_edit workflow ships with an optional second-reference branch
+// (nodes 23/24/25 -> image_b / source_latent_b). Both Krea2Edit nodes treat the
+// b-inputs as optional, so when the user supplies no second image we remove the
+// branch and the b-input links entirely rather than feeding a placeholder image
+// into the conditioning.
+function stripKrea2RefB(workflow) {
+  delete workflow['23'];
+  delete workflow['24'];
+  delete workflow['25'];
+  for (const nodeId of ['7', '9']) {
+    if (workflow[nodeId]?.inputs) delete workflow[nodeId].inputs.image_b;
+  }
+  if (workflow['10']?.inputs) delete workflow['10'].inputs.source_latent_b;
+  return workflow;
+}
+
 // Main execution helper
 async function runWorkflow(workflowPath, mode, params, progressCallback, stripInt8 = false) {
   if (!fs.existsSync(workflowPath)) {
@@ -252,6 +268,7 @@ async function runWorkflow(workflowPath, mode, params, progressCallback, stripIn
   
   const rawWorkflow = JSON.parse(fs.readFileSync(workflowPath, 'utf-8'));
   if (stripInt8) stripInt8Nodes(rawWorkflow);
+  if (mode === 'krea2_edit' && !params.image_b) stripKrea2RefB(rawWorkflow);
   
   if (progressCallback) progressCallback("Preparing workflow...");
   const patchedWorkflow = await injectParams(rawWorkflow, mode, params);
@@ -281,7 +298,7 @@ async function runWorkflow(workflowPath, mode, params, progressCallback, stripIn
   
   // Find output image in history
   let imageOutput = null;
-  const targetNodeId = mode === 'edit' ? '1' : '23';
+  const targetNodeId = mode === 'edit' ? '1' : (mode === 'krea2_edit' ? '4' : '23');
   
   if (historyResult.outputs && historyResult.outputs[targetNodeId] && historyResult.outputs[targetNodeId].images) {
     imageOutput = historyResult.outputs[targetNodeId].images[0];

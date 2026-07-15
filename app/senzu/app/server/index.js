@@ -416,7 +416,8 @@ app.post('/api/models/open-folder', (req, res) => {
   const dirMap = {
     diffusion_models: path.join(MODELS_ROOT, 'diffusion_models'),
     text_encoders: path.join(MODELS_ROOT, 'text_encoders'),
-    vae: path.join(MODELS_ROOT, 'vae')
+    vae: path.join(MODELS_ROOT, 'vae'),
+    loras: path.join(MODELS_ROOT, 'loras')
   };
   const folderPath = dirMap[type];
   if (!folderPath) return res.status(400).json({ error: "Invalid model type" });
@@ -626,11 +627,23 @@ app.post('/api/enhance-prompt', upload.single('image'), async (req, res) => {
   }
 });
 
-// Image Generation API (Krea2 T2I / Img2Img)
-app.post('/api/generate', upload.single('image'), async (req, res) => {
+// Image Generation API (Krea2 T2I / Img2Img / Identity Edit)
+app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'image_b', maxCount: 1 }]), async (req, res) => {
+  const uploadedFiles = [
+    ...(req.files?.image || []),
+    ...(req.files?.image_b || [])
+  ];
+  const cleanupUploads = () => {
+    for (const f of uploadedFiles) {
+      if (fs.existsSync(f.path)) {
+        try { fs.unlinkSync(f.path); } catch (_) {}
+      }
+    }
+  };
   try {
     const isOnline = await comfy.checkComfyOnline();
     if (!isOnline) {
+      cleanupUploads();
       return res.status(503).json({ error: "ComfyUI backend is offline. Please launch ComfyUI first." });
     }
 
@@ -640,40 +653,26 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       try {
         parsedParams = typeof rawParams === 'string' ? JSON.parse(rawParams) : rawParams;
       } catch (err) {
+        cleanupUploads();
         return res.status(400).json({ error: "Invalid parameters format" });
       }
     }
 
-    const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_gen1.json');
     const randomizeSeed = parsedParams.randomize_seed !== false;
     const seedVal = randomizeSeed ? Math.floor(Math.random() * 1000000000) : (parseInt(parsedParams.seed, 10) || 0);
 
     const width = parseInt(parsedParams.width, 10) || 1024;
     const height = parseInt(parsedParams.height, 10) || 1024;
     const useImgInput = parsedParams.use_image_input === true;
+    const useKrea2Edit = useImgInput && parsedParams.use_krea2_edit === true;
+    const inputImage = req.files?.image?.[0];
+    const inputImageB = req.files?.image_b?.[0];
 
     // Resolve {a|b|c} dynamic prompts here — ComfyUI only does this in its own
     // web UI, so via the API the raw braces would otherwise reach the encoder.
     const resolvedPrompt = processDynamicPrompt(parsedParams.prompt || '', seedVal);
 
-    const genParams = {
-      width,
-      height,
-      unet_name: parsedParams.unet_name || 'krea2_turbo_fp8_scaled.safetensors',
-      use_int8_loader: parsedParams.use_int8_loader === true,
-      int8_model_type: parsedParams.int8_model_type || 'krea2',
-      int8_enable_convrot: parsedParams.int8_enable_convrot !== false,
-      vae_name: parsedParams.vae_name || 'qwen_image_vae.safetensors',
-      clip_name: parsedParams.clip_name || 'qwen3vl_4b_fp8_scaled.safetensors',
-      seed: seedVal,
-      steps: parseInt(parsedParams.steps, 10) || 8,
-      cfg: parseFloat(parsedParams.cfg) || 1.0,
-      denoise: useImgInput ? (parseFloat(parsedParams.denoise) || 0.6) : 1.0,
-      sampler_name: parsedParams.sampler_name || 'euler',
-      scheduler: parsedParams.scheduler || 'beta',
-      prompt: resolvedPrompt,
-      use_image_input: useImgInput,
-      megapixels: parseFloat(parsedParams.megapixels) || 1.0,
+    const loraParams = {
       lora1_name: parsedParams.lora1_enabled ? parsedParams.lora1_name : 'none.safetensors',
       lora1_strength: parsedParams.lora1_enabled ? parseFloat(parsedParams.lora1_strength) : 0,
       lora2_name: parsedParams.lora2_enabled ? parsedParams.lora2_name : 'none.safetensors',
@@ -688,24 +687,101 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       lora6_strength: parsedParams.lora6_enabled ? parseFloat(parsedParams.lora6_strength) : 0
     };
 
-    if (useImgInput && req.file) {
-      genParams.image = req.file.path;
-    }
-
     // On non-ROCm installs the INT8 custom node isn't cloned; ComfyUI rejects
     // the workflow if it references the missing class. Strip the three INT8
     // nodes (85/86/87) and rewire the LoRA chain straight to the standard
     // UNet loader so the workflow validates correctly everywhere.
     const int8Available = fs.existsSync(path.resolve(__dirname, '../comfyui/custom_nodes/ComfyUI-INT8-Fast-ROCM'));
 
-    const modeLabel = useImgInput ? 'Img2Img' : 'T2I';
-    console.log(`[Generate] Running Krea2 ${modeLabel}: "${resolvedPrompt.substring(0, 80)}..."`);
-    const result = await comfy.runWorkflow(workflowPath, 'gen1', genParams, undefined, !int8Available);
+    let result;
+    if (useKrea2Edit) {
+      // Krea2 Identity Edit: dedicated workflow. The identity-edit LoRA is baked
+      // into the workflow, the grounded encoders replace CLIPTextEncode, and the
+      // INT8 loader is not part of this graph (it doesn't work with the
+      // Krea2EditModelPatch), so an enabled INT8 toggle is silently bypassed.
+      if (!inputImage) {
+        cleanupUploads();
+        return res.status(400).json({ error: "Krea2 Edit requires an input image" });
+      }
+      const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_krea2_identity_edit.json');
+      // Resolve the identity-edit LoRA: prefer the full version over the lite
+      // (r64), and the managed senzu/ subfolder over the loras root. The model
+      // pack downloads into senzu/, but manual installs at the root also work.
+      const identityCandidates = [
+        'senzu/krea2_identity_edit_v1_1.safetensors',
+        'krea2_identity_edit_v1_1.safetensors',
+        'senzu/krea2_identity_edit_v1_1_r64.safetensors',
+        'krea2_identity_edit_v1_1_r64.safetensors'
+      ];
+      const identityLora = identityCandidates.find(rel => fs.existsSync(path.join(MODELS_ROOT, 'loras', rel)));
+      if (!identityLora) {
+        cleanupUploads();
+        return res.status(400).json({ error: "Identity Edit LoRA not found. Download the \"Krea2 Identity Edit\" pack from the Models tab." });
+      }
+      // grounding_px: trained range 512-1536, node steps by 64
+      const groundingRaw = parseInt(parsedParams.grounding_px, 10) || 768;
+      const groundingPx = Math.min(1536, Math.max(512, Math.round(groundingRaw / 64) * 64));
+      const identityRaw = parseFloat(parsedParams.identity_lora_strength);
+      const identityStrength = Number.isFinite(identityRaw) ? Math.min(1, Math.max(0, identityRaw)) : 1.0;
 
-    // Clean up uploaded image
-    if (req.file && fs.existsSync(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch (_) {}
+      const editParams = {
+        image: inputImage.path,
+        unet_name: parsedParams.unet_name || 'krea2_turbo_fp8_scaled.safetensors',
+        vae_name: parsedParams.vae_name || 'qwen_image_vae.safetensors',
+        clip_name: parsedParams.clip_name || 'qwen3vl_4b_fp8_scaled.safetensors',
+        prompt: resolvedPrompt,
+        grounding_px: groundingPx,
+        identity_lora_name: identityLora,
+        identity_lora_strength: identityStrength,
+        megapixels: parseFloat(parsedParams.megapixels) || 1.0,
+        seed: seedVal,
+        steps: parseInt(parsedParams.steps, 10) || 8,
+        cfg: parseFloat(parsedParams.cfg) || 1.0,
+        sampler_name: parsedParams.sampler_name || 'euler',
+        scheduler: parsedParams.scheduler || 'beta',
+        ...loraParams
+      };
+      if (inputImageB) {
+        editParams.image_b = inputImageB.path;
+      }
+
+      console.log(`[Generate] Running Krea2 Identity Edit${inputImageB ? ' (2 refs)' : ''}: "${resolvedPrompt.substring(0, 80)}..."`);
+      result = await comfy.runWorkflow(workflowPath, 'krea2_edit', editParams);
+    } else {
+      const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_gen1.json');
+
+      const genParams = {
+        width,
+        height,
+        unet_name: parsedParams.unet_name || 'krea2_turbo_fp8_scaled.safetensors',
+        use_int8_loader: parsedParams.use_int8_loader === true,
+        int8_model_type: parsedParams.int8_model_type || 'krea2',
+        int8_enable_convrot: parsedParams.int8_enable_convrot !== false,
+        vae_name: parsedParams.vae_name || 'qwen_image_vae.safetensors',
+        clip_name: parsedParams.clip_name || 'qwen3vl_4b_fp8_scaled.safetensors',
+        seed: seedVal,
+        steps: parseInt(parsedParams.steps, 10) || 8,
+        cfg: parseFloat(parsedParams.cfg) || 1.0,
+        denoise: useImgInput ? (parseFloat(parsedParams.denoise) || 0.6) : 1.0,
+        sampler_name: parsedParams.sampler_name || 'euler',
+        scheduler: parsedParams.scheduler || 'beta',
+        prompt: resolvedPrompt,
+        use_image_input: useImgInput,
+        megapixels: parseFloat(parsedParams.megapixels) || 1.0,
+        ...loraParams
+      };
+
+      if (useImgInput && inputImage) {
+        genParams.image = inputImage.path;
+      }
+
+      const modeLabel = useImgInput ? 'Img2Img' : 'T2I';
+      console.log(`[Generate] Running Krea2 ${modeLabel}: "${resolvedPrompt.substring(0, 80)}..."`);
+      result = await comfy.runWorkflow(workflowPath, 'gen1', genParams, undefined, !int8Available);
     }
+
+    // Clean up uploaded images
+    cleanupUploads();
 
     const timestamp = Date.now();
     const outPath = path.join(OUTPUT_TEMP_DIR, `gen_${timestamp}.png`);
@@ -718,9 +794,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     });
 
   } catch (err) {
-    if (req.file && fs.existsSync(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch (_) {}
-    }
+    cleanupUploads();
     console.error("Generation error:", err);
     res.status(500).json({ error: err.message || "An unexpected error occurred during generation." });
   }

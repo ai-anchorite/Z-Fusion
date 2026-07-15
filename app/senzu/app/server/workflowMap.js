@@ -89,6 +89,41 @@ module.exports = {
     lora6_name: { node: "77", field: "lora_name" },
     lora6_strength: { node: "77", field: "strength_model" }
   },
+  krea2_edit: {
+    image: { node: "8", field: "image", upload: true },
+    image_b: { node: "23", field: "image", upload: true },
+    unet_name: { node: "16", field: "unet_name" },
+    vae_name: { node: "5", field: "vae_name" },
+    clip_name: { node: "1", field: "clip_name" },
+    prompt: { node: "9", field: "prompt" },
+    grounding_px: [
+      { node: "9", field: "grounding_px" },
+      { node: "7", field: "grounding_px" }
+    ],
+    megapixels: [
+      { node: "6", field: "megapixels" },
+      { node: "24", field: "megapixels" }
+    ],
+    seed: { node: "11", field: "seed" },
+    steps: { node: "11", field: "steps" },
+    cfg: { node: "11", field: "cfg" },
+    sampler_name: { node: "11", field: "sampler_name" },
+    scheduler: { node: "11", field: "scheduler" },
+    identity_lora_name: { node: "21", field: "lora_name" },
+    identity_lora_strength: { node: "21", field: "strength_model" },
+    lora1_name: { node: "12", field: "lora_name" },
+    lora1_strength: { node: "12", field: "strength_model" },
+    lora2_name: { node: "13", field: "lora_name" },
+    lora2_strength: { node: "13", field: "strength_model" },
+    lora3_name: { node: "14", field: "lora_name" },
+    lora3_strength: { node: "14", field: "strength_model" },
+    lora4_name: { node: "15", field: "lora_name" },
+    lora4_strength: { node: "15", field: "strength_model" },
+    lora5_name: { node: "17", field: "lora_name" },
+    lora5_strength: { node: "17", field: "strength_model" },
+    lora6_name: { node: "22", field: "lora_name" },
+    lora6_strength: { node: "22", field: "strength_model" }
+  },
   prompt_enhancer: {
     user_prompt: { node: "15", field: "value" },
     system_prompt: { node: "13", field: "value" },

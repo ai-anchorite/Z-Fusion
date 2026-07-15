@@ -258,33 +258,16 @@
               <div class="flex-switch" style="margin-bottom: 8px;">
                 <span class="switch-label">Randomize Seed</span>
                 <label class="switch-control">
-                  <input type="checkbox" x-model="genParams.randomize_seed">
+                  <input type="checkbox" x-model="params.randomize_seed">
                   <span class="switch-slider"></span>
                 </label>
               </div>
-              <div class="input-group" style="margin-bottom: 0;" x-show="!genParams.randomize_seed">
+              <div class="input-group" style="margin-bottom: 0;" x-show="!params.randomize_seed">
                 <div style="display: flex; justify-content: space-between;">
                   <span class="input-label">Seed</span>
-                  <span class="range-val" x-text="genParams.seed"></span>
+                  <span class="range-val" x-text="params.seed"></span>
                 </div>
-                <input type="number" class="input-control" x-model="genParams.seed" style="padding: 6px 10px; font-size: 0.85rem;">
-              </div>
-            </div>
-
-            <div style="border-top: 1px solid var(--border-glass); margin: 8px 0; padding-top: 8px;">
-              <div class="flex-switch" style="margin-bottom: 8px;">
-                <span class="switch-label">Randomize Seed</span>
-                <label class="switch-control">
-                  <input type="checkbox" x-model="genParams.randomize_seed">
-                  <span class="switch-slider"></span>
-                </label>
-              </div>
-              <div class="input-group" style="margin-bottom: 0;" x-show="!genParams.randomize_seed">
-                <div style="display: flex; justify-content: space-between;">
-                  <span class="input-label">Seed</span>
-                  <span class="range-val" x-text="genParams.seed"></span>
-                </div>
-                <input type="number" class="input-control" x-model="genParams.seed" style="padding: 6px 10px; font-size: 0.85rem;">
+                <input type="number" class="input-control" x-model="params.seed" style="padding: 6px 10px; font-size: 0.85rem;">
               </div>
             </div>
           </div>
@@ -923,6 +906,22 @@
     <!-- Models Manager Tab View -->
     <div x-show="activeTab === 'models'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
       <h2 class="card-title"><i class="fa-solid fa-download"></i> Model Packs & Resources</h2>
+
+      <!-- Quick folder access -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-start; margin: 0.25rem 0 0.75rem;">
+        <button class="btn btn-sm" @click="openModelFolder('loras')" style="width: 170px;">
+          <i class="fa-solid fa-folder-open"></i> LoRAs
+        </button>
+        <button class="btn btn-sm" @click="openModelFolder('diffusion_models')" style="width: 170px;">
+          <i class="fa-solid fa-folder-open"></i> Diffusion Models
+        </button>
+        <button class="btn btn-sm" @click="openModelFolder('text_encoders')" style="width: 170px;">
+          <i class="fa-solid fa-folder-open"></i> CLIP
+        </button>
+        <button class="btn btn-sm" @click="openModelFolder('vae')" style="width: 170px;">
+          <i class="fa-solid fa-folder-open"></i> VAE
+        </button>
+      </div>
       
       <!-- Active background downloader progress bar widget -->
       <div x-show="downloadState.status === 'downloading'" class="download-widget">
@@ -1067,7 +1066,8 @@
               <div class="pack-header">
                 <div>
                   <h4 x-text="name" style="font-weight: 700; font-size: 1.05rem;"></h4>
-                  <span class="pack-gguf-badge" :class="pack.use_gguf ? 'gguf-on' : 'gguf-off'" x-text="pack.use_gguf ? 'GGUF' : 'Standard'"></span>
+                  <span x-show="pack.unet_name" class="pack-gguf-badge" :class="pack.use_gguf ? 'gguf-on' : 'gguf-off'" x-text="pack.use_gguf ? 'GGUF' : 'Standard'"></span>
+                  <span x-show="!pack.unet_name && pack.downloads && pack.downloads.loras" class="pack-gguf-badge gguf-off">LoRA</span>
                 </div>
                 <span class="model-status-badge" :class="packModelsInstalled(pack) ? 'installed' : 'missing'"
                       x-text="packModelsInstalled(pack) ? 'Ready' : 'Setup Needed'" style="font-size: 0.7rem; padding: 3px 10px;"></span>
@@ -1075,7 +1075,7 @@
 
               <p x-show="pack.description" class="pack-description" x-text="pack.description"></p>
               
-              <div class="pack-model-row">
+              <div class="pack-model-row" x-show="pack.unet_name">
                 <div class="pack-model-info">
                   <span class="pack-model-label">UNet</span>
                   <span class="pack-model-name" x-text="pack.unet_name"></span>
@@ -1091,7 +1091,7 @@
                 </div>
               </div>
               
-              <div class="pack-model-row">
+              <div class="pack-model-row" x-show="pack.clip_name">
                 <div class="pack-model-info">
                   <span class="pack-model-label">CLIP</span>
                   <span class="pack-model-name" x-text="pack.clip_name"></span>
@@ -1107,7 +1107,7 @@
                 </div>
               </div>
               
-              <div class="pack-model-row">
+              <div class="pack-model-row" x-show="pack.vae_name">
                 <div class="pack-model-info">
                   <span class="pack-model-label">VAE</span>
                   <span class="pack-model-name" x-text="pack.vae_name"></span>
@@ -1122,6 +1122,32 @@
                   </button>
                 </div>
               </div>
+
+              <!-- LoRA downloads -->
+              <template x-if="pack.downloads && pack.downloads.loras && Array.isArray(pack.downloads.loras)">
+                <div style="border-top: 1px solid var(--border-glass); margin-top: 8px; padding-top: 8px;">
+                  <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">
+                    <i class="fa-solid fa-layer-group"></i> <span x-text="pack.loras_any ? 'LoRA versions — only one needed' : 'Essential LoRAs (included with pack)'"></span>
+                  </span>
+                  <template x-for="(lora, idx) in pack.downloads.loras" :key="idx">
+                    <div class="pack-model-row" style="padding: 4px 0;">
+                      <div class="pack-model-info">
+                        <span class="pack-model-name" style="font-size: 0.72rem;" x-text="lora.desc + (lora.size ? ' (' + lora.size + ')' : '')"></span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="model-status-badge" :class="modelExists(lora.dest_filename || lora.filename, 'loras') ? 'installed' : 'missing'"
+                              style="font-size: 0.65rem; padding: 2px 8px;"
+                              x-text="modelExists(lora.dest_filename || lora.filename, 'loras') ? 'Installed' : 'Missing'"></span>
+                        <button x-show="!modelExists(lora.dest_filename || lora.filename, 'loras')"
+                                class="btn btn-sm btn-primary" style="font-size: 0.65rem; padding: 3px 8px;"
+                                @click="downloadPackLora(name, idx)" :disabled="downloadState.status === 'downloading'">
+                          <i class="fa-solid fa-download"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
 
               <button class="btn btn-sm" style="margin-top: 10px; width: 100%; background: var(--primary-soft); border-color: rgba(124, 77, 255, 0.3);"
                       @click="downloadPack(name)" :disabled="downloadState.status === 'downloading' || packModelsInstalled(pack)">
@@ -1387,24 +1413,45 @@
         
         <div class="glass-card" style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem;">
 
-          <!-- Image Input Toggle -->
-          <div class="flex-switch">
-            <div>
-              <span class="switch-label">Use Image Input <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Load an image for image-to-image generation and visual prompt description. Toggle off for text-to-image mode."></i></span>
+          <!-- Image Input / Krea2 Edit Toggles -->
+          <div style="display: flex; align-items: center;">
+            <div x-show="genParams.use_image_input" class="flex-switch" style="flex: 1; min-width: 0; justify-content: flex-start; gap: 12px;">
+              <div>
+                <span class="switch-label">Krea2 Edit <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Identity-preserving instruction edit (Krea2 Identity Edit LoRA). Write the prompt as an edit instruction, e.g. 'recolor the car to matte black'. Toggle off for regular img2img."></i></span>
+              </div>
+              <label class="switch-control">
+                <input type="checkbox" x-model="genParams.use_krea2_edit">
+                <span class="switch-slider"></span>
+              </label>
             </div>
-            <label class="switch-control">
-              <input type="checkbox" x-model="genParams.use_image_input">
-              <span class="switch-slider"></span>
-            </label>
+            <div class="flex-switch" style="flex: 1; min-width: 0; justify-content: flex-start; gap: 12px;">
+              <div>
+                <span class="switch-label">Use Image Input <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Load an image for image-to-image generation and visual prompt description. Toggle off for text-to-image mode."></i></span>
+              </div>
+              <label class="switch-control">
+                <input type="checkbox" x-model="genParams.use_image_input">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Missing Identity Edit LoRA banner -->
+          <div x-show="genParams.use_image_input && genParams.use_krea2_edit && !identityLoraInstalled()"
+               style="font-size: 0.78rem; color: var(--warning); background: var(--warning-soft); padding: 8px 10px; border-radius: 6px;">
+            <i class="fa-solid fa-triangle-exclamation"></i> Krea2 Edit needs the Identity Edit LoRA.
+            Get the <strong>Krea2 Identity Edit</strong> pack from the
+            <a href="#" @click.prevent="activeTab = 'models'; loadModels()" style="color: inherit; text-decoration: underline; font-weight: 600;">Models tab</a>
+            — only one version (full or lite) is required.
           </div>
 
           <!-- Image Input Component -->
           <div x-show="genParams.use_image_input" class="input-image-card" style="padding: 0.6rem; margin-bottom: 0;">
             <input type="file" accept="image/*" @change="handleImgInput($event)" style="display: none;" id="generate-img-input">
+            <input type="file" accept="image/*" @change="handleImgInputB($event)" style="display: none;" id="generate-img-input-b">
 
             <div style="display: flex; align-items: center; gap: 10px;">
               <!-- Image area: thumbnail or drop zone -->
-              <div style="flex: 1; min-width: 0;">
+              <div style="flex: 1; min-width: 0;" @dragover.prevent="" @drop.prevent="handleImgInput($event)">
                 <!-- Has image: thumbnail + filename + remove -->
                 <div x-show="imgInputImage" style="display: flex; align-items: center; gap: 10px;">
                   <div style="position: relative; width: 72px; height: 72px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-glass); flex-shrink: 0; background: rgba(0,0,0,0.2);">
@@ -1420,10 +1467,33 @@
 
                 <!-- No image: drop zone -->
                 <div x-show="!imgInputImage" class="compact-upload" @click="document.getElementById('generate-img-input').click()"
-                     @dragover.prevent="" @drop.prevent="handleImgInput($event)"
                      style="padding: 0.5rem; cursor: pointer;">
                   <i class="fa-solid fa-cloud-arrow-up" style="font-size: 1.2rem;"></i>
                   <span style="font-size: 0.75rem;">Drop image or click to browse</span>
+                </div>
+              </div>
+
+              <!-- Ref B: optional 2nd reference (Krea2 Edit only) -->
+              <div x-show="genParams.use_krea2_edit" style="flex: 1; min-width: 0;" @dragover.prevent="" @drop.prevent="handleImgInputB($event)">
+                <!-- Has image: thumbnail + filename + remove -->
+                <div x-show="imgInputImageB" style="display: flex; align-items: center; gap: 10px;">
+                  <div style="position: relative; width: 72px; height: 72px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-glass); flex-shrink: 0; background: rgba(0,0,0,0.2);">
+                    <img :src="imgInputPreviewB" style="width: 100%; height: 100%; object-fit: cover;">
+                    <button @click="clearImgInputB()"
+                            style="position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: var(--danger); color: #fff; border: none; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0;">&times;</button>
+                  </div>
+                  <div style="min-width: 0;">
+                    <div style="font-size: 0.75rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" x-text="imgInputImageB.name"></div>
+                    <div style="font-size: 0.65rem; color: var(--text-muted);">Drop a new image to replace</div>
+                  </div>
+                </div>
+
+                <!-- No image: drop zone -->
+                <div x-show="!imgInputImageB" class="compact-upload" @click="document.getElementById('generate-img-input-b').click()"
+                     style="padding: 0.5rem; cursor: pointer;"
+                     title="Optional 2nd reference for two-input edits, e.g. person + scene. The main image is the scene, this one the subject.">
+                  <i class="fa-solid fa-user-plus" style="font-size: 1.2rem;"></i>
+                  <span style="font-size: 0.75rem;">Ref B (optional)</span>
                 </div>
               </div>
 
@@ -1502,8 +1572,8 @@
 
         <!-- Image Controls (img2img) -->
         <div x-show="genParams.use_image_input" class="glass-card" style="padding: 0.75rem;">
-          <div class="form-row">
-            <div class="input-group" style="margin-bottom: 0;">
+          <div style="display: flex; gap: 12px;">
+            <div class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between;">
                 <span class="input-label">Image Scale (MP) <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Controls the output resolution. The input image is scaled to this megapixel target before generation, preserving aspect ratio."></i></span>
                 <span class="range-val" x-text="parseFloat(genParams.megapixels).toFixed(2)"></span>
@@ -1512,13 +1582,31 @@
                 <input type="range" class="range-slider" min="0.5" max="2.5" step="0.25" x-model="genParams.megapixels">
               </div>
             </div>
-            <div class="input-group" style="margin-bottom: 0;">
+            <div x-show="!genParams.use_krea2_edit" class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between;">
                 <span class="input-label">Denoise <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="How much the output image diverges from the input. 0.1 = nearly identical, 1.0 = full regeneration."></i></span>
                 <span class="range-val" x-text="parseFloat(genParams.denoise).toFixed(2)"></span>
               </div>
               <div class="range-group">
                 <input type="range" class="range-slider" min="0.1" max="1.0" step="0.01" x-model="genParams.denoise">
+              </div>
+            </div>
+            <div x-show="genParams.use_krea2_edit" class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between;">
+                <span class="input-label">Grounding (px) <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Grounding resolution quality dial (trained range 512-1536). Lower = stronger edit adherence, higher = stronger identity/likeness. Try 1024+ for people, 512 for stubborn scene changes."></i></span>
+                <span class="range-val" x-text="genParams.grounding_px"></span>
+              </div>
+              <div class="range-group">
+                <input type="range" class="range-slider" min="512" max="1536" step="128" x-model.number="genParams.grounding_px">
+              </div>
+            </div>
+            <div x-show="genParams.use_krea2_edit" class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between;">
+                <span class="input-label">Identity <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Strength of the baked-in Identity Edit LoRA. 100% = trained default. Lowering it weakens the edit conditioning and drifts back toward plain generation."></i></span>
+                <span class="range-val" x-text="Math.round(genParams.identity_lora_strength * 100) + '%'"></span>
+              </div>
+              <div class="range-group">
+                <input type="range" class="range-slider" min="0" max="1" step="0.1" x-model.number="genParams.identity_lora_strength">
               </div>
             </div>
           </div>
@@ -1653,6 +1741,9 @@
                 </label>
               </div>
               <div x-show="genParams.use_int8_loader">
+                <div x-show="genParams.use_image_input && genParams.use_krea2_edit" style="font-size: 0.75rem; color: var(--warning); background: var(--warning-soft); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+                  <i class="fa-solid fa-triangle-exclamation"></i> Bypassed in Krea2 Edit mode — the edit patch is incompatible with the INT8 loader, so the standard UNet loader is used instead.
+                </div>
                 <div class="form-row">
                   <div class="input-group">
                     <label class="input-label">Model Type</label>
@@ -1715,6 +1806,7 @@
             </template>
             <div style="text-align: center; font-size: 0.75rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px; margin-top: 4px;">
               <i class="fa-solid fa-circle-info"></i> Up to 6 LoRA slots. Place LoRAs in <code>comfyui/models/loras/</code>.
+              <span x-show="genParams.use_image_input && genParams.use_krea2_edit" style="display: block; margin-top: 4px;">Krea2 Edit mode also applies the Identity Edit LoRA automatically (strength set by the Identity slider).</span>
             </div>
           </div>
         </div>
@@ -1758,7 +1850,7 @@
         
         <!-- Output Image Viewer -->
         <div class="glass-card output-viewer-card">
-          <div class="compare-container" @mousedown="startPan($event)" @mousemove="onMouseMove($event)" @mouseup="stopPan()" @mouseleave="stopPan()" @dblclick="toggleFullscreen()">
+          <div class="compare-container" @mousedown="startPan($event)" @mousemove="onMouseMove($event)" @mouseup="stopPan(); stopSliderDrag()" @mouseleave="stopPan()" @dblclick="toggleFullscreen()">
             
             <!-- Floating toolbar overlay -->
             <div x-show="genOutput" class="viewer-toolbar-overlay">
@@ -1790,9 +1882,23 @@
               <div class="upload-sub">Enter a prompt and click Generate</div>
             </div>
 
-            <!-- Output image with zoom -->
+            <!-- Output image with zoom (before/after slider for Krea2 Edit results) -->
             <div x-show="genOutput" class="zoom-wrapper" :style="getZoomStyle()">
-              <img :src="genOutput" style="width: 100%; height: 100%; object-fit: contain;">
+              <img x-show="!genCompare()" :src="genOutput" style="width: 100%; height: 100%; object-fit: contain;">
+              <template x-if="genCompare()">
+                <img :src="genCompare()" class="slider-img" alt="Edit input">
+              </template>
+              <template x-if="genCompare()">
+                <img :src="genOutput" class="slider-img slider-img-after" :style="getAfterClipStyle()" alt="Edit result">
+              </template>
+            </div>
+
+            <div x-show="genOutput && genCompare()" class="slider-bar" :style="getSliderStyle()"
+                 @mousedown="startSliderDrag($event); $event.stopPropagation()"
+                 @touchstart="startSliderDrag($event); $event.stopPropagation()">
+              <div class="slider-handle">
+                <i class="fa-solid fa-arrows-left-right"></i>
+              </div>
             </div>
           </div>
         </div>

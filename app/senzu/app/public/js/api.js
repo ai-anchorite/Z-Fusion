@@ -296,10 +296,11 @@ const api = {
     return promise;
   },
 
-  async generateImage(parameters, imageFile) {
+  async generateImage(parameters, imageFile, imageFileB) {
     const formData = new FormData();
     formData.append('parameters', JSON.stringify(parameters));
     if (imageFile) formData.append('image', imageFile);
+    if (imageFileB) formData.append('image_b', imageFileB);
     const res = await fetch(`${API_BASE}/generate`, {
       method: 'POST',
       body: formData

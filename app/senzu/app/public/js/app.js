@@ -127,6 +127,9 @@ document.addEventListener('alpine:init', () => {
       system_prompt: ``,
       chain_enhancer: false,
       use_image_input: false,
+      use_krea2_edit: false,
+      grounding_px: 768,
+      identity_lora_strength: 1.0,
       megapixels: 1.0,
       denoise: 0.6,
       use_int8_loader: false,
@@ -157,6 +160,8 @@ document.addEventListener('alpine:init', () => {
     enhancerImage: null,
     imgInputImage: null,
     imgInputPreview: null,
+    imgInputImageB: null,
+    imgInputPreviewB: null,
     enhancer_result: '',
     enhancingPrompt: false,
 
@@ -591,9 +596,10 @@ document.addEventListener('alpine:init', () => {
       const pack = this.modelPacksList[name];
       if (!pack) return;
       this.genParams.model_pack = name;
-      this.genParams.unet_name = pack.unet_name;
-      this.genParams.clip_name = pack.clip_name;
-      this.genParams.vae_name = pack.vae_name;
+      // LoRA-only packs (e.g. Krea2 Identity Edit) leave the loaded models alone.
+      if (pack.unet_name) this.genParams.unet_name = pack.unet_name;
+      if (pack.clip_name) this.genParams.clip_name = pack.clip_name;
+      if (pack.vae_name) this.genParams.vae_name = pack.vae_name;
     },
     
     packModelsInstalled(pack) {
@@ -604,12 +610,12 @@ document.addEventListener('alpine:init', () => {
       if (pack.vae_name) allInstalled = allInstalled && this.modelExists(pack.vae_name, 'vae');
       if (pack.downloads && pack.downloads.loras && Array.isArray(pack.downloads.loras)) {
         const modelType = pack.category === 'prompt' ? 'text_encoders' : 'loras';
-        for (const lora of pack.downloads.loras) {
-          const name = lora.dest_filename || lora.filename;
-          if (!this.modelExists(name, modelType)) {
-            allInstalled = false;
-            break;
-          }
+        const installed = pack.downloads.loras.map(l => this.modelExists(l.dest_filename || l.filename, modelType));
+        // loras_any: the listed LoRAs are alternative versions — one is enough.
+        if (pack.loras_any) {
+          allInstalled = allInstalled && installed.some(Boolean);
+        } else {
+          allInstalled = allInstalled && installed.every(Boolean);
         }
       }
       return allInstalled;
@@ -716,7 +722,14 @@ document.addEventListener('alpine:init', () => {
       if (pack.downloads.loras && Array.isArray(pack.downloads.loras)) {
         const extraType = pack.category === 'prompt' ? 'text_encoder' : 'lora';
         const extraCategory = pack.category === 'prompt' ? 'text_encoders' : 'loras';
-        pack.downloads.loras.forEach((lora, i) => {
+        let loras = pack.downloads.loras;
+        // loras_any: alternative versions — grab the first (preferred) one
+        // unless a version is already installed.
+        if (pack.loras_any) {
+          const anyInstalled = loras.some(l => this.modelExists(l.dest_filename || l.filename, extraCategory));
+          loras = anyInstalled ? [] : loras.slice(0, 1);
+        }
+        loras.forEach((lora, i) => {
           allItems.push({ type: extraType, category: extraCategory, dl: lora });
         });
       }
@@ -1035,6 +1048,11 @@ document.addEventListener('alpine:init', () => {
     modelExists(filename, category) {
       const files = this.models[category] || [];
       return files.some(f => f.toLowerCase().includes(filename.toLowerCase()));
+    },
+
+    // Krea2 Edit mode needs the identity-edit LoRA (full or lite version).
+    identityLoraInstalled() {
+      return (this.models.loras || []).some(f => f.toLowerCase().includes('krea2_identity_edit'));
     },
     
     // Output queue navigation
@@ -1486,6 +1504,21 @@ document.addEventListener('alpine:init', () => {
       this.imgInputPreview = null;
     },
 
+    handleImgInputB(e) {
+      const files = e.dataTransfer ? e.dataTransfer.files : (e.target ? e.target.files : null);
+      if (files && files[0]) {
+        this.imgInputImageB = files[0];
+        const reader = new FileReader();
+        reader.onload = (ev) => { this.imgInputPreviewB = ev.target.result; };
+        reader.readAsDataURL(files[0]);
+      }
+    },
+
+    clearImgInputB() {
+      this.imgInputImageB = null;
+      this.imgInputPreviewB = null;
+    },
+
     // Gen Enhancer Prompts
     async loadGenEnhancerPrompts() {
       try { this.genEnhancerPromptsList = await api.getGenEnhancerPrompts(); }
@@ -1579,6 +1612,10 @@ document.addEventListener('alpine:init', () => {
     },
 
     async startGeneration() {
+      if (this.genParams.use_image_input && this.genParams.use_krea2_edit && !this.imgInputImage) {
+        alert('Krea2 Edit needs an input image. Drop an image into the input slot first.');
+        return;
+      }
       const total = Math.max(1, Math.min(500, parseInt(this.genParams.batch_size, 10) || 1));
       this.genProcessing = true;
       this.genCancelRequested = false;
@@ -1605,6 +1642,10 @@ document.addEventListener('alpine:init', () => {
         }
 
         const image = (this.genParams.use_image_input && this.imgInputImage) ? this.imgInputImage : null;
+        // Optional 2nd reference — only meaningful for Krea2 Identity Edit mode.
+        const imageB = (image && this.genParams.use_krea2_edit && this.imgInputImageB) ? this.imgInputImageB : null;
+        // Edit outputs get a before/after compare against the input image.
+        const compare = (image && this.genParams.use_krea2_edit) ? this.imgInputPreview : null;
         // The INT8 W8A8 loader needs the ROCm-only custom node; skip it when absent.
         const payload = { ...this.genParams };
         if (!this.sysStats.int8_available) payload.use_int8_loader = false;
@@ -1614,11 +1655,12 @@ document.addEventListener('alpine:init', () => {
         for (let n = 0; n < total; n++) {
           if (this.genCancelRequested) break;
           this.genStatusText = total > 1 ? `Generating ${n + 1} / ${total}...` : 'Generating image...';
-          const res = await api.generateImage(payload, image || undefined);
+          const res = await api.generateImage(payload, image || undefined, imageB || undefined);
           done++;
-          this.genOutputs.push({ url: res.output, prompt: this.genParams.prompt });
+          this.genOutputs.push({ url: res.output, prompt: this.genParams.prompt, compare });
           this.genViewedIndex = this.genOutputs.length - 1;
           this.genOutput = res.output;
+          this.sliderPos = 50;
         }
 
         const noun = this.genOutputs.length === 1 ? 'image' : 'images';
@@ -1642,11 +1684,19 @@ document.addEventListener('alpine:init', () => {
       try { await api.interrupt(); } catch (_) {}
     },
 
+    // Input image for the before/after compare of the currently viewed output
+    // (set on Krea2 Edit results, null for T2I / plain img2img).
+    genCompare() {
+      const item = this.genOutputs[this.genViewedIndex];
+      return (item && item.compare) || null;
+    },
+
     prevGenOutput() {
       if (this.genViewedIndex > 0) {
         this.genViewedIndex--;
         this.genOutput = this.genOutputs[this.genViewedIndex].url;
         this.resetZoom();
+        this.sliderPos = 50;
       }
     },
 
@@ -1655,6 +1705,7 @@ document.addEventListener('alpine:init', () => {
         this.genViewedIndex++;
         this.genOutput = this.genOutputs[this.genViewedIndex].url;
         this.resetZoom();
+        this.sliderPos = 50;
       }
     },
 

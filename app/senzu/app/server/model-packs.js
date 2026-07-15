@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const DATA_DIR = path.join(__dirname, '../data');
 const MODEL_PACKS_FILE = path.join(DATA_DIR, 'senzu-model-packs.json');
-const PACKS_VERSION = 6;
+const PACKS_VERSION = 7;
 
 const DEFAULT_PACKS = {
   "FP8 Standard": {
@@ -86,6 +86,25 @@ const DEFAULT_PACKS = {
       unet: { repo: "Comfy-Org/Krea-2", filename: "diffusion_models/krea2_turbo_fp8_scaled.safetensors", dest_filename: "krea2_turbo_fp8_scaled.safetensors", desc: "Krea2 Turbo Diffusion (FP8)", size: "~13GB" },
       clip: { repo: "Comfy-Org/Krea-2", filename: "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", dest_filename: "qwen3vl_4b_fp8_scaled.safetensors", desc: "Qwen3-VL 4B TE (FP8)", size: "~5GB" },
       vae: { repo: "Comfy-Org/Krea-2", filename: "vae/qwen_image_vae.safetensors", dest_filename: "qwen_image_vae.safetensors", desc: "Krea2 VAE", size: "~0.25GB" }
+    }
+  },
+  "Krea2 Identity Edit": {
+    use_gguf: false,
+    unet_name: "",
+    clip_name: "",
+    vae_name: "",
+    is_recommended: true,
+    category: "generate",
+    loras_any: true,
+    description: "Identity Edit LoRA for the Krea2 Edit mode in the Generate tab. Only one version is needed: full for best quality, lite (rank 64) for a smaller download. Uses the Krea2 Standard/Int8 pack models.",
+    downloads: {
+      unet: null,
+      clip: null,
+      vae: null,
+      loras: [
+        { repo: "conradlocke/krea2-identity-edit", filename: "krea2_identity_edit_v1_1.safetensors", dest_filename: "senzu/krea2_identity_edit_v1_1.safetensors", desc: "Identity Edit v1.1 — full quality", size: "~1.83GB" },
+        { repo: "conradlocke/krea2-identity-edit", filename: "krea2_identity_edit_v1_1_r64.safetensors", dest_filename: "senzu/krea2_identity_edit_v1_1_r64.safetensors", desc: "Identity Edit v1.1 r64 — lite", size: "~457MB" }
+      ]
     }
   },
   "Z-Image Standard": {
