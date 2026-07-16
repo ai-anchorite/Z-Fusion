@@ -100,9 +100,19 @@ module.exports = {
       { node: "9", field: "grounding_px" },
       { node: "7", field: "grounding_px" }
     ],
+    // Sizing: node 30 switches between scaling off the input image (node 29)
+    // and an aspect-ratio target (node 26 -> resize node 27).
+    scale_to_ref: { node: "30", field: "value" },
+    aspect_ratio: { node: "26", field: "aspect_ratio" },
     megapixels: [
-      { node: "6", field: "megapixels" },
+      { node: "29", field: "megapixels" },
+      { node: "26", field: "megapixels" },
       { node: "24", field: "megapixels" }
+    ],
+    resolution_multiple: [
+      { node: "29", field: "resolution_steps" },
+      { node: "26", field: "multiple" },
+      { node: "24", field: "resolution_steps" }
     ],
     seed: { node: "11", field: "seed" },
     steps: { node: "11", field: "steps" },

@@ -298,7 +298,7 @@ async function runWorkflow(workflowPath, mode, params, progressCallback, stripIn
   
   // Find output image in history
   let imageOutput = null;
-  const targetNodeId = mode === 'edit' ? '1' : (mode === 'krea2_edit' ? '4' : '23');
+  const targetNodeId = mode === 'edit' ? '1' : (mode === 'krea2_edit' ? '33' : '23');
   
   if (historyResult.outputs && historyResult.outputs[targetNodeId] && historyResult.outputs[targetNodeId].images) {
     imageOutput = historyResult.outputs[targetNodeId].images[0];

@@ -1573,7 +1573,7 @@
         <!-- Image Controls (img2img) -->
         <div x-show="genParams.use_image_input" class="glass-card" style="padding: 0.75rem;">
           <div style="display: flex; gap: 12px;">
-            <div class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+            <div x-show="!genParams.use_krea2_edit" class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between;">
                 <span class="input-label">Image Scale (MP) <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Controls the output resolution. The input image is scaled to this megapixel target before generation, preserving aspect ratio."></i></span>
                 <span class="range-val" x-text="parseFloat(genParams.megapixels).toFixed(2)"></span>
@@ -1602,11 +1602,11 @@
             </div>
             <div x-show="genParams.use_krea2_edit" class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between;">
-                <span class="input-label">Identity <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Strength of the baked-in Identity Edit LoRA. 100% = trained default. Lowering it weakens the edit conditioning and drifts back toward plain generation."></i></span>
+                <span class="input-label">Identity <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Strength of the baked-in Identity Edit LoRA. 100% = trained default; up to 200% for stronger identity conditioning (120% often works well). Lowering it weakens the edit conditioning."></i></span>
                 <span class="range-val" x-text="Math.round(genParams.identity_lora_strength * 100) + '%'"></span>
               </div>
               <div class="range-group">
-                <input type="range" class="range-slider" min="0" max="1" step="0.1" x-model.number="genParams.identity_lora_strength">
+                <input type="range" class="range-slider" min="0" max="2" step="0.1" x-model.number="genParams.identity_lora_strength">
               </div>
             </div>
           </div>
@@ -1623,6 +1623,66 @@
               </template>
             </select>
           </div>
+
+        <!-- Krea2 Identity Edit Accordion (edit mode only) -->
+        <div x-show="genParams.use_image_input && genParams.use_krea2_edit" class="accordion" :class="activeAccordion === 'gen_krea2' ? 'active' : ''">
+          <div class="accordion-header" @click="toggleAccordion('gen_krea2')">
+            <h3><i class="fa-solid fa-fingerprint"></i> Krea2 Identity</h3>
+            <i class="fa-solid fa-chevron-down accordion-icon"></i>
+          </div>
+          <div x-show="activeAccordion === 'gen_krea2'" class="accordion-content">
+
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+              <div class="flex-switch" style="flex: 1; min-width: 0; justify-content: flex-start; gap: 12px;">
+                <span class="switch-label">Scale to Ref <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="On: output sizing follows the input image's aspect ratio, scaled to the megapixel target. Off: the input is resized to a selected aspect ratio instead."></i></span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="genParams.scale_to_ref">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="flex-switch" style="flex: 1; min-width: 0; justify-content: flex-start; gap: 12px;">
+                <span class="switch-label">Compare Slider <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Overlay edit results with a before/after slider against the input image. Works best with Scale to Ref on — with a manual aspect ratio the two images misalign."></i></span>
+                <label class="switch-control">
+                  <input type="checkbox" x-model="genParams.edit_compare">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="input-group" x-show="!genParams.scale_to_ref">
+              <label class="input-label">Aspect Ratio</label>
+              <select class="input-control" x-model="genParams.aspect_ratio">
+                <template x-for="ar in KREA2_ASPECT_RATIOS" :key="ar">
+                  <option :value="ar" x-text="ar"></option>
+                </template>
+              </select>
+            </div>
+
+            <div style="display: flex; gap: 12px;">
+              <div class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">Image Scale (MP) <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Megapixel target for the output. Applies to both sizing modes. Krea2 Edit is trained at up to ~2MP."></i></span>
+                  <span class="range-val" x-text="parseFloat(genParams.megapixels).toFixed(2)"></span>
+                </div>
+                <div class="range-group">
+                  <input type="range" class="range-slider" min="0.5" max="2.5" step="0.25" x-model="genParams.megapixels">
+                </div>
+              </div>
+              <div class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="input-label">Scale Multiple <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Scaled dimensions are rounded to a multiple of this value. 8 follows the source aspect ratio most accurately; 64 is the most conservative."></i></span>
+                  <span class="range-val" x-text="genParams.resolution_multiple"></span>
+                </div>
+                <div class="range-group">
+                  <input type="range" class="range-slider" min="0" max="3" step="1"
+                         :value="Math.max(0, [8,16,32,64].indexOf(genParams.resolution_multiple))"
+                         @input="genParams.resolution_multiple = [8,16,32,64][$event.target.value]">
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
 
         <!-- Model Settings Accordion -->
         <div class="accordion" :class="activeAccordion === 'gen_model' ? 'active' : ''">

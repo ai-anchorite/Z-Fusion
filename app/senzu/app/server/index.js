@@ -36,7 +36,7 @@ const app = express();
 const PORT = process.env.PORT || 4242;
 
 const candidateRoots = [
-  path.resolve(__dirname, '../../../'), 
+  path.resolve(__dirname, '../../../'),
 ];
 let APP_ROOT = candidateRoots[0];
 for (const r of candidateRoots) {
@@ -703,7 +703,7 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
         cleanupUploads();
         return res.status(400).json({ error: "Krea2 Edit requires an input image" });
       }
-      const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_krea2_identity_edit.json');
+      const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_krea2_identity_edit_2.json');
       // Resolve the identity-edit LoRA: prefer the full version over the lite
       // (r64), and the managed senzu/ subfolder over the loras root. The model
       // pack downloads into senzu/, but manual installs at the root also work.
@@ -722,7 +722,11 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
       const groundingRaw = parseInt(parsedParams.grounding_px, 10) || 768;
       const groundingPx = Math.min(1536, Math.max(512, Math.round(groundingRaw / 64) * 64));
       const identityRaw = parseFloat(parsedParams.identity_lora_strength);
-      const identityStrength = Number.isFinite(identityRaw) ? Math.min(1, Math.max(0, identityRaw)) : 1.0;
+      const identityStrength = Number.isFinite(identityRaw) ? Math.min(2, Math.max(0, identityRaw)) : 1.0;
+      const ASPECT_RATIOS = ['1:1 (Square)', '2:3 (Portrait Photo)', '3:2 (Photo)', '3:4 (Portrait Standard)', '4:3 (Standard)', '9:16 (Portrait Widescreen)', '16:9 (Widescreen)', '21:9 (Ultrawide)'];
+      const aspectRatio = ASPECT_RATIOS.includes(parsedParams.aspect_ratio) ? parsedParams.aspect_ratio : '1:1 (Square)';
+      const multipleRaw = parseInt(parsedParams.resolution_multiple, 10);
+      const resolutionMultiple = [8, 16, 32, 64].includes(multipleRaw) ? multipleRaw : 64;
 
       const editParams = {
         image: inputImage.path,
@@ -733,6 +737,9 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
         grounding_px: groundingPx,
         identity_lora_name: identityLora,
         identity_lora_strength: identityStrength,
+        scale_to_ref: parsedParams.scale_to_ref !== false,
+        aspect_ratio: aspectRatio,
+        resolution_multiple: resolutionMultiple,
         megapixels: parseFloat(parsedParams.megapixels) || 1.0,
         seed: seedVal,
         steps: parseInt(parsedParams.steps, 10) || 8,

@@ -130,6 +130,10 @@ document.addEventListener('alpine:init', () => {
       use_krea2_edit: false,
       grounding_px: 768,
       identity_lora_strength: 1.0,
+      scale_to_ref: true,
+      aspect_ratio: '1:1 (Square)',
+      resolution_multiple: 64,
+      edit_compare: true,
       megapixels: 1.0,
       denoise: 0.6,
       use_int8_loader: false,
@@ -137,6 +141,8 @@ document.addEventListener('alpine:init', () => {
       int8_enable_convrot: true
     },
     INT8_MODEL_TYPES: ['krea2', 'flux2', 'z-image', 'ideogram4', 'chroma', 'wan', 'ltx2', 'qwen', 'ernie', 'anima', 'hidream o1', 'boogu'],
+    // ResolutionSelector node aspect ratio options (comfy_extras/nodes_resolution.py)
+    KREA2_ASPECT_RATIOS: ['1:1 (Square)', '2:3 (Portrait Photo)', '3:2 (Photo)', '3:4 (Portrait Standard)', '4:3 (Standard)', '9:16 (Portrait Widescreen)', '16:9 (Widescreen)', '21:9 (Ultrawide)'],
     genOutput: null,
     genOutputs: [],
     genViewedIndex: 0,
@@ -1644,8 +1650,9 @@ document.addEventListener('alpine:init', () => {
         const image = (this.genParams.use_image_input && this.imgInputImage) ? this.imgInputImage : null;
         // Optional 2nd reference — only meaningful for Krea2 Identity Edit mode.
         const imageB = (image && this.genParams.use_krea2_edit && this.imgInputImageB) ? this.imgInputImageB : null;
-        // Edit outputs get a before/after compare against the input image.
-        const compare = (image && this.genParams.use_krea2_edit) ? this.imgInputPreview : null;
+        // Edit outputs get a before/after compare against the input image
+        // (user-toggleable; misaligns when the output AR diverges from the input).
+        const compare = (image && this.genParams.use_krea2_edit && this.genParams.edit_compare) ? this.imgInputPreview : null;
         // The INT8 W8A8 loader needs the ROCm-only custom node; skip it when absent.
         const payload = { ...this.genParams };
         if (!this.sysStats.int8_available) payload.use_int8_loader = false;
