@@ -722,7 +722,7 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
       const groundingRaw = parseInt(parsedParams.grounding_px, 10) || 768;
       const groundingPx = Math.min(1536, Math.max(512, Math.round(groundingRaw / 64) * 64));
       const identityRaw = parseFloat(parsedParams.identity_lora_strength);
-      const identityStrength = Number.isFinite(identityRaw) ? Math.min(2, Math.max(0, identityRaw)) : 1.0;
+      const identityStrength = Number.isFinite(identityRaw) ? Math.min(1.2, Math.max(0, identityRaw)) : 1.0;
       const ASPECT_RATIOS = ['1:1 (Square)', '2:3 (Portrait Photo)', '3:2 (Photo)', '3:4 (Portrait Standard)', '4:3 (Standard)', '9:16 (Portrait Widescreen)', '16:9 (Widescreen)', '21:9 (Ultrawide)'];
       const aspectRatio = ASPECT_RATIOS.includes(parsedParams.aspect_ratio) ? parsedParams.aspect_ratio : '1:1 (Square)';
       const multipleRaw = parseInt(parsedParams.resolution_multiple, 10);

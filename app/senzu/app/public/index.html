@@ -1602,11 +1602,11 @@
             </div>
             <div x-show="genParams.use_krea2_edit" class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between;">
-                <span class="input-label">Identity <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Strength of the baked-in Identity Edit LoRA. 100% = trained default; up to 200% for stronger identity conditioning (120% often works well). Lowering it weakens the edit conditioning."></i></span>
+                <span class="input-label">Identity <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Strength of the baked-in Identity Edit LoRA. 100% = trained default; up to 120% for stronger identity conditioning. Higher values burn the output. Lowering it weakens the edit conditioning."></i></span>
                 <span class="range-val" x-text="Math.round(genParams.identity_lora_strength * 100) + '%'"></span>
               </div>
               <div class="range-group">
-                <input type="range" class="range-slider" min="0" max="2" step="0.1" x-model.number="genParams.identity_lora_strength">
+                <input type="range" class="range-slider" min="0" max="1.2" step="0.1" x-model.number="genParams.identity_lora_strength">
               </div>
             </div>
           </div>
