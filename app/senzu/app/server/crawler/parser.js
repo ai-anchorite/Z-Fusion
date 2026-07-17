@@ -2,7 +2,6 @@
 // Reads PNG/JPEG EXIF/text chunks with exifr and dispatches ComfyUI workflow
 // JSON (stored in the `prompt` text chunk) to the ComfyUIParser.
 
-const fs = require('fs');
 const exifr = require('exifr');
 const ComfyUIParser = require('./comfyui');
 
@@ -13,11 +12,11 @@ class Parser {
 
   async parse(filePath) {
     try {
-      const buf = await fs.promises.readFile(filePath);
+      const { parse: exifrParse } = exifr;
 
       let parsed = {};
       try {
-        parsed = (await exifr.parse(buf, true)) || {};
+        parsed = (await exifrParse(filePath, true)) || {};
       } catch (_) {
         parsed = {};
       }

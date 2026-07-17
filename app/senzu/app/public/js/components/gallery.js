@@ -324,6 +324,8 @@ document.addEventListener('alpine:init', () => {
       const promptText = item.prompt ? this.escapeHTML(item.prompt.slice(0, 140)) : '';
       const promptHTML = promptText ? `<div class="gallery-hover-prompt">${promptText}</div>` : '';
       const ar = (item.width && item.height) ? (item.width / item.height) : '';
+      const src = item.thumb || item.src;
+      const fullSrc = item.src;
 
       return `<div class="gallery-card${selected}" data-fp="${item.fingerprint}">
         <div class="gallery-grab">
@@ -334,7 +336,7 @@ document.addEventListener('alpine:init', () => {
           </div>
         </div>
         <div class="gallery-card-imgwrap"${ar ? ` style="--ar:${ar}"` : ''}>
-          <img loading="lazy" src="${item.src}" alt="">
+          <img loading="lazy" src="${src}" data-full="${fullSrc}" alt="">
         </div>
         ${model}
         ${promptHTML}
@@ -877,7 +879,7 @@ document.addEventListener('alpine:init', () => {
       container.querySelectorAll('.gv-filter').forEach(el => {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.addHyperfilter(el.getAttribute('data-filter'));
+          this.addHyperfilter(el.getAttribute('data-filter'), e);
         });
       });
 
@@ -908,9 +910,16 @@ document.addEventListener('alpine:init', () => {
       });
     },
 
-    addHyperfilter(fragment) {
+    addHyperfilter(fragment, event) {
       if (!fragment) return;
-      this.searchQuery = (this.searchQuery + ' ' + fragment).trim();
+      if (event && (event.ctrlKey || event.metaKey)) {
+        let base = (this.searchQuery || '').trim();
+        base = base.replace(/\s*root_path:"[^"]*"/g, '').trim();
+        base = base.replace(/\s*subfolder:"[^"]*"/g, '').trim();
+        this.searchQuery = base ? (base + ' ' + fragment) : fragment;
+      } else {
+        this.searchQuery = fragment;
+      }
       this.closeViewer();
       this.search(false);
     },

@@ -2042,7 +2042,7 @@
             <i class="fa-solid fa-magnifying-glass"></i>
             <input class="gallery-search" type="text" x-model="searchQuery" @input="debouncedSearch()"
                    @keydown.enter="search(false)"
-                   placeholder="Search prompt… or tag:favorite  model_name:krea  width:>1024  -tag:nsfw">
+                   placeholder="Search prompt...">
             <button x-show="searchQuery" class="gallery-search-clear" @click="clearSearch()"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <button class="btn btn-sm gallery-icon-btn" @click="saveBookmark()" title="Bookmark this search">
@@ -2051,13 +2051,10 @@
           <div class="gallery-sort">
             <select class="input-control" x-model="sortKey" @change="search(false)">
               <option value="btime">Date created</option>
-              <option value="mtime">Date modified</option>
-              <option value="model_name">Model</option>
-              <option value="width">Width</option>
-              <option value="height">Height</option>
-              <option value="steps">Steps</option>
-              <option value="seed">Seed</option>
               <option value="filename">Filename</option>
+              <option value="model_name">Model</option>
+              <option value="size">File size</option>
+              <option value="resolution">Resolution</option>
             </select>
             <button class="btn btn-sm" @click="sortDir = (sortDir === -1 ? 1 : -1); search(false)"
                     :title="sortDir === -1 ? 'Descending' : 'Ascending'">
@@ -2077,6 +2074,11 @@
 
         <!-- Bookmarks bar (browser-style nested chips) -->
         <div class="gallery-bookmarkbar" x-show="settings.showBookmarks" x-cloak @click.outside="openChip = null">
+
+          <!-- "All Images" chip — clears all filters -->
+          <button class="gallery-bmk-head" @click="clearSearch()">
+            <i class="fa-solid fa-globe"></i> <span>All Images</span>
+          </button>
 
           <!-- Saved searches, grouped under a Bookmarks folder chip -->
           <div class="gallery-bmk" x-show="bookmarks.length > 0">
@@ -2187,10 +2189,10 @@
 
             <div class="input-group" style="margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between;">
-                <span class="input-label">Images per page</span>
+                <span class="input-label">Images per scroll <i class="fa-solid fa-circle-info" title="How many thumbnails load at a time when scrolling. Lower values mean shorter load pauses between batches; higher values show more at once but take slightly longer to appear." style="opacity:0.5; cursor:help; font-size:0.72rem; vertical-align:text-top;"></i></span>
                 <span class="range-val" x-text="settings.imageLimit"></span>
               </div>
-              <input type="range" class="range-slider" min="50" max="500" step="50"
+              <input type="range" class="range-slider" min="100" max="500" step="50"
                      x-model.number="settings.imageLimit" @change="saveSettings(); search(false)">
             </div>
 

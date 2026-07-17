@@ -109,6 +109,21 @@ class GalleryDatabase {
       CREATE INDEX IF NOT EXISTS idx_image_tags_tag ON image_tags(tag_id);
     `);
 
+    // Clean up orphaned FTS5 artifacts from a previous broken build.
+    try {
+      this.db.exec(`
+        DROP TRIGGER IF EXISTS images_ai;
+        DROP TRIGGER IF EXISTS images_ad;
+        DROP TRIGGER IF EXISTS images_au;
+        DROP TABLE IF EXISTS images_fts;
+      `);
+    } catch (err) {
+      if (err.message && err.message.includes('malformed')) {
+        console.error('[Gallery] The image database is corrupted and must be recreated.');
+        console.error('[Gallery] Delete ' + this.dbPath + ' and restart Senzu.');
+      }
+    }
+
     this._stmts = {
       getByFingerprint: this.db.prepare('SELECT * FROM images WHERE fingerprint = ?'),
       getByPath: this.db.prepare('SELECT * FROM images WHERE file_path = ?'),
@@ -454,7 +469,7 @@ class GalleryDatabase {
     const { conditions, params } = this._buildSQL(parsed);
 
     const orderDir = direction < 0 ? 'DESC' : 'ASC';
-    const sortCol = this._sanitizeColumn(sort);
+    const orderExpr = this._sortExpression(sort);
 
     let sql = `SELECT i.*, GROUP_CONCAT(t.name) as tag_list
       FROM images i
@@ -482,7 +497,7 @@ class GalleryDatabase {
       sql += ` HAVING ${havings.join(' AND ')}`;
     }
 
-    sql += ` ORDER BY i.${sortCol} ${orderDir}`;
+    sql += ` ORDER BY ${orderExpr} ${orderDir}`;
 
     const countSQL = `SELECT COUNT(*) as count FROM (${sql})`;
     const count = this.db.prepare(countSQL).get(...params).count;
@@ -502,7 +517,7 @@ class GalleryDatabase {
 
   _getAllSorted(sort, direction, offset, limit) {
     const orderDir = direction < 0 ? 'DESC' : 'ASC';
-    const sortCol = this._sanitizeColumn(sort);
+    const orderExpr = this._sortExpression(sort);
     const count = this.getCount();
 
     const rows = this.db.prepare(`
@@ -511,7 +526,7 @@ class GalleryDatabase {
       LEFT JOIN image_tags it ON it.fingerprint = i.fingerprint
       LEFT JOIN tags t ON t.id = it.tag_id
       GROUP BY i.fingerprint
-      ORDER BY i.${sortCol} ${orderDir}
+      ORDER BY ${orderExpr} ${orderDir}
       LIMIT ? OFFSET ?
     `).all(limit, offset * limit);
 
@@ -532,13 +547,12 @@ class GalleryDatabase {
     };
   }
 
-  _sanitizeColumn(col) {
-    const allowed = [
-      'btime', 'mtime', 'prompt', 'width', 'height',
-      'indexed_at', 'filename', 'model_name', 'agent',
-      'steps', 'cfg_scale', 'seed', 'size'
-    ];
-    return allowed.includes(col) ? col : 'btime';
+  _sortExpression(col) {
+    const computed = { 'resolution': '(COALESCE(i.width, 0) * COALESCE(i.height, 0))' };
+    if (computed[col]) return computed[col];
+    const allowed = ['btime', 'filename', 'model_name', 'size'];
+    if (allowed.includes(col)) return `i.${col}`;
+    return 'i.btime';
   }
 
   _parseQuery(queryString) {
@@ -641,12 +655,12 @@ class GalleryDatabase {
           params.push(new Date(clause.value).getTime());
           break;
         case 'prompt':
-          conditions.push('i.prompt LIKE ?');
-          params.push(`%${clause.value}%`);
+          conditions.push(`(' ' || i.prompt || ' ' LIKE ?)`);
+          params.push(`% ${clause.value} %`);
           break;
         case '-prompt':
-          conditions.push('(i.prompt IS NULL OR i.prompt NOT LIKE ?)');
-          params.push(`%${clause.value}%`);
+          conditions.push(`(i.prompt IS NULL OR ' ' || i.prompt || ' ' NOT LIKE ?)`);
+          params.push(`% ${clause.value} %`);
           break;
         case 'field':
           conditions.push(`i.${clause.field} LIKE ?`);
@@ -660,7 +674,6 @@ class GalleryDatabase {
           conditions.push(`i.${clause.field} ${clause.op} ?`);
           params.push(clause.value);
           break;
-        // 'tag' and '-tag' handled as HAVING clauses
       }
     }
 

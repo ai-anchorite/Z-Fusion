@@ -17,13 +17,34 @@ function enrichImage(image, outputsRoot) {
   } else {
     src = '/api/gallery/file/' + encodeURIComponent(image.fingerprint);
   }
-  return { ...image, src };
+  const thumb = '/api/gallery/thumbnail/' + encodeURIComponent(image.fingerprint) + '?w=480';
+  return { ...image, src, thumb };
 }
 
-function createGalleryRouter({ db, outputsRoot, trashDir, reindex, openFolder, manager, pickFolder, protectedFolders = [] }) {
+function createGalleryRouter({ db, outputsRoot, trashDir, thumbDir, reindex, openFolder, manager, pickFolder, protectedFolders = [] }) {
   const router = express.Router();
   const enrich = (img) => enrichImage(img, outputsRoot);
   const withRemovable = (f) => ({ ...f, removable: !protectedFolders.includes(f.path) });
+
+  // --- Thumbnail ---
+  router.get('/thumbnail/:fingerprint', async (req, res) => {
+    try {
+      const img = db.getImage(req.params.fingerprint);
+      if (!img || !img.file_path || !fs.existsSync(img.file_path)) return res.status(404).end();
+      const w = Math.min(1200, Math.max(60, parseInt(req.query.w, 10) || 480));
+      const cacheFile = path.join(thumbDir, `${img.fingerprint}_w${w}.webp`);
+      if (fs.existsSync(cacheFile)) return res.sendFile(cacheFile);
+      const sharp = require('sharp');
+      await sharp(img.file_path)
+        .resize(w, null, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toFile(cacheFile);
+      res.sendFile(cacheFile);
+    } catch (err) {
+      console.error('[Gallery] thumbnail error:', err.message);
+      res.status(500).end();
+    }
+  });
 
   // --- Search ---
   router.get('/search', (req, res) => {
@@ -32,7 +53,7 @@ function createGalleryRouter({ db, outputsRoot, trashDir, reindex, openFolder, m
       const sort = req.query.sort || 'btime';
       const direction = parseInt(req.query.direction, 10) === 1 ? 1 : -1;
       const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
-      const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 100));
+      const limit = Math.min(1000, Math.max(100, parseInt(req.query.limit, 10) || 100));
 
       const result = db.search(q, { sort, direction, offset, limit });
       result.results = result.results.map(enrich);

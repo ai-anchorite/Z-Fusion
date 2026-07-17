@@ -1011,8 +1011,12 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
 // ============================================================
 const GALLERY_DB_PATH = path.join(DATA_DIR, 'senzu.db');
 const GALLERY_TRASH_DIR = path.join(DATA_DIR, 'gallery-trash');
+const GALLERY_THUMB_DIR = path.join(DATA_DIR, 'thumbnails');
 if (!fs.existsSync(GALLERY_TRASH_DIR)) {
   fs.mkdirSync(GALLERY_TRASH_DIR, { recursive: true });
+}
+if (!fs.existsSync(GALLERY_THUMB_DIR)) {
+  fs.mkdirSync(GALLERY_THUMB_DIR, { recursive: true });
 }
 
 const galleryDb = new GalleryDatabase(GALLERY_DB_PATH);
@@ -1020,7 +1024,7 @@ const galleryParser = new Parser();
 
 // Bump PARSER_VERSION whenever metadata extraction improves — existing rows
 // are then re-parsed once on startup (fingerprint unchanged, so tags survive).
-const PARSER_VERSION = '2';
+const PARSER_VERSION = '3';
 
 // Connected folders: default to the Senzu outputs folder (protected — cannot
 // be disconnected from the UI). Users can connect additional folders anywhere.
@@ -1094,6 +1098,7 @@ app.use('/api/gallery', createGalleryRouter({
   db: galleryDb,
   outputsRoot: OUTPUTS_ROOT,
   trashDir: GALLERY_TRASH_DIR,
+  thumbDir: GALLERY_THUMB_DIR,
   reindex: reindexGallery,
   openFolder: settings.openFolder,
   manager: galleryManager,

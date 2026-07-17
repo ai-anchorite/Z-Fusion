@@ -44,6 +44,18 @@ class ComfyUIParser {
           }
         }
 
+        // Krea2EditGroundedEncode — prompt + grounding for identity-editing workflows
+        if (classType === 'Krea2EditGroundedEncode') {
+          const text = this.extractText(inputs.prompt, workflow);
+          const title = node._meta?.title?.toLowerCase() || '';
+
+          if (title.includes('negative') || title.includes('neg')) {
+            if (!result.negative_prompt) result.negative_prompt = text;
+          } else {
+            if (!result.prompt) result.prompt = text;
+          }
+        }
+
         // Extract from text box nodes
         if (classType === 'VRGDG_TextBox' || classType.includes('TextBox') || classType.includes('Text')) {
           const text = this.extractText(inputs.text, workflow);
@@ -88,7 +100,7 @@ class ComfyUIParser {
         }
 
         // Extract model names
-        if (classType === 'UNETLoader' || classType === 'CheckpointLoaderSimple' || classType.includes('ModelLoader')) {
+        if (classType === 'UNETLoader' || classType === 'CheckpointLoaderSimple' || classType === 'OTUNetLoaderW8A8' || classType.includes('ModelLoader')) {
           if (inputs.unet_name) {
             result.model_name = this.cleanModelName(inputs.unet_name);
           } else if (inputs.ckpt_name) {
@@ -111,7 +123,8 @@ class ComfyUIParser {
         }
 
         // Extract LoRA information
-        if (classType === 'LoraLoader' || classType.includes('Lora') || classType.includes('LoRA')) {
+        const loraClasses = ['LoraLoader', 'LoraLoaderModelOnly', 'LoraLoaderAdvanced'];
+        if (loraClasses.includes(classType) || (classType.endsWith('Lora') && !classType.includes('Florence'))) {
           const loraName = inputs.lora_name;
           const strength = inputs.strength_model || inputs.strength || 1.0;
           
@@ -143,9 +156,11 @@ class ComfyUIParser {
   }
 
   /**
-   * Extract text from input, handling both direct strings and node references
+   * Extract text from input, handling both direct strings and node references.
+   * Follows chains up to 5 hops deep (e.g. PrimitiveStringMultiline → Text Concatenate → CLIPTextEncode).
    */
-  extractText(textInput, workflow) {
+  extractText(textInput, workflow, depth = 0) {
+    if (depth > 5) return null;
     if (typeof textInput === 'string') {
       return textInput;
     }
@@ -155,16 +170,13 @@ class ComfyUIParser {
       const refNodeId = textInput[0];
       const refNode = workflow[refNodeId];
       if (refNode && refNode.inputs) {
-        // Follow the referenced node's text-carrying input. CLIPTextEncode uses
-        // `text`, primitive string nodes (PrimitiveStringMultiline / String
-        // literals) use `value` or `string`.
         const inputs = refNode.inputs;
         const candidate = inputs.text != null ? inputs.text
           : inputs.value != null ? inputs.value
           : inputs.string != null ? inputs.string
           : null;
         if (candidate != null) {
-          return this.extractText(candidate, workflow);
+          return this.extractText(candidate, workflow, depth + 1);
         }
       }
     }

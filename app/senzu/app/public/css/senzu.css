@@ -2121,9 +2121,22 @@ input:checked + .switch-slider:before {
   margin: 0 0 12px 0;
   display: inline-block;
 }
+.gallery-tab.layout-masonry .gallery-card-imgwrap {
+  position: relative;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.2);
+}
+.gallery-tab.layout-masonry .gallery-card-imgwrap[style*="--ar"] {
+  height: 0;
+  padding-bottom: calc(100% / var(--ar));
+}
 .gallery-tab.layout-masonry .gallery-card-imgwrap img {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
   display: block;
 }
 
@@ -2152,6 +2165,8 @@ input:checked + .switch-slider:before {
   border: 1px solid var(--border-glass);
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--gallery-card-width) 240px;
 }
 .gallery-card:hover {
   border-color: var(--border-glass-focus);

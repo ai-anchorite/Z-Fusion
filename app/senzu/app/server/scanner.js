@@ -90,6 +90,12 @@ function createManager({ db, parser, io, staticRoot, watchPaths = [] }) {
           if (io && image) io.emit('gallery-new', enrichImage(image, staticRoot));
         } else if (force) {
           await indexFile(db, parser, file, rootPath);
+        } else if (existing.mtime) {
+          let curStats;
+          try { curStats = await fs.promises.stat(file); } catch (_) { continue; }
+          if (curStats.mtimeMs !== existing.mtime) {
+            await indexFile(db, parser, file, rootPath);
+          }
         }
       } catch (err) {
         console.error(`[Gallery] Failed to index ${path.basename(file)}: ${err.message}`);
