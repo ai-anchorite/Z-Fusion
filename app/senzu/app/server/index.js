@@ -841,6 +841,36 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
 
     const timestamp = Date.now();
     const randomizeSeed = parsedParams.randomize_seed !== false;
+
+    // Parse parent metadata from the input image's ComfyUI workflow JSON
+    // (embedded in the PNG prompt text chunk). Creative fields (prompt, seed,
+    // model, loras) are carried forward through the pipeline so the gallery
+    // always traces back to the original generation parameters.
+    let parentMeta = '';
+    let inheritedProcessParams = '';
+    try {
+      const { parse: exifrParse } = require('exifr');
+      const inputExif = await exifrParse(inputImagePath, true);
+      if (inputExif?.prompt && typeof inputExif.prompt === 'string') {
+        const parentWorkflow = JSON.parse(inputExif.prompt);
+        const parentCreative = new (require('./crawler/comfyui'))().parse(parentWorkflow);
+        if (parentCreative) {
+          const pm = {
+            prompt: parentCreative.prompt || null,
+            seed: parentCreative.seed || null,
+            model_name: parentCreative.model_name || null,
+            loras: parentCreative.loras || null,
+            negative_prompt: parentCreative.negative_prompt || null
+          };
+          if (parentCreative.process_params) {
+            pm._process_params = parentCreative.process_params;
+          }
+          parentMeta = JSON.stringify(pm);
+        }
+      }
+    } catch (_) {
+      // If exifr fails or the input isn't a ComfyUI output, parentMeta stays ''
+    }
     
     // Step 1: Run Edit if mode is full or edit
     let editResult = null;
@@ -877,7 +907,8 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
         lora5_name: parsedParams.lora5_enabled ? parsedParams.lora5_name : 'none.safetensors',
         lora5_strength: parsedParams.lora5_enabled ? parseFloat(parsedParams.lora5_strength) : 0,
         lora6_name: parsedParams.lora6_enabled ? parsedParams.lora6_name : 'none.safetensors',
-        lora6_strength: parsedParams.lora6_enabled ? parseFloat(parsedParams.lora6_strength) : 0
+        lora6_strength: parsedParams.lora6_enabled ? parseFloat(parsedParams.lora6_strength) : 0,
+        parent_metadata: parentMeta
       };
 
       console.log(`[Enhance] Running Edit Step with workflow ${editWorkflowName}...`);
@@ -887,6 +918,13 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       editOutPath = path.join(OUTPUT_TEMP_DIR, `edit_${timestamp}.png`);
       await comfy.downloadComfyImage(editResult.filename, editResult.subfolder, editResult.type, editOutPath);
       console.log(`[Enhance] Edit Step complete. Saved to ${editOutPath}`);
+
+      // Pre-seed gallery record with stage tag so the image is tagged
+      // before the watcher indexes it.
+      try {
+        const editFp = await galleryDb.computeFingerprint(editOutPath, fs.statSync(editOutPath));
+        galleryDb.addTags([editFp], ['stage:edit']);
+      } catch (_) {}
     }
 
     // Step 2: Run Upscale if mode is full or upscale
@@ -912,6 +950,34 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
 
       // Downscale input if needed (gives SeedVR2 more room to work)
       let upscaleInputImage = mode === 'full' ? editOutPath : inputImagePath;
+      // Parse parent metadata from the ORIGINAL source (before any downscaling
+      // strips the PNG ComfyUI chunks) so the chain isn't broken.
+      // For a full run, override the top-level parse — the edit PNG has the
+      // same gen creative fields in its Parent Metadata node PLUS the
+      // edit-stage process_params.
+      if (mode === 'full' && editOutPath) {
+        try {
+          const { parse: exifrParse } = require('exifr');
+          const editExif = await exifrParse(editOutPath, true);
+          if (editExif?.prompt && typeof editExif.prompt === 'string') {
+            const parentWorkflow = JSON.parse(editExif.prompt);
+            const parentCreative = new (require('./crawler/comfyui'))().parse(parentWorkflow);
+            if (parentCreative) {
+              const pm = {
+                prompt: parentCreative.prompt || null,
+                seed: parentCreative.seed || null,
+                model_name: parentCreative.model_name || null,
+                loras: parentCreative.loras || null,
+                negative_prompt: parentCreative.negative_prompt || null
+              };
+              if (parentCreative.process_params) {
+                pm._process_params = parentCreative.process_params;
+              }
+              parentMeta = JSON.stringify(pm);
+            }
+          }
+        } catch (_) {}
+      }
       const maxInputRes = parseInt(parsedParams.max_input_resolution, 10) || 0;
       if (maxInputRes > 0) {
         upscaleInputImage = await downscaleImage(upscaleInputImage, maxInputRes);
@@ -941,7 +1007,8 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
         dit_model: parsedParams.dit_model || 'seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors',
         dit_device: device,
         blocks_to_swap: parseInt(parsedParams.blocks_to_swap, 10) || 36,
-        attention_mode: attention
+        attention_mode: attention,
+        parent_metadata: parentMeta
       };
 
       console.log(`[Enhance] Running Upscale Step with workflow senzu_upscale.json...`);
@@ -951,6 +1018,11 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       upscaleOutPath = path.join(OUTPUT_TEMP_DIR, `upscale_${timestamp}.png`);
       await comfy.downloadComfyImage(upscaleResult.filename, upscaleResult.subfolder, upscaleResult.type, upscaleOutPath);
       console.log(`[Enhance] Upscale Step complete. Saved to ${upscaleOutPath}`);
+
+      try {
+        const upscaleFp = await galleryDb.computeFingerprint(upscaleOutPath, fs.statSync(upscaleOutPath));
+        galleryDb.addTags([upscaleFp], ['stage:upscale']);
+      } catch (_) {}
     }
 
     // Clean up local temp uploaded file

@@ -24,6 +24,26 @@ class ComfyUIParser {
         loras: []
       };
 
+      // When a "Senzu Parent Metadata" node is present, the image has passed
+      // through the Enhance pipeline — the *creative* fields (prompt, seed,
+      // model, loras) belong to the original generation stage. The current
+      // workflow's own prompt/loras (the edit stage) are captured separately
+      // and must not overwrite the inherited creative record.
+      // Pre-scan: the payload node may appear anywhere in the graph, but
+      // CLIPTextEncode/LoRA nodes usually come earlier in key order. Set the
+      // flag before the main loop so the stash phase doesn't miss them.
+      let hasParentMeta = false;
+      for (const nodeId in workflow) {
+        const n = workflow[nodeId];
+        if (n?._meta?.title === 'Senzu Parent Metadata' && n.inputs?.value) {
+          hasParentMeta = true;
+          break;
+        }
+      }
+      let editPrompt = null;
+      const editLoras = [];
+      let inheritedProcessParams = null;
+
       // Iterate through all nodes
       for (const nodeId in workflow) {
         const node = workflow[nodeId];
@@ -31,6 +51,32 @@ class ComfyUIParser {
 
         const inputs = node.inputs || {};
         const classType = node.class_type;
+        const metaTitle = node._meta?.title || '';
+
+        // Senzu Parent Metadata node — carries the creative fields from the
+        // previous pipeline stage. These represent the *original* generation
+        // and should fill the top-level record (prompt, seed, model, loras).
+        if (metaTitle === 'Senzu Parent Metadata' && inputs.value) {
+          try {
+            const parent = JSON.parse(inputs.value);
+            if (parent.prompt) result.prompt = parent.prompt;
+            if (parent.seed != null) result.seed = parent.seed;
+            if (parent.model_name) result.model_name = parent.model_name;
+            if (parent.negative_prompt) result.negative_prompt = parent.negative_prompt;
+            if (parent.loras && Array.isArray(parent.loras)) {
+              result.loras = parent.loras.map(l => ({
+                name: l.name || this.cleanModelName(l.name) || '',
+                strength: l.strength
+              }));
+            }
+            // Carry forward any previously-accumulated process_params
+            // from earlier pipeline stages (edit → upscale chaining).
+            if (parent._process_params) {
+              inheritedProcessParams = parent._process_params;
+            }
+          } catch (_) {}
+          continue;
+        }
 
         // Extract prompts from text encode nodes
         if (classType === 'CLIPTextEncode') {
@@ -38,9 +84,15 @@ class ComfyUIParser {
           const title = node._meta?.title?.toLowerCase() || '';
           
           if (title.includes('negative') || title.includes('neg')) {
-            result.negative_prompt = text;
-          } else if (title.includes('positive') || title.includes('pos') || !result.prompt) {
-            result.prompt = text;
+            if (!hasParentMeta || !result.negative_prompt) result.negative_prompt = text;
+          } else {
+            // Non-negative prompt node. With parent metadata this is the
+            // edit stage's prompt; without it this *is* the creative prompt.
+            if (hasParentMeta) {
+              if (!editPrompt) editPrompt = text;
+            } else {
+              result.prompt = text;
+            }
           }
         }
 
@@ -50,9 +102,9 @@ class ComfyUIParser {
           const title = node._meta?.title?.toLowerCase() || '';
 
           if (title.includes('negative') || title.includes('neg')) {
-            if (!result.negative_prompt) result.negative_prompt = text;
+            if (!hasParentMeta || !result.negative_prompt) result.negative_prompt = text;
           } else {
-            if (!result.prompt) result.prompt = text;
+            if (!hasParentMeta) result.prompt = text;
           }
         }
 
@@ -130,11 +182,60 @@ class ComfyUIParser {
           
           // Only add if lora_name exists and isn't "none"
           if (loraName && loraName.toLowerCase() !== 'none' && loraName.toLowerCase() !== 'none.safetensors') {
-            result.loras.push({
-              name: this.cleanModelName(loraName),
-              strength: strength
-            });
+            // When parent metadata is present, current-workflow LoRAs are
+            // the edit stage — stash separately for process_params.
+            if (hasParentMeta) {
+              editLoras.push({
+                name: this.cleanModelName(loraName),
+                strength: strength
+              });
+            } else {
+              result.loras.push({
+                name: this.cleanModelName(loraName),
+                strength: strength
+              });
+            }
           }
+        }
+      }
+
+      // Build process_params from the collected edit/upscale stage data.
+      // Only populated when parent metadata is present (enhanced images).
+      if (hasParentMeta) {
+        const pp = {};
+        if (editPrompt || editLoras.length > 0) {
+          pp.edit = {};
+          if (editPrompt) pp.edit.prompt = editPrompt;
+          if (editLoras.length > 0) pp.edit.loras = editLoras;
+        }
+        // Carry forward any process_params from earlier pipeline stages.
+        if (inheritedProcessParams) {
+          try {
+            const prev = JSON.parse(inheritedProcessParams);
+            if (prev.edit && !pp.edit) pp.edit = prev.edit;
+            if (prev.upscale && !pp.upscale) pp.upscale = prev.upscale;
+          } catch (_) {}
+        }
+        // Capture upscale-stage info when the upscaler node is present.
+        for (const nodeId in workflow) {
+          const node = workflow[nodeId];
+          if (node?.class_type === 'SeedVR2VideoUpscaler') {
+            pp.upscale = {};
+            if (node.inputs.resolution) pp.upscale.resolution = node.inputs.resolution;
+            break;
+          }
+        }
+        // Capture SeedVR2 model from the DiT loader.
+        for (const nodeId in workflow) {
+          const node = workflow[nodeId];
+          if (node?.class_type === 'SeedVR2LoadDiTModel') {
+            if (!pp.upscale) pp.upscale = {};
+            if (node.inputs.model) pp.upscale.model = node.inputs.model;
+            break;
+          }
+        }
+        if (Object.keys(pp).length > 0) {
+          result.process_params = JSON.stringify(pp);
         }
       }
 

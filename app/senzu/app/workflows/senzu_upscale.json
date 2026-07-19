@@ -1,4 +1,13 @@
 {
+  "40": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Senzu Parent Metadata"
+    }
+  },
   "10": {
     "inputs": {
       "seed": 42,

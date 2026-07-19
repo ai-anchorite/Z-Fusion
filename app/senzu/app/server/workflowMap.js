@@ -11,6 +11,7 @@ module.exports = {
     megapixels: { node: "16", field: "megapixels" },
     cfg: { node: "17", field: "cfg" },
     steps: { node: "18", field: "steps" },
+    parent_metadata: { node: "30", field: "value" },
     
     lora1_name: { node: "24", field: "lora_name" },
     lora1_strength: { node: "24", field: "strength_model" },
@@ -27,6 +28,7 @@ module.exports = {
   },
   upscale: {
     image: { node: "16", field: "image", upload: true },
+    parent_metadata: { node: "40", field: "value" },
     seed: { node: "10", field: "seed" },
     resolution: { node: "10", field: "resolution" },
     max_resolution: { node: "10", field: "max_resolution" },

@@ -663,12 +663,22 @@ class GalleryDatabase {
           params.push(`% ${clause.value} %`);
           break;
         case 'field':
-          conditions.push(`i.${clause.field} LIKE ?`);
-          params.push(`%${clause.value}%`);
+          if (clause.field === 'subfolder' || clause.field === 'root_path') {
+            conditions.push(`i.${clause.field} = ?`);
+            params.push(clause.value);
+          } else {
+            conditions.push(`i.${clause.field} LIKE ?`);
+            params.push(`%${clause.value}%`);
+          }
           break;
         case '-field':
-          conditions.push(`(i.${clause.field} IS NULL OR i.${clause.field} NOT LIKE ?)`);
-          params.push(`%${clause.value}%`);
+          if (clause.field === 'subfolder' || clause.field === 'root_path') {
+            conditions.push(`(i.${clause.field} IS NULL OR i.${clause.field} != ?)`);
+            params.push(clause.value);
+          } else {
+            conditions.push(`(i.${clause.field} IS NULL OR i.${clause.field} NOT LIKE ?)`);
+            params.push(`%${clause.value}%`);
+          }
           break;
         case 'numeric':
           conditions.push(`i.${clause.field} ${clause.op} ?`);

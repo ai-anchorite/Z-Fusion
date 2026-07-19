@@ -822,6 +822,34 @@ document.addEventListener('alpine:init', () => {
       let loras = [];
       if (item.loras) { try { loras = JSON.parse(item.loras); } catch (_) {} }
 
+      // Chained pipeline metadata (edit + upscale stages from process_params)
+      let ppHTML = '';
+      try {
+        if (item.process_params) {
+          const pp = JSON.parse(item.process_params);
+          if (pp.edit || pp.upscale) {
+            let ppt = '<div style="border-top: 1px solid var(--border-glass); margin-top: 10px; padding-top: 6px;">';
+            if (pp.edit) {
+              const edLoras = (pp.edit.loras || []).map(l =>
+                `<span class="gv-filter" data-filter="loras:${this.escapeHTML(l.name)}">${this.escapeHTML(l.name)}${l.strength != null ? ' (' + l.strength + ')' : ''}</span>`
+              ).join(' ');
+              ppt += `<div class="gv-field-label">Senzu Edit</div>`;
+              if (pp.edit.prompt) ppt += `<div class="gv-prompt" style="font-size: 0.82rem; margin-bottom: 4px;">${this.escapeHTML(pp.edit.prompt)}</div>`;
+              if (edLoras) ppt += `<div class="gv-meta-row"><span class="gv-meta-key">LoRAs</span><span class="gv-meta-val">${edLoras}</span></div>`;
+            }
+            if (pp.upscale) {
+              const upsRes = pp.upscale.resolution ? `${pp.upscale.resolution}px` : '';
+              const upsModel = pp.upscale.model ? this.escapeHTML(pp.upscale.model.split('/').pop().replace(/\.(safetensors|pt|pth)$/, '')) : '';
+              ppt += `<div style="border-top: 1px solid var(--border-glass); margin: 8px 0 4px;"></div>`;
+              ppt += `<div class="gv-field-label">Senzu Upscale</div>`;
+              if (upsModel) ppt += `<div class="gv-meta-row"><span class="gv-meta-key">Model</span><span class="gv-meta-val">${upsModel}</span></div>`;
+              if (upsRes) ppt += `<div class="gv-meta-row"><span class="gv-meta-key">Resolution</span><span class="gv-meta-val">${upsRes}</span></div>`;
+            }
+            ppt += '</div>';
+            ppHTML = ppt;
+          }
+        }
+      } catch (_) {}
       const tagsHTML = (item.tags || []).map(t =>
         `<span class="gv-tag"><span class="gv-filter" data-filter="tag:${this.escapeHTML(t)}">${this.escapeHTML(t)}</span><i class="fa-solid fa-xmark gv-tag-remove" data-tag="${this.escapeHTML(t)}"></i></span>`
       ).join('');
@@ -863,7 +891,9 @@ document.addEventListener('alpine:init', () => {
           ${this.metaRow('Seed', item.seed, 'seed:' + item.seed)}
           ${this.metaRow('Dimensions', dims, null)}
           ${this.metaRow('File', item.filename, null)}
-        </div>`;
+        </div>
+        ${ppHTML}
+        `;
     },
 
     attachPanelHandlers(container, item) {

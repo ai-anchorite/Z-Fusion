@@ -11,6 +11,15 @@
       "title": "$output.result"
     }
   },
+  "30": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Senzu Parent Metadata"
+    }
+  },
   "3": {
     "inputs": {
       "image": "ComfyUI_temp_zirdd_00001_.png"
