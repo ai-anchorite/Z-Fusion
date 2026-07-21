@@ -1513,13 +1513,13 @@
           </div>
 
           <!-- Batch + Chain Refiner + Refine Row -->
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <div style="flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;">
               <span class="switch-label" style="white-space: nowrap;">Batch</span>
               <input type="range" class="range-slider" min="1" max="500" step="1" x-model.number="genParams.batch_size" style="flex: 1; height: 4px; min-width: 0;">
               <input type="number" class="input-control" min="1" max="500" step="1" x-model.number="genParams.batch_size" style="width: 56px; padding: 4px 6px; font-size: 0.8rem; flex-shrink: 0; text-align: center;">
             </div>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
               <span class="switch-label">Chain Refiner <i class="fa-solid fa-circle-info" style="font-size: 0.6rem; color: var(--text-muted); cursor: help;" title="Automatically runs the prompt refiner before generation. Uses the Refinement System Prompt and LLM configured in the Prompts tab."></i></span>
               <label class="switch-control">
                 <input type="checkbox" x-model="genParams.chain_enhancer">
@@ -1602,11 +1602,11 @@
             </div>
             <div x-show="genParams.use_krea2_edit" class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between;">
-                <span class="input-label">Identity <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Strength of the baked-in Identity Edit LoRA. 100% = trained default; up to 120% for stronger identity conditioning. Higher values burn the output. Lowering it weakens the edit conditioning."></i></span>
-                <span class="range-val" x-text="Math.round(genParams.identity_lora_strength * 100) + '%'"></span>
+                <span class="input-label">Ref Boost <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Reference boost strength (-10 to +10). Higher values enforce stronger reference guidance, lower values allow more creative freedom. 4 is the trained default."></i></span>
+                <span class="range-val" x-text="genParams.ref_boost"></span>
               </div>
               <div class="range-group">
-                <input type="range" class="range-slider" min="0" max="1.2" step="0.1" x-model.number="genParams.identity_lora_strength">
+                <input type="range" class="range-slider" min="-10" max="10" step="1" x-model.number="genParams.ref_boost">
               </div>
             </div>
           </div>
@@ -1631,6 +1631,23 @@
             <i class="fa-solid fa-chevron-down accordion-icon"></i>
           </div>
           <div x-show="activeAccordion === 'gen_krea2'" class="accordion-content">
+
+            <div class="input-group" style="margin-bottom: 10px;">
+              <label class="input-label">Identity Edit LoRA <button class="btn-icon-overlay" @click.stop="loadModels()" title="Refresh LoRAs" style="display: inline-flex; width: 20px; height: 20px; font-size: 0.55rem; margin-left: 4px; vertical-align: middle;"><i class="fa-solid fa-rotate"></i></button></label>
+              <select class="input-control" x-model="genParams.identity_lora_name" style="font-size: 0.85rem; padding: 6px 10px; margin-bottom: 6px;">
+                <option value="">-- auto-select --</option>
+                <template x-for="lora in identityLoras()" :key="lora">
+                  <option :value="lora" x-text="lora"></option>
+                </template>
+              </select>
+              <div style="display: flex; justify-content: space-between;">
+                <span class="input-label" style="font-size: 0.75rem;">Strength</span>
+                <span class="range-val" x-text="Math.round(genParams.identity_lora_strength * 100) + '%'"></span>
+              </div>
+              <div class="range-group">
+                <input type="range" class="range-slider" min="0" max="1.2" step="0.1" x-model.number="genParams.identity_lora_strength" style="height: 4px;">
+              </div>
+            </div>
 
             <div style="display: flex; align-items: center; margin-bottom: 8px;">
               <div class="flex-switch" style="flex: 1; min-width: 0; justify-content: flex-start; gap: 12px;">
@@ -1668,9 +1685,9 @@
                   <input type="range" class="range-slider" min="0.5" max="2.5" step="0.25" x-model="genParams.megapixels">
                 </div>
               </div>
-              <div class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+              <div x-show="genParams.fit_mode === 'crop (legacy)'" class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
                 <div style="display: flex; justify-content: space-between;">
-                  <span class="input-label">Scale Multiple <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="Scaled dimensions are rounded to a multiple of this value. 8 follows the source aspect ratio most accurately; 64 is the most conservative."></i></span>
+                  <span class="input-label">Scale Multiple <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="When using crop (legacy) fit mode, scaled dimensions must align with a strict grid to avoid reference image blurring. 64 is the most conservative; 8 follows the source AR most accurately but may cause slight misalignment on certain aspect ratios."></i></span>
                   <span class="range-val" x-text="genParams.resolution_multiple"></span>
                 </div>
                 <div class="range-group">
@@ -1678,6 +1695,13 @@
                          :value="Math.max(0, [8,16,32,64].indexOf(genParams.resolution_multiple))"
                          @input="genParams.resolution_multiple = [8,16,32,64][$event.target.value]">
                 </div>
+              </div>
+              <div class="input-group" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                <label class="input-label">Fit Mode <i class="fa-solid fa-circle-info" style="font-size: 0.65rem; color: var(--text-muted); cursor: help;" title="How source and output aspect ratios are handled. 'fit' (v1.2 default) resamples the source to the target grid so mismatched ARs are handled cleanly. 'crop (legacy)' requires matched ARs or identity preservation degrades."></i></label>
+                <select class="input-control" x-model="genParams.fit_mode" style="padding: 6px 10px; font-size: 0.85rem;">
+                  <option value="fit">fit</option>
+                  <option value="crop (legacy)">crop (legacy)</option>
+                </select>
               </div>
             </div>
 
@@ -1866,7 +1890,7 @@
             </template>
             <div style="text-align: center; font-size: 0.75rem; color: var(--text-muted); background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px; margin-top: 4px;">
               <i class="fa-solid fa-circle-info"></i> Up to 6 LoRA slots. Place LoRAs in <code>comfyui/models/loras/</code>.
-              <span x-show="genParams.use_image_input && genParams.use_krea2_edit" style="display: block; margin-top: 4px;">Krea2 Edit mode also applies the Identity Edit LoRA automatically (strength set by the Identity slider).</span>
+              <span x-show="genParams.use_image_input && genParams.use_krea2_edit" style="display: block; margin-top: 4px;">Krea2 Edit mode also applies the Identity Edit LoRA automatically (configured in the Krea2 Identity accordion).</span>
             </div>
           </div>
         </div>

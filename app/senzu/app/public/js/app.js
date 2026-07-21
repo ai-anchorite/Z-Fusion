@@ -129,13 +129,16 @@ document.addEventListener('alpine:init', () => {
       use_image_input: false,
       use_krea2_edit: false,
       grounding_px: 768,
+      identity_lora_name: '',
       identity_lora_strength: 1.0,
       scale_to_ref: true,
       aspect_ratio: '1:1 (Square)',
-      resolution_multiple: 64,
+      resolution_multiple: 8,
       edit_compare: true,
       megapixels: 1.0,
       denoise: 0.6,
+      ref_boost: 4,
+      fit_mode: 'fit',
       use_int8_loader: false,
       int8_model_type: 'krea2',
       int8_enable_convrot: true
@@ -386,9 +389,30 @@ document.addEventListener('alpine:init', () => {
     async loadModels() {
       try {
         this.models = await api.getModels();
+        this.autoSelectIdentityLora();
         this.updateModelNag();
       } catch (err) {
         console.error('Failed to scan models:', err);
+      }
+    },
+
+    autoSelectIdentityLora() {
+      if (this.genParams.identity_lora_name && this.modelExists(this.genParams.identity_lora_name, 'loras')) return;
+      const candidates = [
+        'senzu/krea2_identity_edit_v1_2.safetensors',
+        'senzu/krea2_identity_edit_v1_2_r64.safetensors',
+        'krea2_identity_edit_v1_2.safetensors',
+        'krea2_identity_edit_v1_2_r64.safetensors',
+        'senzu/krea2_identity_edit_v1_1.safetensors',
+        'senzu/krea2_identity_edit_v1_1_r64.safetensors',
+        'krea2_identity_edit_v1_1.safetensors',
+        'krea2_identity_edit_v1_1_r64.safetensors'
+      ];
+      for (const name of candidates) {
+        if (this.modelExists(name, 'loras')) {
+          this.genParams.identity_lora_name = name;
+          return;
+        }
       }
     },
     
@@ -1059,6 +1083,9 @@ document.addEventListener('alpine:init', () => {
     // Krea2 Edit mode needs the identity-edit LoRA (full or lite version).
     identityLoraInstalled() {
       return (this.models.loras || []).some(f => f.toLowerCase().includes('krea2_identity_edit'));
+    },
+    identityLoras() {
+      return (this.models.loras || []).filter(f => f.toLowerCase().includes('identity_edit'));
     },
     
     // Output queue navigation

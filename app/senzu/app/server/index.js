@@ -703,17 +703,26 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
         cleanupUploads();
         return res.status(400).json({ error: "Krea2 Edit requires an input image" });
       }
-      const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_krea2_identity_edit_2.json');
-      // Resolve the identity-edit LoRA: prefer the full version over the lite
-      // (r64), and the managed senzu/ subfolder over the loras root. The model
-      // pack downloads into senzu/, but manual installs at the root also work.
+      const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_krea2_identity_edit_3.json');
+      // Resolve the identity-edit LoRA: prefer the user-selected LoRA if it
+      // exists. Otherwise auto-select from candidates: v1.2 full > v1.2 lite >
+      // v1.1 full > v1.1 lite, checking both senzu/ subfolder and loras root.
       const identityCandidates = [
+        'senzu/krea2_identity_edit_v1_2.safetensors',
+        'senzu/krea2_identity_edit_v1_2_r64.safetensors',
+        'krea2_identity_edit_v1_2.safetensors',
+        'krea2_identity_edit_v1_2_r64.safetensors',
         'senzu/krea2_identity_edit_v1_1.safetensors',
         'krea2_identity_edit_v1_1.safetensors',
         'senzu/krea2_identity_edit_v1_1_r64.safetensors',
         'krea2_identity_edit_v1_1_r64.safetensors'
       ];
-      const identityLora = identityCandidates.find(rel => fs.existsSync(path.join(MODELS_ROOT, 'loras', rel)));
+      let identityLora = '';
+      if (parsedParams.identity_lora_name && fs.existsSync(path.join(MODELS_ROOT, 'loras', parsedParams.identity_lora_name))) {
+        identityLora = parsedParams.identity_lora_name;
+      } else {
+        identityLora = identityCandidates.find(rel => fs.existsSync(path.join(MODELS_ROOT, 'loras', rel))) || '';
+      }
       if (!identityLora) {
         cleanupUploads();
         return res.status(400).json({ error: "Identity Edit LoRA not found. Download the \"Krea2 Identity Edit\" pack from the Models tab." });
@@ -726,7 +735,7 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
       const ASPECT_RATIOS = ['1:1 (Square)', '2:3 (Portrait Photo)', '3:2 (Photo)', '3:4 (Portrait Standard)', '4:3 (Standard)', '9:16 (Portrait Widescreen)', '16:9 (Widescreen)', '21:9 (Ultrawide)'];
       const aspectRatio = ASPECT_RATIOS.includes(parsedParams.aspect_ratio) ? parsedParams.aspect_ratio : '1:1 (Square)';
       const multipleRaw = parseInt(parsedParams.resolution_multiple, 10);
-      const resolutionMultiple = [8, 16, 32, 64].includes(multipleRaw) ? multipleRaw : 64;
+      const resolutionMultiple = [8, 16, 32, 64].includes(multipleRaw) ? multipleRaw : 8;
 
       const editParams = {
         image: inputImage.path,
@@ -741,6 +750,8 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
         aspect_ratio: aspectRatio,
         resolution_multiple: resolutionMultiple,
         megapixels: parseFloat(parsedParams.megapixels) || 1.0,
+        ref_boost: Number.isFinite(parseFloat(parsedParams.ref_boost)) ? parseFloat(parsedParams.ref_boost) : 4,
+        fit_mode: (parsedParams.fit_mode === 'crop (legacy)') ? 'crop (legacy)' : 'fit',
         seed: seedVal,
         steps: parseInt(parsedParams.steps, 10) || 8,
         cfg: parseFloat(parsedParams.cfg) || 1.0,

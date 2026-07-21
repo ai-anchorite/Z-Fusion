@@ -245,10 +245,10 @@ function stripInt8Nodes(workflow) {
 }
 
 // The krea2_edit workflow ships with an optional second-reference branch
-// (nodes 23/24/25 -> image_b / source_latent_b). Both Krea2Edit nodes treat the
-// b-inputs as optional, so when the user supplies no second image we remove the
-// branch and the b-input links entirely rather than feeding a placeholder image
-// into the conditioning.
+// (nodes 23/24/25 -> image_b / source_latent_b / source_image_b). Both
+// Krea2Edit nodes treat the b-inputs as optional, so when the user supplies no
+// second image we remove the branch and the b-input links entirely rather than
+// feeding a placeholder image into the conditioning.
 function stripKrea2RefB(workflow) {
   delete workflow['23'];
   delete workflow['24'];
@@ -256,7 +256,13 @@ function stripKrea2RefB(workflow) {
   for (const nodeId of ['7', '9']) {
     if (workflow[nodeId]?.inputs) delete workflow[nodeId].inputs.image_b;
   }
-  if (workflow['10']?.inputs) delete workflow['10'].inputs.source_latent_b;
+  // v2 Krea2EditModelPatch (node 10) and v3 (node 34)
+  for (const nodeId of ['10', '34']) {
+    if (workflow[nodeId]?.inputs) {
+      delete workflow[nodeId].inputs.source_latent_b;
+      delete workflow[nodeId].inputs.source_image_b;
+    }
+  }
   return workflow;
 }
 

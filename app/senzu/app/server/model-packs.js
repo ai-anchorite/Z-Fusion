@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const DATA_DIR = path.join(__dirname, '../data');
 const MODEL_PACKS_FILE = path.join(DATA_DIR, 'senzu-model-packs.json');
-const PACKS_VERSION = 7;
+const PACKS_VERSION = 8;
 
 const DEFAULT_PACKS = {
   "FP8 Standard": {
@@ -96,12 +96,14 @@ const DEFAULT_PACKS = {
     is_recommended: true,
     category: "generate",
     loras_any: true,
-    description: "Identity Edit LoRA for the Krea2 Edit mode in the Generate tab. Only one version is needed: full for best quality, lite (rank 64) for a smaller download. Uses the Krea2 Standard/Int8 pack models.",
+    description: "Identity Edit LoRA for the Krea2 Edit mode in the Generate tab. Only one version is needed. v1.2 is the recommended default (supports ref_boost + dual reference images). v1.1 full for best quality, lite (rank 64) for a smaller download. Uses the Krea2 Standard/Int8 pack models.",
     downloads: {
       unet: null,
       clip: null,
       vae: null,
       loras: [
+        { repo: "conradlocke/krea2-identity-edit", filename: "krea2_identity_edit_v1_2.safetensors", dest_filename: "senzu/krea2_identity_edit_v1_2.safetensors", desc: "Identity Edit v1.2 — recommended", size: "~1.83GB" },
+        { repo: "conradlocke/krea2-identity-edit", filename: "krea2_identity_edit_v1_2_r64.safetensors", dest_filename: "senzu/krea2_identity_edit_v1_2_r64.safetensors", desc: "Identity Edit v1.2 r64 — lite", size: "~457MB" },
         { repo: "conradlocke/krea2-identity-edit", filename: "krea2_identity_edit_v1_1.safetensors", dest_filename: "senzu/krea2_identity_edit_v1_1.safetensors", desc: "Identity Edit v1.1 — full quality", size: "~1.83GB" },
         { repo: "conradlocke/krea2-identity-edit", filename: "krea2_identity_edit_v1_1_r64.safetensors", dest_filename: "senzu/krea2_identity_edit_v1_1_r64.safetensors", desc: "Identity Edit v1.1 r64 — lite", size: "~457MB" }
       ]

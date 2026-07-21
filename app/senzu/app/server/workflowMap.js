@@ -123,6 +123,8 @@ module.exports = {
     scheduler: { node: "11", field: "scheduler" },
     identity_lora_name: { node: "21", field: "lora_name" },
     identity_lora_strength: { node: "21", field: "strength_model" },
+    ref_boost: { node: "34", field: "ref_boost" },
+    fit_mode: { node: "34", field: "fit_mode" },
     lora1_name: { node: "12", field: "lora_name" },
     lora1_strength: { node: "12", field: "strength_model" },
     lora2_name: { node: "13", field: "lora_name" },
