@@ -89,7 +89,8 @@ function createManager({ db, parser, io, staticRoot, watchPaths = [] }) {
           indexed++;
           if (io && image) io.emit('gallery-new', enrichImage(image, staticRoot));
         } else if (force) {
-          await indexFile(db, parser, file, rootPath);
+          const image = await indexFile(db, parser, file, rootPath);
+          if (io && image) io.emit('gallery-update', enrichImage(image, staticRoot));
         } else if (existing.mtime) {
           let curStats;
           try { curStats = await fs.promises.stat(file); } catch (_) { continue; }

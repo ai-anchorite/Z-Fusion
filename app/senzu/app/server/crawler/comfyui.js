@@ -85,9 +85,10 @@ class ComfyUIParser {
           
           if (title.includes('negative') || title.includes('neg')) {
             if (!hasParentMeta || !result.negative_prompt) result.negative_prompt = text;
-          } else {
-            // Non-negative prompt node. With parent metadata this is the
-            // edit stage's prompt; without it this *is* the creative prompt.
+          } else if (text) {
+            // Non-negative prompt node with actual content.
+            // With parent metadata this is the edit stage's prompt;
+            // without it this *is* the creative prompt.
             if (hasParentMeta) {
               if (!editPrompt) editPrompt = text;
             } else {
@@ -122,8 +123,14 @@ class ComfyUIParser {
           if (inputs.cfg) result.cfg_scale = inputs.cfg;
           if (inputs.sampler_name) result.sampler = inputs.sampler_name;
           if (inputs.scheduler) result.scheduler = inputs.scheduler;
-          if (inputs.seed !== undefined) result.seed = inputs.seed;
-          if (inputs.noise_seed !== undefined) result.seed = inputs.noise_seed;
+          // Seed may be a direct int or a node reference (e.g. Seed (rgthree)).
+          // Resolve references so we store the actual seed number.
+          if (inputs.seed !== undefined) {
+            result.seed = this.resolveIntRef(inputs.seed, workflow);
+          }
+          if (inputs.noise_seed !== undefined) {
+            result.seed = this.resolveIntRef(inputs.noise_seed, workflow);
+          }
           if (inputs.denoise !== undefined) result.denoise = inputs.denoise;
           if (inputs.shift !== undefined) result.shift = inputs.shift;
         }
@@ -143,6 +150,11 @@ class ComfyUIParser {
         if (classType.includes('LatentImage') || classType.includes('EmptyLatent')) {
           if (inputs.width) result.width = inputs.width;
           if (inputs.height) result.height = inputs.height;
+          // SDXL Empty Latent Image (rgthree) uses a `dimensions` text field
+          if (inputs.dimensions && typeof inputs.dimensions === 'string') {
+            const m = inputs.dimensions.match(/(\d+)\s*x\s*(\d+)/);
+            if (m) { result.width = parseInt(m[1], 10); result.height = parseInt(m[2], 10); }
+          }
         }
 
         // Extract upscale dimensions
@@ -176,21 +188,32 @@ class ComfyUIParser {
 
         // Extract LoRA information
         const loraClasses = ['LoraLoader', 'LoraLoaderModelOnly', 'LoraLoaderAdvanced'];
-        if (loraClasses.includes(classType) || (classType.endsWith('Lora') && !classType.includes('Florence'))) {
-          const loraName = inputs.lora_name;
-          const strength = inputs.strength_model || inputs.strength || 1.0;
-          
-          // Only add if lora_name exists and isn't "none"
-          if (loraName && loraName.toLowerCase() !== 'none' && loraName.toLowerCase() !== 'none.safetensors') {
-            // When parent metadata is present, current-workflow LoRAs are
-            // the edit stage — stash separately for process_params.
-            if (hasParentMeta) {
-              editLoras.push({
-                name: this.cleanModelName(loraName),
-                strength: strength
-              });
-            } else {
-              result.loras.push({
+        const isStandardLora = loraClasses.includes(classType) || (classType.endsWith('Lora') && !classType.includes('Florence'));
+        const isPowerLora = classType.includes('Power Lora Loader') || classType.includes('PowerLoraLoader');
+        if (isStandardLora || isPowerLora) {
+          if (isPowerLora) {
+            // Power Lora Loader (rgthree): lora data is in nested sub-objects
+            // like lora_1: {on: true, lora: "path/file.safetensors", strength: 0.6}
+            for (const key of Object.keys(inputs)) {
+              if (!key.startsWith('lora_') || key.includes('Header')) continue;
+              const entry = inputs[key];
+              if (entry && typeof entry === 'object' && entry.on && entry.lora) {
+                const name = entry.lora;
+                const strength = entry.strength != null ? entry.strength : 1.0;
+                if (name && name.toLowerCase() !== 'none' && name.toLowerCase() !== 'none.safetensors') {
+                  const target = hasParentMeta ? editLoras : result.loras;
+                  target.push({ name: this.cleanModelName(name), strength });
+                }
+              }
+            }
+          } else {
+            const loraName = inputs.lora_name;
+            const strength = inputs.strength_model || inputs.strength || 1.0;
+            
+            // Only add if lora_name exists and isn't "none"
+            if (loraName && loraName.toLowerCase() !== 'none' && loraName.toLowerCase() !== 'none.safetensors') {
+              const target = hasParentMeta ? editLoras : result.loras;
+              target.push({
                 name: this.cleanModelName(loraName),
                 strength: strength
               });
@@ -257,6 +280,26 @@ class ComfyUIParser {
   }
 
   /**
+   * Resolve an int value that may be a direct number or a node reference
+   * (e.g. ["276", 0] pointing to a Seed (rgthree) node).
+   */
+  resolveIntRef(value, workflow, depth = 0) {
+    if (depth > 5) return value;
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const n = parseInt(value, 10);
+      return Number.isFinite(n) ? n : value;
+    }
+    if (Array.isArray(value) && value.length >= 1 && typeof value[0] === 'string') {
+      const refNode = workflow[value[0]];
+      if (refNode?.inputs?.seed != null) {
+        return this.resolveIntRef(refNode.inputs.seed, workflow, depth + 1);
+      }
+    }
+    return value;
+  }
+
+  /**
    * Extract text from input, handling both direct strings and node references.
    * Follows chains up to 5 hops deep (e.g. PrimitiveStringMultiline → Text Concatenate → CLIPTextEncode).
    */
@@ -272,9 +315,22 @@ class ComfyUIParser {
       const refNode = workflow[refNodeId];
       if (refNode && refNode.inputs) {
         const inputs = refNode.inputs;
+        // StringConcatenate / TextConcatenate: join string_a + string_b
+        if (refNode.class_type === 'StringConcatenate' || refNode.class_type === 'TextConcatenate') {
+          const a = inputs.string_a != null
+            ? this.extractText(inputs.string_a, workflow, depth + 1)
+            : '';
+          const b = inputs.string_b != null
+            ? this.extractText(inputs.string_b, workflow, depth + 1)
+            : '';
+          if (a || b) return (a || '') + (b || '');
+          return null;
+        }
         const candidate = inputs.text != null ? inputs.text
           : inputs.value != null ? inputs.value
           : inputs.string != null ? inputs.string
+          : inputs.wildcard_text != null ? inputs.wildcard_text
+          : inputs.populated_text != null ? inputs.populated_text
           : null;
         if (candidate != null) {
           return this.extractText(candidate, workflow, depth + 1);

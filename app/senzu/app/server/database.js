@@ -655,11 +655,14 @@ class GalleryDatabase {
           params.push(new Date(clause.value).getTime());
           break;
         case 'prompt':
-          conditions.push(`(' ' || i.prompt || ' ' LIKE ?)`);
+          // Strip common punctuation from the prompt before word-boundary
+          // matching so e.g. "comma" matches "comma," in the source text.
+          // The surrounding spaces still enforce whole-word matching.
+          conditions.push(`(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(i.prompt, ',', ' '), '.', ' '), ':', ' '), ';', ' '), '!', ' '), '?', ' ') || ' ' LIKE ?)`);
           params.push(`% ${clause.value} %`);
           break;
         case '-prompt':
-          conditions.push(`(i.prompt IS NULL OR ' ' || i.prompt || ' ' NOT LIKE ?)`);
+          conditions.push(`(i.prompt IS NULL OR ' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(i.prompt, ',', ' '), '.', ' '), ':', ' '), ';', ' '), '!', ' '), '?', ' ') || ' ' NOT LIKE ?)`);
           params.push(`% ${clause.value} %`);
           break;
         case 'field':

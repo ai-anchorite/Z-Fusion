@@ -83,6 +83,7 @@ document.addEventListener('alpine:init', () => {
       try {
         this.socket = io();
         this.socket.on('gallery-new', (image) => this.onSocketNew(image));
+        this.socket.on('gallery-update', (image) => this.onSocketUpdate(image));
         this.socket.on('gallery-remove', (data) => this.onSocketRemove(data.fingerprint));
         this.socket.on('gallery-progress', (data) => this.onSocketProgress(data));
         this.socket.on('gallery-count', (data) => { if (data && data.count != null) this.total = data.count; });
@@ -360,6 +361,13 @@ document.addEventListener('alpine:init', () => {
       grid.insertAdjacentHTML('afterbegin', this.cardHTML(item));
     },
 
+    updateCard(item) {
+      const grid = this.$refs.grid;
+      if (!grid) return;
+      const el = grid.querySelector(`.gallery-card[data-fp="${CSS.escape(item.fingerprint)}"]`);
+      if (el) el.outerHTML = this.cardHTML(item);
+    },
+
     removeCard(fp) {
       const grid = this.$refs.grid;
       if (!grid) return;
@@ -541,12 +549,21 @@ document.addEventListener('alpine:init', () => {
     onSocketNew(image) {
       if (!image) return;
       this.total++;
-      // Only inject live cards into the default (unfiltered, newest-first) view.
       const isDefaultView = !this.searchQuery.trim() && this.sortKey === 'btime' && this.sortDir === -1;
       if (isDefaultView && !this.items.some(x => x.fingerprint === image.fingerprint)) {
         if (!image.tags) image.tags = [];
         this.items.unshift(image);
         this.prependCard(image);
+      }
+    },
+
+    onSocketUpdate(image) {
+      if (!image) return;
+      const idx = this.items.findIndex(x => x.fingerprint === image.fingerprint);
+      if (idx !== -1) {
+        if (!image.tags) image.tags = [];
+        this.items[idx] = image;
+        this.updateCard(image);
       }
     },
 
@@ -831,7 +848,7 @@ document.addEventListener('alpine:init', () => {
             let ppt = '<div style="border-top: 1px solid var(--border-glass); margin-top: 10px; padding-top: 6px;">';
             if (pp.edit) {
               const edLoras = (pp.edit.loras || []).map(l =>
-                `<span class="gv-filter" data-filter="loras:${this.escapeHTML(l.name)}">${this.escapeHTML(l.name)}${l.strength != null ? ' (' + l.strength + ')' : ''}</span>`
+                 `<span class="gv-filter" data-filter="loras:${this.escapeHTML(l.name)}">${this.escapeHTML(l.name)}${l.strength != null ? ':' + l.strength : ''}</span>`
               ).join(' ');
               ppt += `<div class="gv-field-label">Senzu Edit</div>`;
               if (pp.edit.prompt) ppt += `<div class="gv-prompt" style="font-size: 0.82rem; margin-bottom: 4px;">${this.escapeHTML(pp.edit.prompt)}</div>`;
@@ -856,7 +873,7 @@ document.addEventListener('alpine:init', () => {
 
       const lorasHTML = loras.length
         ? `<div class="gv-meta-row"><span class="gv-meta-key">LoRAs</span><span class="gv-meta-val">${
-            loras.map(l => `<span class="gv-filter" data-filter="loras:${this.escapeHTML(l.name)}">${this.escapeHTML(l.name)}${l.strength != null ? ' (' + l.strength + ')' : ''}</span>`).join(' ')
+                loras.map(l => `<span class="gv-filter" data-filter="loras:${this.escapeHTML(l.name)}">${this.escapeHTML(l.name)}${l.strength != null ? ':' + l.strength : ''}</span>`).join(' ')
           }</span></div>`
         : '';
 

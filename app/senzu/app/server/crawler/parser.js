@@ -160,6 +160,42 @@ class Parser {
         comfyData = this.tryParametersParse(parsed.parameters);
       }
 
+      // 5. EXIF UserComment (JPEG files — exifr returns raw bytes as an
+      //    indexed object. The 9-byte header identifies the encoding:
+      //    "UNICODE\0\0" = UTF-16LE workflow JSON or A1111 parameters
+      //    "ASCII\0\0\0"  = plain ASCII (digital signature / non-relevant)
+      //    After stripping the header, decode the remainder and try
+      //    workflow JSON first, then A1111 parameters text.
+      if (!comfyData) {
+        const rawUC = parsed.userComment || parsed.UserComment;
+        if (rawUC && typeof rawUC === 'object') {
+          const keys = Object.keys(rawUC)
+            .filter(k => /^\d+$/.test(k))
+            .map(Number)
+            .sort((a, b) => a - b);
+          // Detect header: read first 7 bytes as ASCII
+          const hdr = String.fromCharCode(...keys.slice(0, Math.min(7, keys.length)).map(k => rawUC[k]));
+          const isUnicode = hdr === 'UNICODE';
+          const isAscii = hdr === 'ASCII\x00';
+          if (keys.length > 9 && (isUnicode || isAscii)) {
+            let start = isUnicode ? 7 : 5; // "UNICODE\0\0" or "ASCII\0"
+            while (start < keys.length && rawUC[keys[start]] === 0) start++;
+            const payload = keys.slice(start).map(k => rawUC[k]);
+
+            if (isUnicode) {
+              const decoder = new TextDecoder('utf-16le');
+              let decoded = decoder.decode(new Uint8Array(payload));
+              // Trim trailing nulls / garbage after the last valid JSON token
+              const jsonEnd = Math.max(decoded.lastIndexOf('}'), decoded.lastIndexOf(']'));
+              if (jsonEnd > 0) decoded = decoded.substring(0, jsonEnd + 1);
+              comfyData = this.tryWorkflowParse(decoded) || this.tryParametersParse(decoded);
+            } else {
+              // "ASCII" header — skip, not generation metadata
+            }
+          }
+        }
+      }
+
       if (comfyData) {
         // Normalise loras to a JSON string for DB storage.
         if (comfyData.loras && Array.isArray(comfyData.loras)) {
