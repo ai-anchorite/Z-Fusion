@@ -483,6 +483,19 @@ const api = {
         method: 'DELETE'
       });
       return res.json();
+    },
+
+    async crop(fingerprint, x, y, width, height) {
+      const res = await fetch(`${API_BASE}/gallery/crop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint, x, y, width, height })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Crop failed');
+      }
+      return res.json();
     }
   }
 };

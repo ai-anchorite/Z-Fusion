@@ -1182,6 +1182,7 @@ app.use('/api/gallery', createGalleryRouter({
   outputsRoot: OUTPUTS_ROOT,
   trashDir: GALLERY_TRASH_DIR,
   thumbDir: GALLERY_THUMB_DIR,
+  cropOutputDir: path.join(SENZU_OUTPUTS, 'crop'),
   reindex: reindexGallery,
   openFolder: settings.openFolder,
   manager: galleryManager,

@@ -21,7 +21,7 @@ function enrichImage(image, outputsRoot) {
   return { ...image, src, thumb };
 }
 
-function createGalleryRouter({ db, outputsRoot, trashDir, thumbDir, reindex, openFolder, manager, pickFolder, protectedFolders = [] }) {
+function createGalleryRouter({ db, outputsRoot, trashDir, thumbDir, cropOutputDir, reindex, openFolder, manager, pickFolder, protectedFolders = [] }) {
   const router = express.Router();
   const enrich = (img) => enrichImage(img, outputsRoot);
   const withRemovable = (f) => ({ ...f, removable: !protectedFolders.includes(f.path) });
@@ -239,6 +239,50 @@ function createGalleryRouter({ db, outputsRoot, trashDir, thumbDir, reindex, ope
     res.sendFile(img.file_path, (err) => {
       if (err && !res.headersSent) res.status(404).end();
     });
+  });
+
+  // --- Crop ---
+  router.post('/crop', async (req, res) => {
+    try {
+      const { fingerprint, x, y, width, height } = req.body || {};
+      if (!fingerprint || x == null || y == null || !width || !height) {
+        return res.status(400).json({ error: 'Missing required crop parameters' });
+      }
+      const img = db.getImage(fingerprint);
+      if (!img || !img.file_path || !fs.existsSync(img.file_path)) {
+        return res.status(404).json({ error: 'Source image not found' });
+      }
+
+      const cx = Math.max(0, Math.round(Number(x)));
+      const cy = Math.max(0, Math.round(Number(y)));
+      const cw = Math.min(Math.max(10, Math.round(Number(width))), (img.width || 1) - cx);
+      const ch = Math.min(Math.max(10, Math.round(Number(height))), (img.height || 1) - cy);
+      if (cw < 10 || ch < 10) {
+        return res.status(400).json({ error: 'Crop region too small (minimum 10x10 pixels)' });
+      }
+
+      if (!fs.existsSync(cropOutputDir)) {
+        fs.mkdirSync(cropOutputDir, { recursive: true });
+      }
+
+      const ext = path.extname(img.filename) || '.png';
+      const baseName = path.basename(img.filename, ext);
+      const outName = `${baseName}_crop_${Date.now().toString(36)}${ext}`;
+      const outPath = path.join(cropOutputDir, outName);
+
+      const sharp = require('sharp');
+      await sharp(img.file_path)
+        .extract({ left: cx, top: cy, width: cw, height: ch })
+        .toFile(outPath);
+
+      const rel = outputsRoot ? path.relative(outputsRoot, outPath) : outPath;
+      const src = '/outputs/' + rel.split(path.sep).map(encodeURIComponent).join('/');
+
+      res.json({ success: true, filename: outName, src });
+    } catch (err) {
+      console.error('[Gallery] crop error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // --- Single image (keep LAST — catch-all param route) ---

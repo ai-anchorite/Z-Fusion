@@ -37,6 +37,17 @@ document.addEventListener('alpine:init', () => {
       hidePanel: false,        // start viewer with info panel hidden
       slideshowInterval: 3000  // ms
     },
+    crop: {
+      active: false,
+      x: 0, y: 0, w: 0, h: 0,
+      dragging: false,
+      handle: null,
+      startSX: 0, startSY: 0,
+      startIX: 0, startIY: 0,
+      origX: 0, origY: 0, origW: 0, origH: 0,
+      aspectLocked: false,
+      aspectRatio: 1,
+    },
     scan: { active: false, current: 0, total: 0 },
     initialized: false,
 
@@ -580,6 +591,340 @@ document.addEventListener('alpine:init', () => {
     },
 
     // =========================================================
+    // Crop tool
+    // =========================================================
+    enterCropMode() {
+      if (!this._overlay || this.crop.active) return;
+      this.viewerReset();
+      this.crop.active = true;
+
+      const item = this.items[this._viewerIndex];
+      const imgEl = this._overlay.querySelector('.gallery-viewer-img');
+      if (!imgEl || !item) return;
+
+      const nw = imgEl.naturalWidth || item.width || 100;
+      const nh = imgEl.naturalHeight || item.height || 100;
+      const margin = 0.08;
+      this.crop.x = Math.round(nw * margin);
+      this.crop.y = Math.round(nh * margin);
+      this.crop.w = Math.round(nw * (1 - margin * 2));
+      this.crop.h = Math.round(nh * (1 - margin * 2));
+      this.crop.dragging = false;
+      this.crop.handle = null;
+      this.crop.aspectLocked = false;
+      this.crop.aspectRatio = 1;
+
+      this._cropBuildOverlay();
+      this._cropUpdateOverlay();
+
+      const navBtns = this._overlay.querySelectorAll('.gallery-viewer-nav');
+      navBtns.forEach(b => b.style.display = 'none');
+    },
+
+    exitCropMode() {
+      this.crop.active = false;
+      if (this._cropEl) { this._cropEl.remove(); this._cropEl = null; }
+      if (this._cropMouseMoveBound) { document.removeEventListener('mousemove', this._cropMouseMoveBound); this._cropMouseMoveBound = null; }
+      if (this._cropMouseUpBound) { document.removeEventListener('mouseup', this._cropMouseUpBound); this._cropMouseUpBound = null; }
+      const navBtns = this._overlay && this._overlay.querySelectorAll('.gallery-viewer-nav');
+      if (navBtns) navBtns.forEach(b => b.style.display = '');
+    },
+
+    cancelCrop() {
+      this.exitCropMode();
+    },
+
+    async confirmCrop() {
+      const item = this.items[this._viewerIndex];
+      if (!item) return;
+      const x = Math.max(0, Math.round(this.crop.x));
+      const y = Math.max(0, Math.round(this.crop.y));
+      const w = Math.max(1, Math.round(this.crop.w));
+      const h = Math.max(1, Math.round(this.crop.h));
+      if (w < 10 || h < 10) { alert('Crop region is too small.'); return; }
+      try {
+        await api.gallery.crop(item.fingerprint, x, y, w, h);
+        this.exitCropMode();
+      } catch (e) {
+        alert('Crop failed: ' + e.message);
+      }
+    },
+
+    _cropImageRect() {
+      const img = this._overlay && this._overlay.querySelector('.gallery-viewer-img');
+      if (!img) return null;
+      const r = img.getBoundingClientRect();
+      return {
+        left: r.left, top: r.top, width: r.width, height: r.height,
+        naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight,
+        scaleX: r.width / (img.naturalWidth || 1),
+        scaleY: r.height / (img.naturalHeight || 1),
+      };
+    },
+
+    _cropScreenToImage(sx, sy) {
+      const ri = this._cropImageRect();
+      if (!ri) return { x: 0, y: 0 };
+      return { x: (sx - ri.left) / ri.scaleX, y: (sy - ri.top) / ri.scaleY };
+    },
+
+    _cropImageToScreen(ix, iy) {
+      const ri = this._cropImageRect();
+      if (!ri) return { x: 0, y: 0 };
+      return { x: ri.left + ix * ri.scaleX, y: ri.top + iy * ri.scaleY };
+    },
+
+    _cropClamp() {
+      const item = this.items[this._viewerIndex];
+      const nw = item ? (item.width || 4096) : 4096;
+      const nh = item ? (item.height || 4096) : 4096;
+      const c = this.crop;
+      c.w = Math.max(10, Math.min(c.w, nw));
+      c.h = Math.max(10, Math.min(c.h, nh));
+      if (c.x < 0) c.x = 0;
+      if (c.y < 0) c.y = 0;
+      if (c.x + c.w > nw) c.x = nw - c.w;
+      if (c.y + c.h > nh) c.y = nh - c.h;
+    },
+
+    _cropApplyAspect(fixedPoint) {
+      if (!this.crop.aspectLocked) return;
+      const ratio = this.crop.aspectRatio;
+      const c = this.crop;
+      let nw, nh;
+      if (fixedPoint === 'center') {
+        nw = c.h * ratio;
+        nh = c.w / ratio;
+        if (nw <= this.items[this._viewerIndex]?.width) {
+          c.h = Math.round(nh); c.y = c.origY + (c.origH - c.h) / 2;
+        } else {
+          c.w = Math.round(nw); c.x = c.origX + (c.origW - c.w) / 2;
+        }
+      } else {
+        c.h = Math.round(c.w / ratio);
+      }
+      this._cropClamp();
+    },
+
+    _cropOverlayMouseDown(e) {
+      const target = e.target;
+      const handle = target.getAttribute('data-handle');
+      const c = this.crop;
+
+      if (handle) {
+        c.dragging = true;
+        c.handle = handle;
+        const pt = this._cropScreenToImage(e.clientX, e.clientY);
+        c.startSX = pt.x;
+        c.startSY = pt.y;
+        c.origX = c.x; c.origY = c.y; c.origW = c.w; c.origH = c.h;
+        e.preventDefault();
+        e.stopPropagation();
+      } else if (target.classList.contains('gv-crop-box') || target.closest('.gv-crop-box')) {
+        c.dragging = true;
+        c.handle = 'move';
+        c.origX = c.x; c.origY = c.y;
+        const pt = this._cropScreenToImage(e.clientX, e.clientY);
+        c.startIX = pt.x;
+        c.startIY = pt.y;
+        e.preventDefault();
+        e.stopPropagation();
+      } else if (target.classList.contains('gv-crop-overlay') || target.classList.contains('gv-crop-mask')) {
+        c.dragging = true;
+        c.handle = 'draw';
+        const pt = this._cropScreenToImage(e.clientX, e.clientY);
+        c.x = pt.x; c.y = pt.y; c.w = 0; c.h = 0;
+        c.origX = pt.x; c.origY = pt.y;
+        c.startSX = e.clientX; c.startSY = e.clientY;
+        e.preventDefault();
+      }
+    },
+
+    _cropOverlayMouseMove(e) {
+      if (!this.crop.active || !this.crop.dragging) return;
+      const c = this.crop;
+      const pt = this._cropScreenToImage(e.clientX, e.clientY);
+
+      if (c.handle === 'draw') {
+        const x1 = Math.min(c.origX, pt.x);
+        const y1 = Math.min(c.origY, pt.y);
+        c.x = x1; c.y = y1;
+        c.w = Math.max(c.origX, pt.x) - x1;
+        c.h = Math.max(c.origY, pt.y) - y1;
+        this._cropClamp();
+      } else if (c.handle === 'move') {
+        c.x = c.origX + (pt.x - c.startIX);
+        c.y = c.origY + (pt.y - c.startIY);
+        this._cropClamp();
+      } else {
+        this._cropHandleResize(pt.x, pt.y);
+        this._cropClamp();
+        if (c.aspectLocked && c.handle && /^(nw|ne|sw|se)$/.test(c.handle)) {
+          this._cropApplyAspect('center');
+        }
+      }
+      this._cropUpdateOverlay();
+    },
+
+    _cropHandleResize(px, py) {
+      const c = this.crop;
+      const handle = c.handle;
+      if (handle.indexOf('e') !== -1) {
+        c.w = Math.max(10, c.origW + (px - c.startSX));
+      }
+      if (handle.indexOf('s') !== -1) {
+        c.h = Math.max(10, c.origH + (py - c.startSY));
+      }
+      if (handle.indexOf('w') !== -1) {
+        const newW = Math.max(10, c.origW - (px - c.startSX));
+        if (newW >= 10) { c.x = c.origX + c.origW - newW; c.w = newW; }
+      }
+      if (handle.indexOf('n') !== -1) {
+        const newH = Math.max(10, c.origH - (py - c.startSY));
+        if (newH >= 10) { c.y = c.origY + c.origH - newH; c.h = newH; }
+      }
+      if (c.aspectLocked && (handle === 'n' || handle === 's' || handle === 'e' || handle === 'w')) {
+        const ratio = c.aspectRatio;
+        const cx = c.x + c.w / 2;
+        const cy = c.y + c.h / 2;
+        if (handle === 'e' || handle === 'w') {
+          c.h = Math.round(c.w / ratio);
+          c.y = Math.round(cy - c.h / 2);
+        } else {
+          c.w = Math.round(c.h * ratio);
+          c.x = Math.round(cx - c.w / 2);
+        }
+      }
+    },
+
+    _cropOverlayMouseUp(e) {
+      if (!this.crop.active) return;
+      const c = this.crop;
+      if (c.dragging && c.handle === 'draw' && (c.w < 5 || c.h < 5)) {
+        c.x = c.origX; c.y = c.origY; c.w = 0; c.h = 0;
+        this._cropUpdateOverlay();
+      }
+      c.dragging = false;
+    },
+
+    _cropBuildOverlay() {
+      const area = this._overlay.querySelector('.gallery-viewer-image-area');
+      if (!area) return;
+      const el = document.createElement('div');
+      el.className = 'gv-crop-overlay';
+      el.innerHTML = `
+        <div class="gv-crop-mask-t"></div>
+        <div class="gv-crop-mask-b"></div>
+        <div class="gv-crop-mask-l"></div>
+        <div class="gv-crop-mask-r"></div>
+        <div class="gv-crop-box">
+          <div class="gv-crop-grid-v1"></div>
+          <div class="gv-crop-grid-v2"></div>
+          <div class="gv-crop-grid-h1"></div>
+          <div class="gv-crop-grid-h2"></div>
+        </div>
+        <div class="gv-crop-handle" data-handle="nw"></div>
+        <div class="gv-crop-handle" data-handle="n"></div>
+        <div class="gv-crop-handle" data-handle="ne"></div>
+        <div class="gv-crop-handle" data-handle="e"></div>
+        <div class="gv-crop-handle" data-handle="se"></div>
+        <div class="gv-crop-handle" data-handle="s"></div>
+        <div class="gv-crop-handle" data-handle="sw"></div>
+        <div class="gv-crop-handle" data-handle="w"></div>
+        <div class="gv-crop-toolbar">
+          <span class="gv-crop-dims"></span>
+          <select class="gv-crop-aspect">
+            <option value="0">Free</option>
+            <option value="1">1:1</option>
+            <option value="0.75">4:3</option>
+            <option value="0.5625">16:9</option>
+            <option value="0.6667">3:2</option>
+          </select>
+          <button class="gv-crop-btn gv-crop-cancel">Cancel</button>
+          <button class="gv-crop-btn gv-crop-confirm">Crop <i class="fa-solid fa-crop-simple"></i></button>
+        </div>
+        <div class="gv-crop-hint">Drag to adjust selection &mdash; Enter to confirm, Esc to cancel</div>
+      `;
+      area.appendChild(el);
+      this._cropEl = el;
+
+      const $ = (s) => el.querySelector(s);
+      this._cropCache = {
+        maskT: $('.gv-crop-mask-t'),
+        maskB: $('.gv-crop-mask-b'),
+        maskL: $('.gv-crop-mask-l'),
+        maskR: $('.gv-crop-mask-r'),
+        box: $('.gv-crop-box'),
+        handles: [...el.querySelectorAll('.gv-crop-handle')],
+        dims: $('.gv-crop-dims'),
+        toolbar: $('.gv-crop-toolbar'),
+        hint: $('.gv-crop-hint'),
+      };
+
+      el.addEventListener('mousedown', (e) => this._cropOverlayMouseDown(e));
+      this._cropMouseMoveBound = (e) => this._cropOverlayMouseMove(e);
+      this._cropMouseUpBound = (e) => this._cropOverlayMouseUp(e);
+      document.addEventListener('mousemove', this._cropMouseMoveBound);
+      document.addEventListener('mouseup', this._cropMouseUpBound);
+
+      $('.gv-crop-aspect').addEventListener('change', (e) => {
+        const val = parseFloat(e.target.value);
+        this.crop.aspectLocked = val > 0;
+        if (val > 0) {
+          this.crop.aspectRatio = val;
+          this._cropApplyAspect('center');
+          this._cropClamp();
+          this._cropUpdateOverlay();
+        }
+      });
+      $('.gv-crop-cancel').addEventListener('click', (e) => { e.stopPropagation(); this.cancelCrop(); });
+      $('.gv-crop-confirm').addEventListener('click', (e) => { e.stopPropagation(); this.confirmCrop(); });
+    },
+
+    _cropUpdateOverlay() {
+      if (!this._cropCache) return;
+      const cc = this._cropCache;
+      const c = this.crop;
+      const topLeft = this._cropImageToScreen(c.x, c.y);
+      const botRight = this._cropImageToScreen(c.x + c.w, c.y + c.h);
+      const area = this._overlay && this._overlay.querySelector('.gallery-viewer-image-area');
+      if (!area) return;
+      const areaRect = area.getBoundingClientRect();
+      const aw = areaRect.width;
+      const ah = areaRect.height;
+
+      const sl = Math.max(0, topLeft.x - areaRect.left);
+      const st = Math.max(0, topLeft.y - areaRect.top);
+      const sw = Math.max(0, botRight.x - topLeft.x);
+      const sh = Math.max(0, botRight.y - topLeft.y);
+      const sr = sl + sw;
+      const sb = st + sh;
+
+      cc.maskT.style.cssText = `left:0;top:0;width:${aw}px;height:${st}px;`;
+      cc.maskB.style.cssText = `left:0;top:${sb}px;width:${aw}px;height:${ah - sb}px;`;
+      cc.maskL.style.cssText = `left:0;top:${st}px;width:${sl}px;height:${sh}px;`;
+      cc.maskR.style.cssText = `left:${sr}px;top:${st}px;width:${aw - sr}px;height:${sh}px;`;
+      cc.box.style.cssText = `left:${sl}px;top:${st}px;width:${sw}px;height:${sh}px;`;
+
+      const handlesCoords = {
+        nw: [sl - 7, st - 7], n: [sl + sw / 2 - 7, st - 7], ne: [sl + sw - 7, st - 7],
+        e: [sl + sw - 7, st + sh / 2 - 7], se: [sl + sw - 7, st + sh - 7],
+        s: [sl + sw / 2 - 7, st + sh - 7], sw: [sl - 7, st + sh - 7],
+        w: [sl - 7, st + sh / 2 - 7],
+      };
+      cc.handles.forEach(h => {
+        const key = h.getAttribute('data-handle');
+        const [hx, hy] = handlesCoords[key] || [0, 0];
+        h.style.cssText = `left:${hx}px;top:${hy}px;`;
+      });
+
+      cc.dims.textContent = `${Math.round(c.w)} \u00d7 ${Math.round(c.h)} px`;
+      const hVisible = c.w > 0 && c.h > 0;
+      cc.toolbar.style.display = hVisible ? '' : 'none';
+      cc.hint.style.display = hVisible ? 'none' : '';
+    },
+
+    // =========================================================
     // Fullscreen viewer
     // =========================================================
     openViewer(index) {
@@ -591,7 +936,12 @@ document.addEventListener('alpine:init', () => {
       this.showViewerImage(index);
 
       this._keyHandler = (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+        if (this.crop.active) {
+          if (e.key === 'Escape') { e.preventDefault(); this.cancelCrop(); }
+          else if (e.key === 'Enter') { e.preventDefault(); this.confirmCrop(); }
+          return;
+        }
         if (e.key === 'Escape') this.closeViewer();
         else if (e.key === 'ArrowLeft') this.viewerNav(-1);
         else if (e.key === 'ArrowRight') this.viewerNav(1);
@@ -600,6 +950,7 @@ document.addEventListener('alpine:init', () => {
         else if (e.key === '0') this.viewerReset();
         else if (e.key === ' ') { e.preventDefault(); this.toggleSlideshow(); }
         else if (e.key.toLowerCase() === 'i') this.togglePanel();
+        else if (e.key.toLowerCase() === 'c') { e.preventDefault(); this.enterCropMode(); }
       };
       document.addEventListener('keydown', this._keyHandler);
     },
@@ -628,6 +979,7 @@ document.addEventListener('alpine:init', () => {
             <span class="gv-sep"></span>
             <button class="gv-btn gv-enhance" title="Send to Enhancer"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
             <button class="gv-btn gv-img2img" title="Send to Generate (img2img)"><i class="fa-solid fa-image"></i></button>
+            <button class="gv-btn gv-crop-open" title="Crop (C)"><i class="fa-solid fa-crop-simple"></i></button>
             <button class="gv-btn gv-close" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>
@@ -646,12 +998,14 @@ document.addEventListener('alpine:init', () => {
       $('.gv-panel').addEventListener('click', (e) => { e.stopPropagation(); this.togglePanel(); });
       $('.gv-enhance').addEventListener('click', (e) => { e.stopPropagation(); this.sendToTab('enhance'); });
       $('.gv-img2img').addEventListener('click', (e) => { e.stopPropagation(); this.sendToTab('generate'); });
+      $('.gv-crop-open').addEventListener('click', (e) => { e.stopPropagation(); this.enterCropMode(); });
       $('.gv-close').addEventListener('click', (e) => { e.stopPropagation(); this.closeViewer(); });
       $('.gallery-viewer-panel').addEventListener('click', (e) => e.stopPropagation());
       $('.gallery-viewer-toolbar').addEventListener('click', (e) => e.stopPropagation());
 
       const area = $('.gallery-viewer-image-area');
       area.addEventListener('wheel', (e) => {
+        if (this.crop.active) return;
         e.preventDefault();
         this.viewerZoomAt(e.deltaY < 0 ? 0.15 : -0.15, e.clientX, e.clientY);
       }, { passive: false });
@@ -660,6 +1014,7 @@ document.addEventListener('alpine:init', () => {
       let dragStartX, dragStartY, startPanX, startPanY, clickX, clickY, didDrag;
       area.addEventListener('mousedown', (e) => { clickX = e.clientX; clickY = e.clientY; didDrag = false; });
       imgWrap.addEventListener('mousedown', (e) => {
+        if (this.crop.active) return;
         if (e.button !== 0) return;
         this._isPanning = true;
         dragStartX = e.clientX; dragStartY = e.clientY;
@@ -696,6 +1051,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     destroyViewerOverlay(silent) {
+      this.exitCropMode();
       this.stopSlideshow();
       if (this._onPanMove) { document.removeEventListener('mousemove', this._onPanMove); this._onPanMove = null; }
       if (this._onPanEnd) { document.removeEventListener('mouseup', this._onPanEnd); this._onPanEnd = null; }
