@@ -150,5 +150,18 @@ module.exports = {
     top_k: { node: "18", field: "sampling_mode.top_k" },
     top_p: { node: "18", field: "sampling_mode.top_p" },
     repetition_penalty: { node: "18", field: "sampling_mode.repetition_penalty" }
+  },
+  remove_bg: {
+    image: { node: "24", field: "image", upload: true },
+    model: { node: "22", field: "model" },
+    sensitivity: { node: "22", field: "sensitivity" },
+    process_res: { node: "22", field: "process_res" },
+    mask_blur: { node: "22", field: "mask_blur" },
+    mask_offset: { node: "22", field: "mask_offset" },
+    invert_output: { node: "22", field: "invert_output" },
+    refine_foreground: { node: "22", field: "refine_foreground" },
+    background: { node: "22", field: "background" },
+    background_color: { node: "22", field: "background_color" },
+    megapixels: { node: "24", field: "megapixels" }
   }
 };

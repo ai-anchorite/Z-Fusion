@@ -40,7 +40,7 @@ const app = express();
 const PORT = process.env.PORT || 4242;
 
 const candidateRoots = [
-  path.resolve(__dirname, '../../../'),
+  path.resolve(__dirname, '../'),
 ];
 let APP_ROOT = candidateRoots[0];
 for (const r of candidateRoots) {
@@ -830,6 +830,83 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
     cleanupUploads();
     console.error("Generation error:", err);
     res.status(500).json({ error: err.message || "An unexpected error occurred during generation." });
+  }
+});
+
+// Background Removal API (RMBG 2.0 via ComfyUI)
+app.post('/api/remove-bg', async (req, res) => {
+  try {
+    const isOnline = await comfy.checkComfyOnline();
+    if (!isOnline) {
+      return res.status(503).json({ error: "ComfyUI backend is offline. Please launch ComfyUI first." });
+    }
+
+    const { fingerprint } = req.body || {};
+    if (!fingerprint) {
+      return res.status(400).json({ error: "Missing image fingerprint" });
+    }
+
+    const img = galleryDb.getImage(fingerprint);
+    if (!img || !img.file_path || !fs.existsSync(img.file_path)) {
+      return res.status(404).json({ error: "Source image not found" });
+    }
+
+    const jobId = `rmbg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    try { io.emit('job-started', { job_id: jobId, type: 'remove_bg' }); } catch (_) {}
+
+    const workflowPath = path.join(WORKFLOWS_DIR, 'senzu_remove_background.json');
+
+    const params = {
+      image: img.file_path,
+      model: "RMBG-2.0",
+      sensitivity: 1,
+      process_res: 1024,
+      mask_blur: 0,
+      mask_offset: 0,
+      invert_output: false,
+      refine_foreground: true,
+      background: "Alpha",
+      background_color: "#222222",
+      megapixels: 0
+    };
+
+    console.log(`[RemoveBG] Running RMBG workflow on: ${img.file_path}`);
+    const result = await comfy.runWorkflow(workflowPath, 'remove_bg', params);
+
+    const timestamp = Date.now();
+    const outPath = path.join(OUTPUT_TEMP_DIR, `rmbg_${timestamp}.png`);
+    await comfy.downloadComfyImage(result.filename, result.subfolder, result.type, outPath);
+    console.log(`[RemoveBG] Complete. Saved to ${outPath}`);
+
+    // Copy input to temp for before/after comparison in output viewer
+    const inpPath = path.join(OUTPUT_TEMP_DIR, `inp_${jobId}.png`);
+    fs.copyFileSync(img.file_path, inpPath);
+    const inputUrl = `/temp-outputs/${path.basename(inpPath)}`;
+
+    // Copy output to outputs/senzu/post/ for gallery indexing
+    const postOutputDir = path.join(SENZU_OUTPUTS, 'post');
+    if (!fs.existsSync(postOutputDir)) {
+      fs.mkdirSync(postOutputDir, { recursive: true });
+    }
+    const ext = path.extname(img.filename) || '.png';
+    const baseName = path.basename(img.filename, ext);
+    const galleryOutName = `${baseName}_rmbg_${Date.now().toString(36)}${ext}`;
+    const galleryOutPath = path.join(postOutputDir, galleryOutName);
+    fs.copyFileSync(outPath, galleryOutPath);
+    console.log(`[RemoveBG] Gallery copy saved to ${galleryOutPath}`);
+
+    const outputUrl = `/temp-outputs/${path.basename(outPath)}`;
+    try { io.emit('job-completed', { job_id: jobId, type: 'remove_bg', output_url: outputUrl, input_url: inputUrl }); } catch (_) {}
+
+    res.json({
+      success: true,
+      output: outputUrl,
+      gallery_output: `/outputs/${path.relative(OUTPUTS_ROOT, galleryOutPath).split(path.sep).map(encodeURIComponent).join('/')}`
+    });
+
+  } catch (err) {
+    console.error("Background removal error:", err);
+    res.status(500).json({ error: err.message || "Background removal failed" });
   }
 });
 

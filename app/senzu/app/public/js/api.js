@@ -523,6 +523,19 @@ const api = {
       return res.json();
     },
 
+    async removeBackground(fingerprint) {
+      const res = await fetch(`${API_BASE}/remove-bg`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Background removal failed');
+      }
+      return res.json();
+    },
+
     // --- Videos ---
     async videoSearch({ q = '', sort = 'btime', direction = -1, offset = 0, limit = 100 } = {}) {
       const params = new URLSearchParams({ q, sort, direction, offset, limit });

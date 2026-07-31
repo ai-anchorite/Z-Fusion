@@ -16,6 +16,7 @@ module.exports = {
           "git clone https://github.com/yolain/ComfyUI-Easy-Use.git app/comfyui/custom_nodes/comfyui-easy-use",
           "git clone https://github.com/erosDiffusion/ComfyUI-EulerDiscreteScheduler.git app/comfyui/custom_nodes/ComfyUI-EulerDiscreteScheduler",
           "git clone https://github.com/lbouaraba/comfyui-krea2edit app/comfyui/custom_nodes/comfyui-krea2edit",
+          "git clone https://github.com/1038lab/ComfyUI-RMBG.git app/comfyui/custom_nodes/ComfyUI-RMBG",
           "{{platform === 'win32' && gpu === 'amd' ? 'git clone https://github.com/patientx/ComfyUI-INT8-Fast-ROCM app/comfyui/custom_nodes/ComfyUI-INT8-Fast-ROCM' : ''}}",
         ]
       }

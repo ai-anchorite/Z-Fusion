@@ -20,7 +20,8 @@ module.exports = {
           "git -C comfyui/custom_nodes/comfyui-easy-use pull || git clone https://github.com/yolain/ComfyUI-Easy-Use.git comfyui/custom_nodes/comfyui-easy-use",
           "git -C comfyui/custom_nodes/ComfyUI-EulerDiscreteScheduler pull || git clone https://github.com/erosDiffusion/ComfyUI-EulerDiscreteScheduler.git comfyui/custom_nodes/ComfyUI-EulerDiscreteScheduler",
           "git -C CameraPromptsGenerator pull || git clone https://github.com/demon4932/CameraPromptsGenerator.git CameraPromptsGenerator",
-          "git -C comfyui/custom_nodes/comfyui-krea2edit pull || git clone https://github.com/lbouaraba/comfyui-krea2edit comfyui/custom_nodes/comfyui-krea2edit",
+          "git -C comfyui/custom_nodes/comfyui-krea2edit pull || git clone https://github.com/lbouaraba/comfyui-krea2edit.git comfyui/custom_nodes/comfyui-krea2edit",
+          "git -C comfyui/custom_nodes/ComfyUI-RMBG pull || git clone https://github.com/1038lab/ComfyUI-RMBG.git comfyui/custom_nodes/ComfyUI-RMBG",
           "{{platform === 'win32' && gpu === 'amd' ? 'git -C comfyui/custom_nodes/ComfyUI-INT8-Fast-ROCM pull || git clone https://github.com/patientx/ComfyUI-INT8-Fast-ROCM comfyui/custom_nodes/ComfyUI-INT8-Fast-ROCM' : ''}}",
         ]
       }

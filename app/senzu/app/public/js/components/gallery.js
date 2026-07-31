@@ -959,6 +959,18 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    async removeBackground() {
+      const item = this.items[this._viewerIndex];
+      if (!item || !item.fingerprint) return;
+      this._showToast('Removing background...');
+      try {
+        await api.gallery.removeBackground(item.fingerprint);
+        this._flashButton('remove_bg');
+      } catch (e) {
+        alert('Background removal failed: ' + e.message);
+      }
+    },
+
     _cropImageRect() {
       const img = this._overlay && this._overlay.querySelector('.gallery-viewer-img');
       if (!img) return null;
@@ -1365,9 +1377,10 @@ document.addEventListener('alpine:init', () => {
       const imgAfter = this._outputOverlay.querySelector('.gv-out-after');
       const counter = this._outputOverlay.querySelector('.gallery-viewer-counter');
       const hasInput = !!job.input_url;
+      const swapped = job.type === 'remove_bg';
 
-      if (imgAfter) { const pre = new Image(); pre.onload = pre.onerror = () => { imgAfter.src = job.output_url; }; pre.src = job.output_url; }
-      if (imgBefore) { const pre = new Image(); pre.onload = pre.onerror = () => { imgBefore.src = hasInput ? job.input_url : job.output_url; imgBefore.style.display = ''; }; pre.src = hasInput ? job.input_url : job.output_url; }
+      if (imgAfter) { const afterSrc = swapped ? (job.input_url || job.output_url) : job.output_url; const pre = new Image(); pre.onload = pre.onerror = () => { imgAfter.src = afterSrc; }; pre.src = afterSrc; }
+      if (imgBefore) { const beforeSrc = swapped ? job.output_url : (hasInput ? job.input_url : job.output_url); const pre = new Image(); pre.onload = pre.onerror = () => { imgBefore.src = beforeSrc; imgBefore.style.display = ''; }; pre.src = beforeSrc; }
       if (counter) counter.textContent = `Result ${this.outputViewerIndex + 1} / ${jobs.length}`;
 
       const prevBtn = this._outputOverlay.querySelector('.gallery-viewer-prev');
@@ -1416,7 +1429,7 @@ document.addEventListener('alpine:init', () => {
       if (!job || !job.output_url) return;
 
       const ts = Date.now().toString(36);
-      const typePrefix = job.type === 'enhance' ? 'enh' : job.type === 'generate' ? 'gen' : 'out';
+      const typePrefix = job.type === 'enhance' ? 'enh' : job.type === 'generate' ? 'gen' : job.type === 'remove_bg' ? 'post' : 'out';
       const destName = `senzu_${typePrefix}_${ts}.png`;
 
       await api.saveOutput(job.output_url, { saveFolder: this._appSaveFolder, destName });
@@ -1631,6 +1644,7 @@ document.addEventListener('alpine:init', () => {
         else if (e.key === ' ') { e.preventDefault(); this.toggleSlideshow(); }
         else if (e.key.toLowerCase() === 'i') this.togglePanel();
         else if (e.key.toLowerCase() === 'c') { e.preventDefault(); this.enterCropMode(); }
+        else if (e.key.toLowerCase() === 'b') { e.preventDefault(); this.removeBackground(); }
       };
       document.addEventListener('keydown', this._keyHandler);
     },
@@ -1660,6 +1674,7 @@ document.addEventListener('alpine:init', () => {
             <button class="gv-btn gv-enhance" title="Send to Enhancer"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
             <button class="gv-btn gv-img2img" title="Send to Generate (img2img)"><i class="fa-solid fa-image"></i></button>
             <button class="gv-btn gv-crop-open" title="Crop (C)"><i class="fa-solid fa-crop-simple"></i></button>
+            <button class="gv-btn gv-rmbg" title="Remove Background (B)"><i class="fa-solid fa-eraser"></i></button>
             <button class="gv-btn gv-close" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>
@@ -1679,6 +1694,7 @@ document.addEventListener('alpine:init', () => {
       $('.gv-enhance').addEventListener('click', (e) => { e.stopPropagation(); this.sendToTab('enhance'); });
       $('.gv-img2img').addEventListener('click', (e) => { e.stopPropagation(); this.sendToTab('generate'); });
       $('.gv-crop-open').addEventListener('click', (e) => { e.stopPropagation(); this.enterCropMode(); });
+      $('.gv-rmbg').addEventListener('click', (e) => { e.stopPropagation(); this.removeBackground(); });
       $('.gv-close').addEventListener('click', (e) => { e.stopPropagation(); this.closeViewer(); });
       $('.gallery-viewer-panel').addEventListener('click', (e) => e.stopPropagation());
       $('.gallery-viewer-toolbar').addEventListener('click', (e) => e.stopPropagation());
@@ -1758,7 +1774,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     _flashButton(target) {
-      const cls = target === 'enhance' ? '.gv-enhance' : target === 'generate' ? '.gv-img2img' : null;
+      const cls = target === 'enhance' ? '.gv-enhance' : target === 'generate' ? '.gv-img2img' : target === 'remove_bg' ? '.gv-rmbg' : null;
       if (!cls || !this._overlay) return;
       const btn = this._overlay.querySelector(cls);
       if (!btn) return;
@@ -1773,6 +1789,20 @@ document.addEventListener('alpine:init', () => {
         btn.style.color = '';
         btn.style.borderColor = '';
       }, 1200);
+    },
+
+    _showToast(message, duration = 2500) {
+      const existing = document.querySelector('.gv-toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = 'gv-toast';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add('gv-toast-show'));
+      setTimeout(() => {
+        toast.classList.remove('gv-toast-show');
+        setTimeout(() => { toast.remove(); }, 350);
+      }, duration);
     },
 
     viewerNav(dir) {
