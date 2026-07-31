@@ -132,7 +132,7 @@
       "sampling_mode.seed": 0,
       "sampling_mode.presence_penalty": 0,
       "thinking": false,
-      "use_default_template": false,
+      "use_default_template": true,
       "clip": [
         "10",
         0

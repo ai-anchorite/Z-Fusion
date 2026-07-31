@@ -252,6 +252,31 @@ const api = {
     }
     return res.json();
   },
+
+  async saveOutput(url, { saveFolder = '', destName = '' } = {}) {
+    if (!url) return { success: false };
+    const tempFilename = url.split('/').pop();
+    const ts = Date.now().toString(36);
+    const name = destName || `senzu_${ts}.png`;
+
+    if (saveFolder && saveFolder.trim()) {
+      try {
+        await api.saveOutputToFolder(tempFilename, saveFolder, name);
+        return { success: true, method: 'folder', name };
+      } catch (err) {
+        alert('Failed to save to folder: ' + err.message);
+        // fall through to browser download
+      }
+    }
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return { success: true, method: 'download', name };
+  },
   
   async clearTempOutputs() {
     const res = await fetch(`${API_BASE}/outputs/clear-temp`, {
@@ -495,6 +520,92 @@ const api = {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Crop failed');
       }
+      return res.json();
+    },
+
+    // --- Videos ---
+    async videoSearch({ q = '', sort = 'btime', direction = -1, offset = 0, limit = 100 } = {}) {
+      const params = new URLSearchParams({ q, sort, direction, offset, limit });
+      const res = await fetch(`${API_BASE}/gallery/videos/search?${params.toString()}`);
+      return res.json();
+    },
+
+    async videoGet(fingerprint) {
+      const res = await fetch(`${API_BASE}/gallery/videos/${encodeURIComponent(fingerprint)}`);
+      if (!res.ok) throw new Error('Not found');
+      return res.json();
+    },
+
+    async videoCount() {
+      const res = await fetch(`${API_BASE}/gallery/videos/count`);
+      return res.json();
+    },
+
+    async videoTags() {
+      const res = await fetch(`${API_BASE}/gallery/videos/tags`);
+      return res.json();
+    },
+
+    async videoAddTags(fingerprints, tags) {
+      const res = await fetch(`${API_BASE}/gallery/videos/tags/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints, tags })
+      });
+      return res.json();
+    },
+
+    async videoRemoveTags(fingerprints, tags) {
+      const res = await fetch(`${API_BASE}/gallery/videos/tags/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints, tags })
+      });
+      return res.json();
+    },
+
+    async videoDelete(fingerprints) {
+      const res = await fetch(`${API_BASE}/gallery/videos/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints })
+      });
+      return res.json();
+    },
+
+    async videoFolders() {
+      const res = await fetch(`${API_BASE}/gallery/videos/folders`);
+      return res.json();
+    },
+
+    async videoAddFolder(path, recursive) {
+      const res = await fetch(`${API_BASE}/gallery/videos/folders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, recursive })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to add folder');
+      }
+      return res.json();
+    },
+
+    async videoRemoveFolder(path) {
+      const res = await fetch(`${API_BASE}/gallery/videos/folders`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
+      return res.json();
+    },
+
+    async videoCaptureFrame(dataUrl, filename) {
+      const res = await fetch(`${API_BASE}/gallery/videos/capture-frame`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl, filename })
+      });
       return res.json();
     }
   }

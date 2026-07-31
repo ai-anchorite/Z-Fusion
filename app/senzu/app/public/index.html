@@ -505,7 +505,51 @@
             </div>
           </div>
         </div>
-        
+
+        <!-- Output queue slide-out -->
+        <div class="gallery-settings-panel" x-show="queueOpen" x-cloak @click.self="queueOpen = false">
+          <div class="gallery-settings-inner glass-card" style="width: 280px; padding: 16px;">
+            <div class="gallery-settings-head">
+              <h3><i class="fa-solid fa-photo-film"></i> Output Queue</h3>
+              <button class="btn-icon-overlay" @click="queueOpen = false"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div x-show="jobs.length > 0" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;">
+              <template x-for="job in jobs" :key="job.job_id">
+                <div class="queue-job-item" :class="job.status === 'done' ? 'queue-job-done' : ''">
+                  <div class="queue-job-thumb" @click="job.status === 'done' && openOutputViewerForJob(job.job_id)" :style="job.status === 'done' ? 'cursor:pointer' : ''">
+                    <img x-show="job.output_url" :src="job.output_url" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">
+                    <div x-show="!job.output_url" class="queue-job-thumb-placeholder" style="width:48px;height:48px;border-radius:6px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;">
+                      <i class="fa-solid fa-circle-notch fa-spin" style="color:var(--primary-neon);font-size:0.9rem;"></i>
+                    </div>
+                    <span x-show="job.status === 'processing'" class="queue-job-badge" style="background:var(--primary-neon);">
+                      <i class="fa-solid fa-spinner fa-spin" style="font-size:0.5rem;"></i>
+                    </span>
+                    <span x-show="job.status === 'error'" class="queue-job-badge" style="background:var(--danger);">
+                      <i class="fa-solid fa-exclamation" style="font-size:0.45rem;"></i>
+                    </span>
+                  </div>
+                  <div class="queue-job-info">
+                    <span class="queue-job-type" x-text="outputTypeLabel(job.type)"></span>
+                    <span class="queue-job-status" x-show="job.status === 'processing'" style="color:var(--primary-neon);">Processing...</span>
+                    <span class="queue-job-status" x-show="job.status === 'pending'" style="color:var(--text-muted);">Pending</span>
+                    <span class="queue-job-status" x-show="job.status === 'done'" x-text="formatTime(job.completed_at)" style="color:var(--text-secondary);"></span>
+                    <span class="queue-job-status" x-show="job.status === 'error'" style="color:var(--danger);">Error</span>
+                  </div>
+                  <button x-show="job.status !== 'done'" class="queue-job-remove" @click="cancelJob(job.job_id)" title="Cancel">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </template>
+            </div>
+            <div x-show="jobs.length === 0" style="color:var(--text-muted);text-align:center;padding:24px 0;font-size:0.85rem;">
+              No jobs yet. Run an Enhance or Generate to see outputs here.
+            </div>
+            <button class="btn btn-sm btn-primary" @click="openOutputViewer()" :disabled="_doneCount === 0"
+                    style="width:100%;margin-top:auto;flex-shrink:0;" x-text="'View ' + _doneCount + ' output' + (_doneCount !== 1 ? 's' : '')"></button>
+          </div>
+        </div>
+
       </div>
       
       <!-- Right Output Panel -->
@@ -675,9 +719,9 @@
           </button>
         </div>
         
+        </div>
+
       </div>
-      
-    </div>
 
     <!-- Presets CRUD Tab View -->
     <div x-show="activeTab === 'presets'" class="glass-card" style="display: flex; flex-direction: column; gap: 1.5rem;">
@@ -851,7 +895,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
           <div class="input-group" style="margin-bottom: 0;">
             <label class="input-label">Refinement Prompt</label>
-            <select class="input-control" x-model="appSettings.enhancer_system_prompt" @change="saveSettings()">
+            <select class="input-control" x-ref="selRefinementPrompt" x-model="appSettings.enhancer_system_prompt" @change="saveSettings()">
               <template x-for="(content, name) in genEnhancerPromptsList" :key="name">
                 <option :value="name" x-text="name"></option>
               </template>
@@ -859,7 +903,7 @@
           </div>
           <div class="input-group" style="margin-bottom: 0;">
             <label class="input-label">Description Prompt</label>
-            <select class="input-control" x-model="appSettings.description_system_prompt" @change="saveSettings()">
+            <select class="input-control" x-ref="selDescriptionPrompt" x-model="appSettings.description_system_prompt" @change="saveSettings()">
               <template x-for="(content, name) in genEnhancerPromptsList" :key="name">
                 <option :value="name" x-text="name"></option>
               </template>
@@ -876,7 +920,7 @@
           </div>
           <div class="input-group" style="margin-bottom: 0;">
             <label class="input-label">Refinement LLM</label>
-            <select class="input-control" x-model="appSettings.enhancer_llm_model" @change="saveSettings()">
+            <select class="input-control" x-ref="selRefinementLLM" x-model="appSettings.enhancer_llm_model" @change="saveSettings()">
               <template x-for="m in models.text_encoders" :key="m">
                 <option :value="m" x-text="m"></option>
               </template>
@@ -884,7 +928,7 @@
           </div>
           <div class="input-group" style="margin-bottom: 0;">
             <label class="input-label">Description LLM</label>
-            <select class="input-control" x-model="appSettings.description_llm_model" @change="saveSettings()">
+            <select class="input-control" x-ref="selDescriptionLLM" x-model="appSettings.description_llm_model" @change="saveSettings()">
               <template x-for="m in models.text_encoders" :key="m">
                 <option :value="m" x-text="m"></option>
               </template>
@@ -2061,7 +2105,15 @@
           <button class="btn btn-sm gallery-icon-btn" @click="refresh()" title="Refresh — clear search">
             <i class="fa-solid fa-rotate"></i>
           </button>
-          <span class="gallery-count" x-text="total + ' image' + (total === 1 ? '' : 's')"></span>
+          <span class="gallery-count" x-text="total + ' ' + (mediaType === 'videos' ? 'video' : 'image') + (total === 1 ? '' : 's')"></span>
+          <div class="gallery-media-toggle">
+            <button :class="mediaType === 'images' ? 'active' : ''" @click="switchMediaType('images')">
+              <i class="fa-regular fa-image"></i> Images
+            </button>
+            <button :class="mediaType === 'videos' ? 'active' : ''" @click="switchMediaType('videos')">
+              <i class="fa-solid fa-video"></i> Videos
+            </button>
+          </div>
           <div class="gallery-search-wrap">
             <i class="fa-solid fa-magnifying-glass"></i>
             <input class="gallery-search" type="text" x-model="searchQuery" @input="debouncedSearch()"
@@ -2076,15 +2128,20 @@
             <select class="input-control" x-model="sortKey" @change="search(false)">
               <option value="btime">Date created</option>
               <option value="filename">Filename</option>
-              <option value="model_name">Model</option>
+              <option value="model_name" x-show="mediaType === 'images'">Model</option>
               <option value="size">File size</option>
-              <option value="resolution">Resolution</option>
+              <option value="resolution" x-show="mediaType === 'images'">Resolution</option>
+              <option value="duration" x-show="mediaType === 'videos'">Duration</option>
             </select>
             <button class="btn btn-sm" @click="sortDir = (sortDir === -1 ? 1 : -1); search(false)"
                     :title="sortDir === -1 ? 'Descending' : 'Ascending'">
               <i class="fa-solid" :class="sortDir === -1 ? 'fa-arrow-down-wide-short' : 'fa-arrow-up-short-wide'"></i>
             </button>
           </div>
+          <button class="btn btn-sm gallery-icon-btn" @click="openQueue()" title="Output queue">
+            <i class="fa-solid fa-photo-film"></i>
+            <span x-show="_doneCount > 0" class="queue-badge" x-text="_doneCount > 99 ? '99+' : _doneCount"></span>
+          </button>
           <button class="btn btn-sm gallery-icon-btn gallery-toolbar-push" @click="openFolders()" title="Connected folders">
             <i class="fa-solid fa-folder-tree"></i>
           </button>
@@ -2096,23 +2153,21 @@
           <button class="btn btn-sm gallery-icon-btn" @click="openSettings()" title="Gallery settings"><i class="fa-solid fa-sliders"></i></button>
         </div>
 
-        <!-- Bookmarks bar (browser-style nested chips) -->
-        <div class="gallery-bookmarkbar" x-show="settings.showBookmarks" x-cloak @click.outside="openChip = null">
+        <!-- Bookmarks bar — images -->
+        <div class="gallery-bookmarkbar" x-show="mediaType === 'images' && settings.showBookmarks" x-cloak @click.outside="openChip = null">
 
-          <!-- "All Images" chip — clears all filters -->
           <button class="gallery-bmk-head" @click="clearSearch()">
             <i class="fa-solid fa-globe"></i> <span>All Images</span>
           </button>
 
-          <!-- Saved searches, grouped under a Bookmarks folder chip -->
-          <div class="gallery-bmk" x-show="bookmarks.length > 0">
-            <button class="gallery-bmk-head" :class="openChip === '__bmk' ? 'open' : ''" @click="toggleChip('__bmk')">
+          <div class="gallery-bmk" x-show="imageBookmarks.length > 0">
+            <button class="gallery-bmk-head" :class="openChip === '__bmk-img' ? 'open' : ''" @click="toggleChip('__bmk-img')">
               <i class="fa-solid fa-star"></i> <span>Bookmarks</span>
-              <span class="gallery-bmk-count" x-text="bookmarks.length"></span>
+              <span class="gallery-bmk-count" x-text="imageBookmarks.length"></span>
               <i class="fa-solid fa-caret-down gallery-bmk-caret"></i>
             </button>
-            <div class="gallery-bmk-menu" x-show="openChip === '__bmk'" x-cloak>
-              <template x-for="b in bookmarks" :key="b.id">
+            <div class="gallery-bmk-menu" x-show="openChip === '__bmk-img'" x-cloak>
+              <template x-for="b in imageBookmarks" :key="b.id">
                 <div class="gallery-bmk-item">
                   <button class="gallery-bmk-item-btn" @click="applyBookmark(b.query); openChip = null" :title="b.query">
                     <i class="fa-solid fa-magnifying-glass"></i> <span x-text="b.label || b.query"></span>
@@ -2123,8 +2178,7 @@
             </div>
           </div>
 
-          <!-- Connected folders (each expandable to its subfolders) -->
-          <template x-for="f in folders" :key="f.path">
+          <template x-for="f in imageFolders" :key="f.path">
             <div class="gallery-bmk">
               <button class="gallery-bmk-head" :class="openChip === f.path ? 'open' : ''" @click="filterByFolder(f)">
                 <i class="fa-solid fa-folder"></i> <span x-text="f.name"></span>
@@ -2145,7 +2199,58 @@
             </div>
           </template>
 
-          <span x-show="bookmarks.length === 0 && folders.length === 0" class="gallery-bookmark-empty">
+          <span x-show="imageBookmarks.length === 0 && imageFolders.length === 0" class="gallery-bookmark-empty">
+            No bookmarks yet — save a search with <i class="fa-regular fa-star"></i>, or connect a folder with <i class="fa-solid fa-folder-tree"></i>.
+          </span>
+        </div>
+
+        <!-- Bookmarks bar — videos -->
+        <div class="gallery-bookmarkbar" x-show="mediaType === 'videos' && settings.showBookmarks" x-cloak @click.outside="openChip = null">
+
+          <button class="gallery-bmk-head" @click="clearSearch()">
+            <i class="fa-solid fa-globe"></i> <span>All Videos</span>
+          </button>
+
+          <div class="gallery-bmk" x-show="videoBookmarks.length > 0">
+            <button class="gallery-bmk-head" :class="openChip === '__bmk-vid' ? 'open' : ''" @click="toggleChip('__bmk-vid')">
+              <i class="fa-solid fa-star"></i> <span>Bookmarks</span>
+              <span class="gallery-bmk-count" x-text="videoBookmarks.length"></span>
+              <i class="fa-solid fa-caret-down gallery-bmk-caret"></i>
+            </button>
+            <div class="gallery-bmk-menu" x-show="openChip === '__bmk-vid'" x-cloak>
+              <template x-for="b in videoBookmarks" :key="b.id">
+                <div class="gallery-bmk-item">
+                  <button class="gallery-bmk-item-btn" @click="applyBookmark(b.query); openChip = null" :title="b.query">
+                    <i class="fa-solid fa-magnifying-glass"></i> <span x-text="b.label || b.query"></span>
+                  </button>
+                  <i class="fa-solid fa-xmark gallery-bmk-item-remove" @click.stop="deleteBookmark(b.id)" title="Remove bookmark"></i>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <template x-for="f in videoFolders" :key="f.path">
+            <div class="gallery-bmk">
+              <button class="gallery-bmk-head" :class="openChip === f.path ? 'open' : ''" @click="filterByFolder(f)">
+                <i class="fa-solid fa-folder"></i> <span x-text="f.name"></span>
+                <span class="gallery-bmk-count" x-text="f.count"></span>
+                <i class="fa-solid fa-caret-down gallery-bmk-caret" x-show="f.subfolders && f.subfolders.length"
+                   @click.stop="toggleChip(f.path)"></i>
+              </button>
+              <div class="gallery-bmk-menu" x-show="openChip === f.path" x-cloak>
+                <template x-for="sf in f.subfolders" :key="sf.subfolder">
+                  <div class="gallery-bmk-item">
+                    <button class="gallery-bmk-item-btn" @click="filterBySubfolder(f, sf.subfolder); openChip = null" :title="sf.subfolder">
+                      <i class="fa-solid fa-folder"></i> <span x-text="sf.subfolder"></span>
+                      <span class="gallery-bmk-count" x-text="sf.count"></span>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <span x-show="videoBookmarks.length === 0 && videoFolders.length === 0" class="gallery-bookmark-empty">
             No bookmarks yet — save a search with <i class="fa-regular fa-star"></i>, or connect a folder with <i class="fa-solid fa-folder-tree"></i>.
           </span>
         </div>
@@ -2153,7 +2258,7 @@
         <!-- Scan progress -->
         <div class="gallery-scan" x-show="scan.active">
           <i class="fa-solid fa-circle-notch fa-spin"></i>
-          Indexing images… <span x-text="scan.current"></span> / <span x-text="scan.total"></span>
+          <span>Indexing… <span x-text="scan.current"></span> / <span x-text="scan.total"></span></span>
         </div>
 
         <!-- Grid (rendered manually for performance) -->
@@ -2162,10 +2267,12 @@
         </div>
         <!-- Empty state -->
         <div class="gallery-empty" x-show="!loading && items.length === 0">
-          <i class="fa-solid fa-images"></i>
-          <p>No images found</p>
+          <i class="fa-solid" :class="mediaType === 'videos' ? 'fa-video' : 'fa-images'"></i>
+          <p x-show="mediaType === 'images'">No images found</p>
+          <p x-show="mediaType === 'videos'">No videos found</p>
           <span x-show="searchQuery">Try a different search query.</span>
-          <span x-show="!searchQuery">Enhanced and generated images appear here automatically.</span>
+          <span x-show="!searchQuery && mediaType === 'images'">Enhanced and generated images appear here automatically.</span>
+          <span x-show="!searchQuery && mediaType === 'videos'">Connect a folder with videos to get started.</span>
         </div>
 
         <!-- Selection footer -->
@@ -2326,9 +2433,9 @@
             </div>
 
             <div class="gallery-settings-section">
-              <span class="gallery-settings-section-title"><i class="fa-solid fa-list"></i> Folders (<span x-text="folders.length"></span>)</span>
+              <span class="gallery-settings-section-title"><i class="fa-solid fa-list"></i> Folders (<span x-text="_folders.length"></span>)</span>
               <div class="gallery-folder-list">
-                <template x-for="f in folders" :key="f.path">
+                <template x-for="f in _folders" :key="f.path">
                   <div class="gallery-folder-item">
                     <div class="gallery-folder-info">
                       <div class="gallery-folder-name">
@@ -2347,6 +2454,50 @@
                 </template>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Output queue slide-out -->
+        <div class="gallery-settings-panel" x-show="queueOpen" x-cloak @click.self="queueOpen = false">
+          <div class="gallery-settings-inner glass-card" style="width: 280px; padding: 16px;">
+            <div class="gallery-settings-head">
+              <h3><i class="fa-solid fa-photo-film"></i> Output Queue</h3>
+              <button class="btn-icon-overlay" @click="queueOpen = false"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div x-show="jobs.length > 0" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;">
+              <template x-for="job in jobs" :key="job.job_id">
+                <div class="queue-job-item" :class="job.status === 'done' ? 'queue-job-done' : ''">
+                  <div class="queue-job-thumb" @click="job.status === 'done' && openOutputViewerForJob(job.job_id)" :style="job.status === 'done' ? 'cursor:pointer' : ''">
+                    <img x-show="job.output_url" :src="job.output_url" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">
+                    <div x-show="!job.output_url" class="queue-job-thumb-placeholder" style="width:48px;height:48px;border-radius:6px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;">
+                      <i class="fa-solid fa-circle-notch fa-spin" style="color:var(--primary-neon);font-size:0.9rem;"></i>
+                    </div>
+                    <span x-show="job.status === 'processing'" class="queue-job-badge" style="background:var(--primary-neon);">
+                      <i class="fa-solid fa-spinner fa-spin" style="font-size:0.5rem;"></i>
+                    </span>
+                    <span x-show="job.status === 'error'" class="queue-job-badge" style="background:var(--danger);">
+                      <i class="fa-solid fa-exclamation" style="font-size:0.45rem;"></i>
+                    </span>
+                  </div>
+                  <div class="queue-job-info">
+                    <span class="queue-job-type" x-text="outputTypeLabel(job.type)"></span>
+                    <span class="queue-job-status" x-show="job.status === 'processing'" style="color:var(--primary-neon);">Processing...</span>
+                    <span class="queue-job-status" x-show="job.status === 'pending'" style="color:var(--text-muted);">Pending</span>
+                    <span class="queue-job-status" x-show="job.status === 'done'" x-text="formatTime(job.completed_at)" style="color:var(--text-secondary);"></span>
+                    <span class="queue-job-status" x-show="job.status === 'error'" style="color:var(--danger);">Error</span>
+                  </div>
+                  <button x-show="job.status !== 'done'" class="queue-job-remove" @click="cancelJob(job.job_id)" title="Cancel">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </template>
+            </div>
+            <div x-show="jobs.length === 0" style="color:var(--text-muted);text-align:center;padding:24px 0;font-size:0.85rem;">
+              No jobs yet. Run an Enhance or Generate to see outputs here.
+            </div>
+            <button class="btn btn-sm btn-primary" @click="openOutputViewer()" :disabled="_doneCount === 0"
+                    style="width:100%;margin-top:auto;flex-shrink:0;" x-text="'View ' + _doneCount + ' output' + (_doneCount !== 1 ? 's' : '')"></button>
           </div>
         </div>
 

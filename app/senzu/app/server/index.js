@@ -18,8 +18,12 @@ const genEnhancerPrompts = require('./gen-enhancer-prompts');
 const { processDynamicPrompt } = require('./dynamicPrompt');
 
 const GalleryDatabase = require('./database');
-const { createGalleryRouter } = require('./gallery');
+const { createGalleryRouter, createVideoRouter } = require('./gallery');
+const { createJobsRouter } = require('./jobs');
 const scanner = require('./scanner');
+const videoScanner = require('./video-scanner');
+const VideoDatabase = require('./video-db');
+const { detectHardwareEncoder } = require('./video-transcode');
 const Parser = require('./crawler/parser');
 
 // Last-resort guards: the backend also serves the web UI and the /api/status
@@ -93,6 +97,7 @@ app.use(express.static(path.resolve(__dirname, '../public')));
 // Serve outputs static directory
 app.use('/outputs', express.static(OUTPUTS_ROOT));
 app.use('/temp-outputs', express.static(OUTPUT_TEMP_DIR));
+app.use('/uploads', express.static(MULTER_TEMP));
 
 // Clear temp outputs on start if setting enabled
 const appSettings = settings.loadSettings();
@@ -693,6 +698,9 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
     // UNet loader so the workflow validates correctly everywhere.
     const int8Available = fs.existsSync(path.resolve(__dirname, '../comfyui/custom_nodes/ComfyUI-INT8-Fast-ROCM'));
 
+    const jobId = `gen_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    try { io.emit('job-started', { job_id: jobId, type: 'generate' }); } catch (_) {}
+
     let result;
     if (useKrea2Edit) {
       // Krea2 Identity Edit: dedicated workflow. The identity-edit LoRA is baked
@@ -798,18 +806,25 @@ app.post('/api/generate', upload.fields([{ name: 'image', maxCount: 1 }, { name:
       result = await comfy.runWorkflow(workflowPath, 'gen1', genParams, undefined, !int8Available);
     }
 
-    // Clean up uploaded images
-    cleanupUploads();
+    // Copy input to persisted temp so the output viewer can serve before/after comparison
+    const genInputUrl = (inputImage && useImgInput)
+      ? (() => { const inpPath = path.join(OUTPUT_TEMP_DIR, `inp_${jobId}.png`); fs.copyFileSync(inputImage.path, inpPath); return `/temp-outputs/${path.basename(inpPath)}`; })()
+      : null;
 
     const timestamp = Date.now();
     const outPath = path.join(OUTPUT_TEMP_DIR, `gen_${timestamp}.png`);
     await comfy.downloadComfyImage(result.filename, result.subfolder, result.type, outPath);
     console.log(`[Generate] Complete. Saved to ${outPath}`);
 
+    const outputUrl = `/temp-outputs/${path.basename(outPath)}`;
+    try { io.emit('job-completed', { job_id: jobId, type: 'generate', output_url: outputUrl, input_url: genInputUrl }); } catch (_) {}
+
     res.json({
       success: true,
-      output: `/temp-outputs/${path.basename(outPath)}`
+      output: outputUrl
     });
+
+    cleanupUploads();
 
   } catch (err) {
     cleanupUploads();
@@ -883,6 +898,9 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       // If exifr fails or the input isn't a ComfyUI output, parentMeta stays ''
     }
     
+    const jobId = `enh_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    try { io.emit('job-started', { job_id: jobId, type: 'enhance' }); } catch (_) {}
+
     // Step 1: Run Edit if mode is full or edit
     let editResult = null;
     let editOutPath = '';
@@ -1036,14 +1054,10 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       } catch (_) {}
     }
 
-    // Clean up local temp uploaded file
-    if (req.file && fs.existsSync(req.file.path)) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (err) {
-        // Ignored
-      }
-    }
+    // Copy input to persisted temp for before/after in output viewer
+    const inputUrl = req.file
+      ? (() => { const inpPath = path.join(OUTPUT_TEMP_DIR, `inp_${jobId}.png`); fs.copyFileSync(req.file.path, inpPath); return `/temp-outputs/${path.basename(inpPath)}`; })()
+      : null;
 
     // Autosave outputs to user's save folder if enabled
     if (parsedParams.autosave && parsedParams.save_folder) {
@@ -1071,7 +1085,14 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
       responsePayload.upscaleOutput = responsePayload.output;
     }
 
+    try { io.emit('job-completed', { job_id: jobId, type: 'enhance', output_url: responsePayload.output, input_url: inputUrl }); } catch (_) {}
+
     res.json(responsePayload);
+
+    // Clean up local temp uploaded file
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
 
   } catch (err) {
     console.error("Enhancement pipeline error:", err);
@@ -1144,7 +1165,7 @@ async function reindexGallery() {
   return galleryDb.getCount();
 }
 
-// Native OS folder picker (Windows dialog / macOS osascript / Linux zenity).
+// Native OS folder picker using the standard file explorer.
 // Returns { path } on selection, { cancelled } if dismissed, or
 // { unavailable } if no native picker exists (client offers a path input).
 function pickFolder() {
@@ -1153,12 +1174,18 @@ function pickFolder() {
     const platform = process.platform;
     let cmd, args;
     if (platform === 'win32') {
+      // Use OpenFileDialog with ValidateNames=false to get the standard
+      // Explorer browse dialog instead of the old FolderBrowserDialog tree.
       const ps = "Add-Type -AssemblyName System.Windows.Forms | Out-Null; " +
-        "$d = New-Object System.Windows.Forms.FolderBrowserDialog; " +
-        "$d.Description = 'Select a folder to connect to the Senzu gallery'; " +
-        "$d.ShowNewFolderButton = $false; " +
+        "$d = New-Object System.Windows.Forms.OpenFileDialog; " +
+        "$d.InitialDirectory = [Environment]::GetFolderPath('Desktop'); " +
+        "$d.Title = 'Select a folder to connect to the Senzu gallery'; " +
+        "$d.CheckFileExists = $false; " +
+        "$d.CheckPathExists = $true; " +
+        "$d.ValidateNames = $false; " +
+        "$d.FileName = 'Folder Selection'; " +
         "$top = New-Object System.Windows.Forms.Form; $top.TopMost = $true; " +
-        "if ($d.ShowDialog($top) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.SelectedPath) }";
+        "if ($d.ShowDialog($top) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write([System.IO.Path]::GetDirectoryName($d.FileName)) }";
       cmd = 'powershell';
       args = ['-STA', '-NoProfile', '-NonInteractive', '-Command', ps];
     } else if (platform === 'darwin') {
@@ -1190,6 +1217,114 @@ app.use('/api/gallery', createGalleryRouter({
   protectedFolders: GALLERY_PROTECTED_FOLDERS
 }));
 
+// ============================================================
+// Video Gallery: SQLite video index + scanner + watcher
+// ============================================================
+const VIDEO_DB_PATH = path.join(DATA_DIR, 'videos.db');
+const VIDEO_THUMB_DIR = path.join(DATA_DIR, 'video-thumbnails');
+const VIDEO_CACHE_DIR = path.join(DATA_DIR, 'video-cache');
+const VIDEO_SCREENSHOT_DIR = path.join(SENZU_OUTPUTS, 'screenshots');
+if (!fs.existsSync(VIDEO_THUMB_DIR)) fs.mkdirSync(VIDEO_THUMB_DIR, { recursive: true });
+if (!fs.existsSync(VIDEO_CACHE_DIR)) fs.mkdirSync(VIDEO_CACHE_DIR, { recursive: true });
+if (!fs.existsSync(VIDEO_SCREENSHOT_DIR)) fs.mkdirSync(VIDEO_SCREENSHOT_DIR, { recursive: true });
+
+// Eagerly probe hardware encoder in background so first transcode doesn't wait
+detectHardwareEncoder();
+
+const videoDb = new VideoDatabase(VIDEO_DB_PATH);
+
+// Default video folder: scan the Senzu outputs folder for videos
+videoDb.addFolder(SENZU_OUTPUTS, true);
+
+app.use('/api/gallery/videos', createVideoRouter({
+  videoDb,
+  outputsRoot: OUTPUTS_ROOT,
+  trashDir: GALLERY_TRASH_DIR,
+  thumbDir: VIDEO_THUMB_DIR,
+  screenshotDir: VIDEO_SCREENSHOT_DIR,
+  cacheDir: VIDEO_CACHE_DIR,
+  scanFolder: async (folderPath, recursive) => {
+    await videoScanner.scanDirectory(videoDb, folderPath, VIDEO_THUMB_DIR, recursive,
+      (progress) => { io.emit('video-progress', progress); }
+    );
+    return videoDb.getFolderBookmarks();
+  }
+}));
+
+// Video scan function
+async function scanVideoFolders(ioRef) {
+  const folders = videoDb.getFolders();
+  for (const folder of folders) {
+    try {
+      await videoScanner.scanDirectory(videoDb, folder.path, VIDEO_THUMB_DIR, folder.recursive !== 0,
+        (progress) => {
+          if (ioRef) ioRef.emit('video-progress', progress);
+        }
+      );
+    } catch (err) {
+      console.error('[Video] Failed to scan folder:', folder.path, err.message);
+    }
+  }
+}
+
+// Video watcher setup
+let videoWatcher = null;
+function ensureVideoWatcher() {
+  if (videoWatcher) return;
+  const chokidar = require('chokidar');
+  videoWatcher = chokidar.watch(SENZU_OUTPUTS, {
+    ignoreInitial: true,
+    persistent: true,
+    depth: 12,
+    ignorePermissionErrors: true,
+    awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 200 },
+  });
+  videoWatcher.on('add', async (filePath) => {
+    if (!videoScanner.isVideo(filePath)) return;
+    const r = videoDb.getFolders().find(f => filePath.startsWith(f.path + path.sep) || filePath.startsWith(f.path));
+    const rootPath = r ? r.path : path.dirname(filePath);
+    try {
+      const video = await videoScanner.scanFile(videoDb, filePath, rootPath, VIDEO_THUMB_DIR);
+      if (video && io) io.emit('video-new', enrichVideo(video, OUTPUTS_ROOT));
+    } catch (err) {
+      console.error('[Video] Watcher add error:', err.message);
+    }
+  });
+  videoWatcher.on('unlink', (filePath) => {
+    if (!videoScanner.isVideo(filePath)) return;
+    try {
+      const fp = videoDb.removeByPath(filePath);
+      if (fp && io) io.emit('video-remove', { fingerprint: fp });
+    } catch (_) {}
+  });
+  videoWatcher.on('error', (err) => {
+    console.error('[Video] Watcher error (ignored):', err && err.message ? err.message : err);
+  });
+}
+
+function enrichVideo(v, root) {
+  if (!v) return v;
+  const useDirect = v.playback_strategy === 'direct';
+  let src;
+  if (useDirect) {
+    const rel = root ? path.relative(root, v.file_path) : '..';
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+      src = '/outputs/' + rel.split(path.sep).map(encodeURIComponent).join('/');
+    } else {
+      src = '/api/gallery/videos/file/' + encodeURIComponent(v.fingerprint);
+    }
+  } else {
+    src = '/api/gallery/videos/file/' + encodeURIComponent(v.fingerprint);
+  }
+  const thumb = v.thumbnail_path ? '/api/gallery/videos/thumb/' + encodeURIComponent(v.fingerprint) : null;
+  return { ...v, src, thumb };
+}
+
+// ============================================================
+
+const { router: jobsRouter } = createJobsRouter();
+app.use('/api/jobs', jobsRouter);
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`=================================================`);
   console.log(`Senzu Backend is running on port ${PORT}`);
@@ -1202,4 +1337,10 @@ server.listen(PORT, '127.0.0.1', () => {
   galleryManager.start({ force: forceReindex })
     .then(() => galleryDb.setSetting('parser_version', PARSER_VERSION))
     .catch(err => console.error('[Gallery] Initial scan failed:', err.message));
+
+  // Kick off video scan + watcher
+  ensureVideoWatcher();
+  scanVideoFolders(io)
+    .then(() => { const c = videoDb.getCount(); if (c > 0) console.log(`[Video] Initial video scan complete. ${c} video(s) indexed.`); })
+    .catch(err => console.error('[Video] Initial scan failed:', err.message));
 });

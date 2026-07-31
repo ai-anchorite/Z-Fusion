@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
-
 :root {
   --bg-obsidian: #08070b;
   --bg-card: rgba(20, 18, 28, 0.65);
@@ -2112,31 +2110,28 @@ input:checked + .switch-slider:before {
 }
 
 .gallery-tab.layout-masonry .gallery-grid {
-  column-width: var(--gallery-card-width);
-  column-gap: 12px;
+  position: relative;
 }
-.gallery-tab.layout-masonry .gallery-card {
-  break-inside: avoid;
-  width: 100%;
-  margin: 0 0 12px 0;
-  display: inline-block;
+.gallery-tab.layout-masonry .gallery-card img {
+  display: block;
 }
 .gallery-tab.layout-masonry .gallery-card-imgwrap {
-  position: relative;
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.2);
 }
-.gallery-tab.layout-masonry .gallery-card-imgwrap[style*="--ar"] {
-  height: 0;
-  padding-bottom: calc(100% / var(--ar));
-}
 .gallery-tab.layout-masonry .gallery-card-imgwrap img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
   object-fit: cover;
+}
+.gallery-tab.layout-masonry .gallery-card-imgwrap video.video-hover,
+.gallery-tab.layout-masonry .gallery-card-imgwrap video.video-fallback {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.gallery-tab.layout-masonry .video-card-item .gallery-card-imgwrap video.video-fallback {
   display: block;
 }
 
@@ -2369,6 +2364,9 @@ input:checked + .switch-slider:before {
 }
 .gallery-viewer-panel:not(.collapsed) ~ * .gallery-viewer-img,
 .gallery-viewer-overlay:has(.gallery-viewer-panel:not(.collapsed)) .gallery-viewer-img {
+  max-width: calc(96vw - 340px);
+}
+.gallery-viewer-overlay:has(.gallery-viewer-panel:not(.collapsed)) .gallery-viewer-video {
   max-width: calc(96vw - 340px);
 }
 
@@ -2624,6 +2622,303 @@ input:checked + .switch-slider:before {
   text-align: center;
   pointer-events: none;
   z-index: 3;
+}
+
+/* =========================================================
+   Output queue panel
+   ========================================================= */
+.queue-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  background: var(--primary-neon);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  min-width: 17px;
+  height: 17px;
+  line-height: 17px;
+  text-align: center;
+  border-radius: 9px;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+.gallery-icon-btn { position: relative; }
+
+.queue-job-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-glass);
+  transition: border-color 0.15s;
+}
+.queue-job-item:hover { border-color: var(--border-glass-focus); }
+.queue-job-thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+}
+.queue-job-thumb img,
+.queue-job-thumb-placeholder { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; }
+.queue-job-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.queue-job-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.78rem;
+}
+.queue-job-type {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.queue-job-status {
+  font-size: 0.7rem;
+}
+.queue-job-remove {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.queue-job-remove:hover { background: var(--danger-soft); color: var(--danger); }
+
+/* =========================================================
+   Output viewer overlay
+   ========================================================= */
+.gv-output-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  background: rgba(6, 5, 10, 0.95);
+  backdrop-filter: blur(4px);
+}
+
+.gv-output-compare {
+  flex: 1;
+  align-self: stretch;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 0;
+}
+.gv-out-zoom-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+}
+.gv-out-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+.gv-out-before { }
+.gv-out-after { z-index: 1; }
+
+.gv-out-slider-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #fff;
+  cursor: ew-resize;
+  z-index: 3;
+}
+.gv-out-slider-handle {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(20, 18, 28, 0.8);
+  border: 2px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: #fff;
+  backdrop-filter: blur(4px);
+}
+
+/* =========================================================
+   Video Gallery — cards & viewer
+   ========================================================= */
+
+/* Media type toggle */
+.gallery-media-toggle {
+  display: flex;
+  background: var(--bg-input);
+  border: 1px solid var(--border-glass);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.gallery-media-toggle button {
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.gallery-media-toggle button.active {
+  background: var(--primary-soft);
+  color: var(--primary-neon);
+  font-weight: 600;
+}
+
+/* Video card */
+.video-card-item .video-thumb-wrap {
+  background: #000;
+  cursor: pointer;
+}
+.video-card-item .video-thumb-wrap img.video-thumb {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.video-card-item .video-thumb-wrap video.video-hover {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.video-card-item .video-thumb-wrap video.video-fallback {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.video-duration {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0,0,0,0.72);
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.video-duration:empty { display: none; }
+
+/* Play-lock indicator */
+.video-card-item.playing-locked {
+  outline: 1px solid rgba(100, 200, 100, 0.4);
+  outline-offset: -1px;
+}
+
+/* Video viewer — video element */
+.gallery-viewer-video {
+  max-width: 96vw;
+  max-height: 88vh;
+  object-fit: contain;
+  user-select: none;
+  transform-origin: center center;
+  transition: none;
+}
+
+/* Seek bar */
+.gv-vseek-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 120px;
+  max-width: 600px;
+}
+.gv-vtime {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  white-space: nowrap;
+}
+.gv-vseek {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.12);
+  cursor: pointer;
+}
+.gv-vseek-buffered {
+  position: absolute;
+  top: 0; left: 0; height: 100%;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.16);
+  pointer-events: none;
+}
+.gv-vseek-progress {
+  position: absolute;
+  top: 0; left: 0; height: 100%;
+  border-radius: 3px;
+  background: var(--primary-neon);
+  pointer-events: none;
+  z-index: 1;
+}
+.gv-vseek-input {
+  position: absolute;
+  top: -4px; left: 0;
+  width: 100%; height: 14px;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+  margin: 0;
+}
+.gv-vvolume {
+  width: 70px;
+  accent-color: var(--primary-neon);
+  cursor: pointer;
+}
+
+/* Gallery toolbar adjustments for video mode */
+.gallery-toolbar .media-type-label {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 0 4px;
 }
 
 @media (max-width: 768px) {

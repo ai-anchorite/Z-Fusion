@@ -134,7 +134,7 @@ document.addEventListener('alpine:init', () => {
       scale_to_ref: true,
       aspect_ratio: '1:1 (Square)',
       resolution_multiple: 8,
-      edit_compare: true,
+      edit_compare: false,
       megapixels: 1.0,
       denoise: 0.6,
       ref_boost: 4,
@@ -163,7 +163,7 @@ document.addEventListener('alpine:init', () => {
     genPresetsList: {},
     newGenPresetName: '',
     genPresetToUpdate: '',
-    genEnhancerPromptsList: {},
+    genEnhancerPromptsList: { 'Refinement': '', 'Description': '' },
     newGenEnhancerName: '',
     genEnhancerToUpdate: '',
     enhancerImage: null,
@@ -285,14 +285,12 @@ document.addEventListener('alpine:init', () => {
         this.checkStatus();
         this.loadPresets();
         this.loadPrompts();
-        this.loadModels();
         this.loadModelPacks();
         this.loadSettings();
         this.updateResolutions();
         this.loadComfySamplers();
         this.loadEnhancerPrompts();
         this.loadGenPresets();
-        this.loadGenEnhancerPrompts();
         
         setInterval(() => this.checkStatus(), 5000);
         setInterval(() => this.checkSysStats(), 5000);
@@ -328,12 +326,15 @@ document.addEventListener('alpine:init', () => {
         });
 
         // Gallery viewer → route image to Enhance or Generate (img2img)
-        window.addEventListener('senzu:route-image', (e) => {
-          const { file, target } = e.detail || {};
+        window.addEventListener('senzu:route-image', async (e) => {
+          const { file, target, stayInGallery } = e.detail || {};
           if (!file) return;
           if (target === 'enhance') {
-            if (this.imageQueue.length === 0 && this.outputQueue.length === 0) this.activeTab = 'enhance';
-            this.addToQueue([file]);
+            await this.addToQueue([file]);
+            if (!stayInGallery && this.imageQueue.length === 1 && this.outputQueue.length === 0) {
+              this.activeTab = 'enhance';
+            }
+            if (!this.isProcessing) this.startQueue();
           } else if (target === 'generate') {
             const isFirst = !this.imgInputImage;
             this.genParams.use_image_input = true;
@@ -341,9 +342,10 @@ document.addEventListener('alpine:init', () => {
             const reader = new FileReader();
             reader.onload = (ev) => { this.imgInputPreview = ev.target.result; };
             reader.readAsDataURL(file);
-            if (isFirst) this.activeTab = 'generate';
+            if (isFirst && !stayInGallery) this.activeTab = 'generate';
           }
         });
+        this._updateEnhancerStatus();
       } catch (e) {
         console.error('Init error:', e);
       }
@@ -389,6 +391,17 @@ document.addEventListener('alpine:init', () => {
     async loadModels() {
       try {
         this.models = await api.getModels();
+        // Persist saved LLM model selections in the dropdown even if
+        // ComfyUI's model list doesn't include them (e.g. on first run).
+        const savedModels = [
+          this.appSettings.enhancer_llm_model,
+          this.appSettings.description_llm_model
+        ].filter(Boolean);
+        for (const m of savedModels) {
+          if (this.models.text_encoders.indexOf(m) === -1) {
+            this.models.text_encoders.push(m);
+          }
+        }
         this.autoSelectIdentityLora();
         this.updateModelNag();
       } catch (err) {
@@ -1143,12 +1156,22 @@ document.addEventListener('alpine:init', () => {
     },
 
     // Queue processor
+    _updateEnhancerStatus() {
+      window.__senzuStatus = {
+        isProcessing: this.isProcessing,
+        mode: this.params.mode || 'full',
+        preset: this.params.model_pack || '',
+        queueCount: this.imageQueue.length,
+      };
+    },
+
     async startQueue() {
       const pending = this.imageQueue.findIndex(i => i.status === 'pending');
       if (pending === -1) return;
       
       this.queueRunning = true;
       this.isProcessing = true;
+      this._updateEnhancerStatus();
       this.enhanceCancelRequested = false;
       this.processTime = 0;
       
@@ -1235,6 +1258,7 @@ document.addEventListener('alpine:init', () => {
       }
       
       this.isProcessing = false;
+      this._updateEnhancerStatus();
       this.queueRunning = false;
       clearInterval(this.processTimer);
       this.processTimer = null;
@@ -1337,17 +1361,42 @@ document.addEventListener('alpine:init', () => {
             this.appSettings.default_model_pack = s.default_model_pack;
             this.applyModelPack(s.default_model_pack, false);
           }
+          // Populate option lists before applying selections — x-model
+          // ignores values that don't match any <option> at render time.
+          await this.loadModels();
+          await this.loadGenEnhancerPrompts();
           this.appSettings.enhancer_system_prompt = s.enhancer_system_prompt || 'Refinement';
           this.appSettings.enhancer_llm_model = s.enhancer_llm_model || 'qwen3vl_4b_fp8_scaled.safetensors';
           this.appSettings.description_system_prompt = s.description_system_prompt || 'Description';
           this.appSettings.description_llm_model = s.description_llm_model || 'qwen3vl_4b_fp8_scaled.safetensors';
           this.appSettings.enhancer_max_length = s.enhancer_max_length || 768;
           this.appSettings.enhancer_temperature = s.enhancer_temperature || 0.7;
+          // Ensure the saved LLM names are in the dropdown even if the
+          // filesystem scan missed them.
+          for (const m of [this.appSettings.enhancer_llm_model, this.appSettings.description_llm_model]) {
+            if (m && this.models.text_encoders.indexOf(m) === -1) {
+              this.models.text_encoders.push(m);
+            }
+          }
+          this._syncPromptSelects();
         }
         this.applyTheme();
       } catch (err) {
         console.error('Failed to load settings:', err);
       }
+    },
+
+    // Work around an Alpine.js issue: x-model on a <select> with x-for'd
+    // options doesn't re-select the bound value after options are replaced.
+    // We set el.value directly after a brief delay so all <option> nodes exist.
+    _syncPromptSelects() {
+      const refs = this.$refs;
+      setTimeout(() => {
+        refs.selRefinementPrompt && (refs.selRefinementPrompt.value = this.appSettings.enhancer_system_prompt);
+        refs.selDescriptionPrompt && (refs.selDescriptionPrompt.value = this.appSettings.description_system_prompt);
+        refs.selRefinementLLM && (refs.selRefinementLLM.value = this.appSettings.enhancer_llm_model);
+        refs.selDescriptionLLM && (refs.selDescriptionLLM.value = this.appSettings.description_llm_model);
+      }, 50);
     },
     
     applyTheme() {
@@ -1413,7 +1462,6 @@ document.addEventListener('alpine:init', () => {
     
     async downloadOutput(type) {
       let url = null;
-      let destName = null;
       let suffix = '';
       
       if (type === 'edit' && this.editOutput) {
@@ -1428,31 +1476,11 @@ document.addEventListener('alpine:init', () => {
       }
       if (!url) return;
       
-      const tempFilename = url.split('/').pop();
       const stem = this.currentInputName.replace(/\.[^.]+$/, '') || 'senzu';
       const ts = Date.now().toString(36);
-      destName = `${stem}_senzu_${suffix}_${ts}.png`;
+      const destName = `${stem}_senzu_${suffix}_${ts}.png`;
       
-      // Server-side save if folder configured, else browser download
-      const saveFolder = this.appSettings.save_folder;
-      if (saveFolder && saveFolder.trim()) {
-        try {
-          await api.saveOutputToFolder(tempFilename, saveFolder, destName);
-          this.lastSavedType = type;
-          setTimeout(() => { this.lastSavedType = ''; }, 2000);
-          return;
-        } catch (err) {
-          alert('Failed to save to folder: ' + err.message);
-        }
-      }
-      
-      // Fallback: browser download
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = destName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await api.saveOutput(url, { saveFolder: this.appSettings.save_folder, destName });
       this.lastSavedType = type;
       setTimeout(() => { this.lastSavedType = ''; }, 2000);
     },
@@ -1784,29 +1812,11 @@ document.addEventListener('alpine:init', () => {
 
     async downloadGenOutput() {
       if (!this.genOutput) return;
-      const tempFilename = this.genOutput.split('/').pop();
       const ts = Date.now().toString(36);
       const destName = `senzu_gen_${ts}.png`;
+      const genFolder = (this.appSettings.save_folder || '').replace(/[\\/]$/, '') + '/gen';
 
-      const saveFolder = this.appSettings.save_folder;
-      if (saveFolder && saveFolder.trim()) {
-        const genFolder = saveFolder.replace(/[\\/]$/, '') + '/gen';
-        try {
-          await api.saveOutputToFolder(tempFilename, genFolder, destName);
-          this.lastGenSaved = true;
-          setTimeout(() => { this.lastGenSaved = false; }, 2000);
-          return;
-        } catch (err) {
-          alert('Failed to save: ' + err.message);
-        }
-      }
-
-      const a = document.createElement('a');
-      a.href = this.genOutput;
-      a.download = destName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await api.saveOutput(this.genOutput, { saveFolder: genFolder, destName });
       this.lastGenSaved = true;
       setTimeout(() => { this.lastGenSaved = false; }, 2000);
     },

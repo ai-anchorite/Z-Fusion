@@ -6,6 +6,7 @@
 document.addEventListener('alpine:init', () => {
   Alpine.data('gallery', () => ({
     // --- Reactive state ---
+    mediaType: 'images',   // 'images' | 'videos'
     items: [],
     searchQuery: '',
     sortKey: 'btime',
@@ -15,8 +16,10 @@ document.addEventListener('alpine:init', () => {
     offset: 0,
     total: 0,
     tags: [],
-    bookmarks: [],
-    folders: [],
+    imageBookmarks: [],
+    videoBookmarks: [],
+    imageFolders: [],
+    videoFolders: [],
     foldersOpen: false,
     newFolderRecursive: true,
     folderPathInput: '',
@@ -37,6 +40,9 @@ document.addEventListener('alpine:init', () => {
       hidePanel: false,        // start viewer with info panel hidden
       slideshowInterval: 3000  // ms
     },
+    // Video-specific state
+    videoVolume: 50,
+    videoFps: 30,
     crop: {
       active: false,
       x: 0, y: 0, w: 0, h: 0,
@@ -48,6 +54,11 @@ document.addEventListener('alpine:init', () => {
       aspectLocked: false,
       aspectRatio: 1,
     },
+    jobs: [],
+    queueOpen: false,
+    outputViewerOpen: false,
+    outputViewerIndex: 0,
+    lastSavedOutput: null,
     scan: { active: false, current: 0, total: 0 },
     initialized: false,
 
@@ -61,6 +72,10 @@ document.addEventListener('alpine:init', () => {
     _keyHandler: null,
     _panelHidden: false,
     _searchTimer: null,
+    _appSaveFolder: '',
+    _masonryCols: null,
+    _masonryLastCount: 0,
+    _masonryResizeObserver: null,
     socket: null,
 
     // =========================================================
@@ -77,9 +92,16 @@ document.addEventListener('alpine:init', () => {
       } catch (_) {}
       this.applySettings();
 
+      try {
+        const appSettings = await api.getSettings();
+        this._appSaveFolder = (appSettings && appSettings.save_folder) || '';
+      } catch (_) { this._appSaveFolder = ''; }
+
       await this.refreshTags();
-      await this.loadBookmarks();
-      await this.loadFolders();
+      await this.loadImageBookmarks();
+      await this.loadVideoBookmarks();
+      await this.loadImageFolders();
+      await this.loadVideoFolders();
       await this.search(false);
 
       this.connectSocket();
@@ -98,6 +120,13 @@ document.addEventListener('alpine:init', () => {
         this.socket.on('gallery-remove', (data) => this.onSocketRemove(data.fingerprint));
         this.socket.on('gallery-progress', (data) => this.onSocketProgress(data));
         this.socket.on('gallery-count', (data) => { if (data && data.count != null) this.total = data.count; });
+        this.socket.on('job-started', (job) => this._onJobStarted(job));
+        this.socket.on('job-completed', (job) => this._onJobCompleted(job));
+        this.socket.on('job-error', (data) => this._onJobError(data));
+        // Video-specific events
+        this.socket.on('video-new', (video) => { if (this.mediaType === 'videos') this.onSocketNew(video); });
+        this.socket.on('video-remove', (data) => { if (this.mediaType === 'videos') this.onSocketRemove(data.fingerprint); });
+        this.socket.on('video-progress', (data) => { if (this.mediaType === 'videos') this.onSocketProgress(data); });
       } catch (e) {
         console.warn('[Gallery] socket connection failed:', e.message);
       }
@@ -113,6 +142,11 @@ document.addEventListener('alpine:init', () => {
         root.classList.toggle('layout-grid', this.settings.layout === 'grid');
         root.classList.toggle('layout-masonry', this.settings.layout === 'masonry');
         root.classList.toggle('hide-meta', !this.settings.showMeta);
+      }
+      if (this.settings.layout === 'masonry') {
+        this._layoutMasonry(true);
+      } else {
+        this._teardownMasonry();
       }
     },
 
@@ -159,7 +193,13 @@ document.addEventListener('alpine:init', () => {
       this.loading = true;
       const nextOffset = append ? this.offset + 1 : 0;
       try {
-        const res = await api.gallery.search(this.buildQueryParams(nextOffset));
+        const params = this.buildQueryParams(nextOffset);
+        let res;
+        if (this.mediaType === 'videos') {
+          res = await api.gallery.videoSearch(params);
+        } else {
+          res = await api.gallery.search(params);
+        }
         const results = res.results || [];
         this.total = res.count || 0;
         this.offset = nextOffset;
@@ -197,6 +237,22 @@ document.addEventListener('alpine:init', () => {
       this.search(false);
     },
 
+    switchMediaType(type) {
+      if (this.mediaType === type) return;
+      this.mediaType = type;
+      this.searchQuery = '';
+      this.sortKey = 'btime';
+      this.sortDir = -1;
+      this.items = [];
+      this.total = 0;
+      this.offset = 0;
+      this.hasMore = true;
+      this.selectedFps = [];
+      this.tags = [];
+      this.refreshTags();
+      this.search(false);
+    },
+
     // Refresh: clear the search and reload the default view (Breadboard-style).
     refresh() {
       this.searchQuery = '';
@@ -214,8 +270,12 @@ document.addEventListener('alpine:init', () => {
     },
 
     // --- Bookmarks (saved searches) ---
-    async loadBookmarks() {
-      try { this.bookmarks = await api.gallery.favorites(); } catch (_) { this.bookmarks = []; }
+    async loadImageBookmarks() {
+      try { this.imageBookmarks = await api.gallery.favorites(); } catch (_) { this.imageBookmarks = []; }
+    },
+
+    async loadVideoBookmarks() {
+      try { this.videoBookmarks = await api.gallery.favorites(); } catch (_) { this.videoBookmarks = []; }
     },
 
     async saveBookmark() {
@@ -224,7 +284,7 @@ document.addEventListener('alpine:init', () => {
       const label = prompt('Bookmark label:', q);
       if (label === null) return;
       await api.gallery.addFavorite(q, label.trim() || q, false);
-      await this.loadBookmarks();
+      await this.loadImageBookmarks();
     },
 
     applyBookmark(query) {
@@ -234,17 +294,24 @@ document.addEventListener('alpine:init', () => {
 
     async deleteBookmark(id) {
       await api.gallery.removeFavorite(id);
-      await this.loadBookmarks();
+      await this.loadImageBookmarks();
     },
 
     // --- Connected folders ---
-    async loadFolders() {
-      try { this.folders = await api.gallery.folders(); } catch (_) { this.folders = []; }
+    async loadImageFolders() {
+      try { this.imageFolders = await api.gallery.folders(); } catch (_) { this.imageFolders = []; }
+    },
+
+    async loadVideoFolders() {
+      try { this.videoFolders = await api.gallery.videoFolders(); } catch (_) { this.videoFolders = []; }
     },
 
     openFolders() {
       this.foldersOpen = !this.foldersOpen;
-      if (this.foldersOpen) this.loadFolders();
+      if (this.foldersOpen) {
+        if (this.mediaType === 'videos') this.loadVideoFolders();
+        else this.loadImageFolders();
+      }
     },
 
     async connectFolder() {
@@ -255,9 +322,8 @@ document.addEventListener('alpine:init', () => {
         if (res && res.path) {
           await this.addFolderPath(res.path);
         } else if (res && res.unavailable) {
-          this.pickerUnavailable = true; // reveal manual path input
+          this.pickerUnavailable = true;
         }
-        // cancelled → do nothing
       } catch (e) {
         console.error('[Gallery] pick folder failed:', e);
         this.pickerUnavailable = true;
@@ -271,8 +337,14 @@ document.addEventListener('alpine:init', () => {
       if (!folderPath) return;
       this.connecting = true;
       try {
-        const res = await api.gallery.addFolder(folderPath, this.newFolderRecursive);
-        if (res && res.folders) this.folders = res.folders;
+        let res;
+        if (this.mediaType === 'videos') {
+          res = await api.gallery.videoAddFolder(folderPath, this.newFolderRecursive);
+          if (res && res.folders) this.videoFolders = res.folders;
+        } else {
+          res = await api.gallery.addFolder(folderPath, this.newFolderRecursive);
+          if (res && res.folders) this.imageFolders = res.folders;
+        }
         this.folderPathInput = '';
         await this.search(false);
       } catch (e) {
@@ -283,21 +355,40 @@ document.addEventListener('alpine:init', () => {
     },
 
     async removeFolder(folderPath) {
-      if (!confirm('Disconnect this folder and remove its images from the gallery index?\n\nYour image files are NOT deleted.')) return;
+      if (!confirm('Disconnect this folder and remove its media from the gallery index?\n\nYour files are NOT deleted.')) return;
       try {
-        const res = await api.gallery.removeFolder(folderPath);
-        if (res && res.folders) this.folders = res.folders;
-        await this.search(false);
+        let res;
+        if (this.mediaType === 'videos') {
+          res = await api.gallery.videoRemoveFolder(folderPath);
+          if (res && res.folders) this.videoFolders = res.folders;
+        } else {
+          res = await api.gallery.removeFolder(folderPath);
+          if (res && res.folders) this.imageFolders = res.folders;
+        }
+        // Clear the grid directly — bypassing search() avoids the loading
+        // guard which would drop us if a prior search is still in-flight.
+        this.searchQuery = '';
+        this.items = [];
+        this.total = 0;
+        this.offset = 0;
+        this.hasMore = true;
+        this.renderGrid(null);
       } catch (e) {
         alert('Could not remove folder: ' + e.message);
       }
     },
 
     async reindexFolder(folderPath) {
+      if (this.mediaType === 'videos') return;
       try {
         await api.gallery.reindexFolder(folderPath);
-        await this.loadFolders();
-        await this.search(false);
+        await this.loadImageFolders();
+        this.searchQuery = '';
+        this.items = [];
+        this.total = 0;
+        this.offset = 0;
+        this.hasMore = true;
+        this.renderGrid(null);
       } catch (e) {
         console.error('[Gallery] reindex folder failed:', e);
       }
@@ -328,6 +419,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     cardHTML(item) {
+      if (this.mediaType === 'videos') return this.videoCardHTML(item);
       const tags = item.tags || [];
       const isFav = tags.includes('favorite');
       const favIcon = isFav ? 'fa-solid fa-heart' : 'fa-regular fa-heart';
@@ -339,7 +431,7 @@ document.addEventListener('alpine:init', () => {
       const src = item.thumb || item.src;
       const fullSrc = item.src;
 
-      return `<div class="gallery-card${selected}" data-fp="${item.fingerprint}">
+      return `<div class="gallery-card${selected}" data-fp="${item.fingerprint}" data-ar="${ar}">
         <div class="gallery-grab">
           <button class="g-btn g-fav" data-fav="${isFav}" title="Favorite"><i class="${favIcon}"></i></button>
           <div class="gallery-grab-right">
@@ -355,6 +447,53 @@ document.addEventListener('alpine:init', () => {
       </div>`;
     },
 
+    videoCardHTML(item) {
+      const tags = item.tags || [];
+      const isFav = tags.includes('favorite');
+      const favIcon = isFav ? 'fa-solid fa-heart' : 'fa-regular fa-heart';
+      const selected = this.selectedFps.includes(item.fingerprint) ? ' selected' : '';
+      const videoUrl = item.src || '/api/gallery/videos/file/' + encodeURIComponent(item.fingerprint);
+      const thumbUrl = item.thumb || '';
+      const dur = item.duration ? this.formatDuration(item.duration) : '';
+      const hasThumb = !!item.thumbnail_path;
+      const ar = item.aspect_ratio || (item.width && item.height ? item.width / item.height : '');
+
+      const mediaHTML = hasThumb
+        ? `<img class="video-thumb" src="${thumbUrl}" loading="lazy" draggable="false"><video class="video-hover" data-src="${videoUrl}" preload="none" muted loop playsinline></video>`
+        : `<video class="video-fallback" data-src="${videoUrl}" preload="none" muted loop playsinline></video>`;
+
+      return `<div class="gallery-card video-card-item${selected}" data-fp="${item.fingerprint}" data-video-src="${videoUrl}" data-ar="${ar}">
+        <div class="gallery-grab">
+          <button class="g-btn g-fav" data-fav="${isFav}" title="Favorite"><i class="${favIcon}"></i></button>
+          <div class="gallery-grab-right">
+            <button class="g-btn g-play-lock" title="Play with audio"><i class="fa-solid fa-play"></i></button>
+            <button class="g-btn g-mute" title="Mute"><i class="fa-solid fa-volume-high"></i></button>
+            <button class="g-btn g-folder" title="Open containing folder"><i class="fa-solid fa-folder-open"></i></button>
+            <button class="g-btn g-trash" title="Move to trash"><i class="fa-regular fa-trash-can"></i></button>
+          </div>
+        </div>
+        <div class="gallery-card-imgwrap video-thumb-wrap"${ar ? ` style="--ar:${ar}"` : ''}>
+          ${mediaHTML}
+          ${dur ? `<div class="video-duration">${dur}</div>` : ''}
+        </div>
+      </div>`;
+    },
+
+    formatDuration(seconds) {
+      if (!seconds || seconds <= 0) return '';
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `0:${String(s).padStart(2, '0')}`;
+    },
+
+    formatClock(seconds) {
+      if (!seconds || !isFinite(seconds) || seconds < 0) return '0:00';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+    },
+
     renderGrid(appendItems) {
       const grid = this.$refs.grid;
       if (!grid) return;
@@ -364,19 +503,24 @@ document.addEventListener('alpine:init', () => {
         grid.innerHTML = this.items.map(it => this.cardHTML(it)).join('');
         if (this.$refs.gridScroll) this.$refs.gridScroll.scrollTop = 0;
       }
+      if (this.settings.layout === 'masonry') {
+        this._layoutMasonry(!appendItems);
+      }
     },
 
     prependCard(item) {
       const grid = this.$refs.grid;
       if (!grid) return;
       grid.insertAdjacentHTML('afterbegin', this.cardHTML(item));
+      if (this.settings.layout === 'masonry') this._layoutMasonry(true);
     },
 
     updateCard(item) {
       const grid = this.$refs.grid;
       if (!grid) return;
       const el = grid.querySelector(`.gallery-card[data-fp="${CSS.escape(item.fingerprint)}"]`);
-      if (el) el.outerHTML = this.cardHTML(item);
+      if (el) { el.outerHTML = this.cardHTML(item); }
+      if (this.settings.layout === 'masonry') this._layoutMasonry(true);
     },
 
     removeCard(fp) {
@@ -384,6 +528,73 @@ document.addEventListener('alpine:init', () => {
       if (!grid) return;
       const el = grid.querySelector(`.gallery-card[data-fp="${CSS.escape(fp)}"]`);
       if (el) el.remove();
+    },
+
+    // =========================================================
+    // Masonry (row-based: fills shortest column, L→R T→B)
+    // =========================================================
+    _masonryGap() { return 12; },
+
+    _layoutMasonry(fullRecalc) {
+      if (this.settings.layout !== 'masonry') return;
+      const grid = this.$refs.grid;
+      // Always set up the resize observer so that when the tab becomes
+      // visible (x-show) or resizes, a full recalc fires automatically.
+      this._setupMasonryResize(grid);
+      if (!grid || !grid.children.length) { if (grid) grid.style.height = ''; return; }
+      const gap = this._masonryGap();
+      const targetW = Number(this.settings.cardWidth) || 240;
+      const cw = grid.clientWidth;
+      if (cw <= 0) return;  // grid hidden — observer will recalc when visible
+      const cols = Math.max(1, Math.floor((cw + gap) / (targetW + gap)));
+      const colW = (cw - (cols - 1) * gap) / cols;
+      if (fullRecalc || !this._masonryCols || this._masonryCols.length !== cols) {
+        this._masonryCols = new Array(cols).fill(0);
+        this._masonryLastCount = 0;
+      }
+      const startIdx = this._masonryLastCount;
+      if (startIdx > 0 && startIdx >= grid.children.length) { grid.style.height = Math.max(...this._masonryCols, 0) + 'px'; return; }
+      this._masonryPositionRange(startIdx, colW, gap);
+      this._masonryLastCount = grid.children.length;
+    },
+
+    _masonryPositionRange(startIdx, colW, gap) {
+      const grid = this.$refs.grid;
+      const cards = grid.children;
+      for (let i = startIdx; i < cards.length; i++) {
+        const card = cards[i];
+        const ar = parseFloat(card.dataset.ar) || 1;
+        const h = colW / ar;
+        let sc = 0;
+        for (let c = 1; c < this._masonryCols.length; c++) {
+          if (this._masonryCols[c] < this._masonryCols[sc]) sc = c;
+        }
+        const left = sc * (colW + gap);
+        const top = this._masonryCols[sc];
+        Object.assign(card.style, { position: 'absolute', left: left + 'px', top: top + 'px', width: colW + 'px', height: h + 'px' });
+        this._masonryCols[sc] = top + h + gap;
+      }
+      grid.style.height = Math.max(...this._masonryCols, 0) + 'px';
+    },
+
+    _teardownMasonry() {
+      this._masonryCols = null;
+      this._masonryLastCount = 0;
+      const grid = this.$refs.grid;
+      if (!grid) return;
+      grid.style.height = '';
+      for (const card of grid.children) {
+        card.style.position = ''; card.style.left = ''; card.style.top = '';
+        card.style.width = ''; card.style.height = '';
+      }
+    },
+
+    _setupMasonryResize(grid) {
+      if (this._masonryResizeObserver) return;
+      this._masonryResizeObserver = new ResizeObserver(() => {
+        if (this.settings.layout === 'masonry') this._layoutMasonry(true);
+      });
+      this._masonryResizeObserver.observe(grid);
     },
 
     onGridScroll(e) {
@@ -411,13 +622,91 @@ document.addEventListener('alpine:init', () => {
           this.deleteItems([fp]);
         } else if (e.target.closest('.g-folder')) {
           this.openContainingFolder(fp);
-        } else if (e.target.closest('img')) {
-          const idx = this.items.findIndex(it => it.fingerprint === fp);
-          if (idx >= 0) this.openViewer(idx);
+        } else if (e.target.closest('.g-play-lock')) {
+          this.toggleVideoPlayLock(card);
+        } else if (e.target.closest('.g-mute')) {
+          this.toggleVideoCardMute(card);
+        } else if (e.target.closest('img') || e.target.closest('.video-thumb-wrap')) {
+          // For videos, open viewer; for images, click on img opens viewer
+          if (this.mediaType === 'videos') {
+            const idx = this.items.findIndex(it => it.fingerprint === fp);
+            if (idx >= 0) this.openVideoViewer(idx);
+          } else {
+            const idx = this.items.findIndex(it => it.fingerprint === fp);
+            if (idx >= 0) this.openViewer(idx);
+          }
         } else if (e.target.closest('.gallery-grab')) {
           this.toggleSelect(fp, card);
         }
       });
+
+      // Hover preview for video cards
+      grid.addEventListener('mouseenter', (e) => {
+        const card = e.target.closest('.video-card-item');
+        if (!card || card.classList.contains('playing-locked')) return;
+        this._startVideoHover(card);
+      }, true);
+      grid.addEventListener('mouseleave', (e) => {
+        const card = e.target.closest('.video-card-item');
+        if (!card || card.classList.contains('playing-locked')) return;
+        this._stopVideoHover(card);
+      }, true);
+    },
+
+    _startVideoHover(card) {
+      const hoverVideo = card.querySelector('video.video-hover');
+      const fallbackVideo = card.querySelector('video.video-fallback');
+      const thumb = card.querySelector('img.video-thumb');
+      const video = hoverVideo || fallbackVideo;
+      if (!video) return;
+      if (!video.src && video.dataset.src) { video.src = video.dataset.src; video.load(); }
+      if (thumb) thumb.style.display = 'none';
+      if (hoverVideo) hoverVideo.style.display = 'block';
+      video.play().catch(() => {});
+    },
+
+    _stopVideoHover(card) {
+      const hoverVideo = card.querySelector('video.video-hover');
+      const fallbackVideo = card.querySelector('video.video-fallback');
+      const thumb = card.querySelector('img.video-thumb');
+      const video = hoverVideo || fallbackVideo;
+      if (!video) return;
+      video.pause();
+      video.currentTime = 0;
+      if (thumb) { thumb.style.display = ''; if (hoverVideo) hoverVideo.style.display = ''; }
+    },
+
+    toggleVideoPlayLock(card) {
+      const hoverVideo = card.querySelector('video.video-hover');
+      const fallbackVideo = card.querySelector('video.video-fallback');
+      const thumb = card.querySelector('img.video-thumb');
+      const video = hoverVideo || fallbackVideo;
+      const btn = card.querySelector('.g-play-lock i');
+      if (!video) return;
+      if (card.classList.contains('playing-locked')) {
+        card.classList.remove('playing-locked'); video.pause(); video.currentTime = 0; video.muted = true;
+        if (btn) btn.className = 'fa-solid fa-play';
+        if (thumb) { thumb.style.display = ''; if (hoverVideo) hoverVideo.style.display = ''; }
+      } else {
+        card.classList.add('playing-locked'); video.muted = false;
+        video.volume = this.videoVolume / 100;
+        if (!video.src && video.dataset.src) { video.src = video.dataset.src; video.load(); }
+        if (thumb) thumb.style.display = 'none';
+        if (hoverVideo) hoverVideo.style.display = 'block';
+        video.play().catch(() => {});
+        if (btn) btn.className = 'fa-solid fa-pause';
+        const muteBtn = card.querySelector('.g-mute i');
+        if (muteBtn) muteBtn.className = video.muted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
+      }
+    },
+
+    toggleVideoCardMute(card) {
+      if (!card.classList.contains('playing-locked')) return;
+      const video = card.querySelector('video.video-hover') || card.querySelector('video.video-fallback');
+      const icon = card.querySelector('.g-mute i');
+      if (!video) return;
+      video.muted = !video.muted;
+      if (icon) icon.className = video.muted ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high';
     },
 
     // =========================================================
@@ -441,11 +730,12 @@ document.addEventListener('alpine:init', () => {
     },
 
     async bulkAddTag() {
-      const tag = prompt('Add tag to ' + this.selectedFps.length + ' selected image(s):');
+      const label = this.mediaType === 'videos' ? 'video' : 'image';
+      const tag = prompt(`Add tag to ${this.selectedFps.length} selected ${label}(s):`);
       if (!tag || !tag.trim()) return;
-      await api.gallery.addTags(this.selectedFps.slice(), [tag.trim()]);
+      const addFn = this.mediaType === 'videos' ? api.gallery.videoAddTags : api.gallery.addTags;
+      await addFn(this.selectedFps.slice(), [tag.trim()]);
       await this.refreshTags();
-      // Update local items + card DOM.
       for (const fp of this.selectedFps) {
         const it = this.items.find(x => x.fingerprint === fp);
         if (it && !it.tags.includes(tag.trim())) it.tags.push(tag.trim());
@@ -473,14 +763,15 @@ document.addEventListener('alpine:init', () => {
       const it = this.items.find(x => x.fingerprint === fp);
       if (!it) return;
       const isFav = it.tags.includes('favorite');
+      const addTags = this.mediaType === 'videos' ? api.gallery.videoAddTags : api.gallery.addTags;
+      const removeTags = this.mediaType === 'videos' ? api.gallery.videoRemoveTags : api.gallery.removeTags;
       if (isFav) {
-        await api.gallery.removeTags([fp], ['favorite']);
+        await removeTags([fp], ['favorite']);
         it.tags = it.tags.filter(t => t !== 'favorite');
       } else {
-        await api.gallery.addTags([fp], ['favorite']);
+        await addTags([fp], ['favorite']);
         it.tags.push('favorite');
       }
-      // Update just the fav button.
       if (card) {
         const btn = card.querySelector('.g-fav');
         if (btn) {
@@ -495,12 +786,17 @@ document.addEventListener('alpine:init', () => {
     async deleteItems(fps) {
       if (!fps.length) return;
       if (this.settings.confirmDelete) {
+        const label = this.mediaType === 'videos' ? 'video' : 'image';
         const msg = fps.length === 1
-          ? 'Move this image to trash?'
-          : `Move ${fps.length} images to trash?`;
+          ? `Move this ${label} to trash?`
+          : `Move ${fps.length} ${label}s to trash?`;
         if (!confirm(msg)) return;
       }
-      await api.gallery.delete(fps);
+      if (this.mediaType === 'videos') {
+        await api.gallery.videoDelete(fps);
+      } else {
+        await api.gallery.delete(fps);
+      }
       for (const fp of fps) {
         this.removeCard(fp);
         this.items = this.items.filter(x => x.fingerprint !== fp);
@@ -510,11 +806,24 @@ document.addEventListener('alpine:init', () => {
     },
 
     async openContainingFolder(fp) {
-      try { await api.gallery.openFolder(fp); } catch (e) { console.error('[Gallery] open folder failed:', e); }
+      if (this.mediaType === 'videos') {
+        const item = this.items.find(x => x.fingerprint === fp);
+        if (item && item.file_path) {
+          try {
+            await fetch('/api/gallery/open', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ file_path: item.file_path })
+            });
+          } catch (e) { console.error('[Gallery] open folder failed:', e); }
+        }
+      } else {
+        try { await api.gallery.openFolder(fp); } catch (e) { console.error('[Gallery] open folder failed:', e); }
+      }
     },
 
     async refreshTags() {
-      try { this.tags = await api.gallery.tags(); } catch (_) {}
+      try { this.tags = this.mediaType === 'videos' ? await api.gallery.videoTags() : await api.gallery.tags(); } catch (_) {}
     },
 
     // =========================================================
@@ -925,6 +1234,377 @@ document.addEventListener('alpine:init', () => {
     },
 
     // =========================================================
+    // Output queue & viewer
+    // =========================================================
+    _onJobStarted(job) {
+      if (!job || !job.job_id) return;
+      if (this.jobs.some(j => j.job_id === job.job_id)) return;
+      this.jobs.unshift({
+        job_id: job.job_id,
+        type: job.type || 'unknown',
+        status: 'processing',
+        output_url: null,
+        input_url: null,
+        created_at: Date.now(),
+        completed_at: null,
+      });
+      if (this.jobs.length > 100) this.jobs.pop();
+    },
+
+    _onJobCompleted(job) {
+      if (!job || !job.job_id) return;
+      const existing = this.jobs.find(j => j.job_id === job.job_id);
+      if (existing) {
+        existing.status = 'done';
+        existing.output_url = job.output_url || null;
+        existing.input_url = job.input_url || null;
+        existing.completed_at = Date.now();
+      } else {
+        this.jobs.unshift({
+          job_id: job.job_id,
+          type: job.type || 'unknown',
+          status: 'done',
+          output_url: job.output_url || null,
+          input_url: job.input_url || null,
+          created_at: Date.now(),
+          completed_at: Date.now(),
+        });
+        if (this.jobs.length > 100) this.jobs.pop();
+      }
+    },
+
+    _onJobError(data) {
+      if (!data || !data.job_id) return;
+      const existing = this.jobs.find(j => j.job_id === data.job_id);
+      if (existing) {
+        existing.status = 'error';
+        existing.error = data.error || 'Unknown error';
+      }
+    },
+
+    get _completedJobs() {
+      return this.jobs.filter(j => j.status === 'done');
+    },
+
+    get _doneCount() {
+      return this._completedJobs.length;
+    },
+
+    get _folders() {
+      return this.mediaType === 'videos' ? this.videoFolders : this.imageFolders;
+    },
+
+    get _bookmarks() {
+      return this.mediaType === 'videos' ? this.videoBookmarks : this.imageBookmarks;
+    },
+
+    openQueue() {
+      if (this.settingsOpen) this.settingsOpen = false;
+      if (this.foldersOpen) this.foldersOpen = false;
+      this.queueOpen = !this.queueOpen;
+    },
+
+    cancelJob(jobId) {
+      this.jobs = this.jobs.filter(j => j.job_id !== jobId || j.status === 'done');
+    },
+
+    openOutputViewer(startIndex = 0) {
+      if (!this._doneCount) return;
+      this.queueOpen = false;
+      this.outputViewerOpen = true;
+      this.outputViewerIndex = startIndex;
+      this._outputSliderPos = 50;
+      this._outputZoom = 1;
+      this._outputPanX = 0;
+      this._outputPanY = 0;
+      this._outputBuildOverlay();
+      this._outputShowImage();
+      this._outputKeyHandler = (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'Escape') this.closeOutputViewer();
+        else if (e.key === 'ArrowLeft') this.outputViewerNav(-1);
+        else if (e.key === 'ArrowRight') this.outputViewerNav(1);
+      };
+      document.addEventListener('keydown', this._outputKeyHandler);
+    },
+
+    openOutputViewerForJob(jobId) {
+      const idx = this._completedJobs.findIndex(j => j.job_id === jobId);
+      if (idx >= 0) this.openOutputViewer(idx);
+    },
+
+    closeOutputViewer() {
+      this.outputViewerOpen = false;
+      this.outputViewerIndex = 0;
+      this._outputDestroyOverlay();
+      if (this._outputKeyHandler) {
+        document.removeEventListener('keydown', this._outputKeyHandler);
+        this._outputKeyHandler = null;
+      }
+    },
+
+    outputViewerNav(dir) {
+      const jobs = this._completedJobs;
+      if (!jobs.length) return;
+      const ni = this.outputViewerIndex + dir;
+      if (ni < 0 || ni >= jobs.length) return;
+      this.outputViewerIndex = ni;
+      this._outputSliderPos = 50;
+      this._outputZoom = 1;
+      this._outputPanX = 0;
+      this._outputPanY = 0;
+      this._outputShowImage();
+    },
+
+    _outputShowImage() {
+      const jobs = this._completedJobs;
+      const job = jobs[this.outputViewerIndex];
+      if (!job || !this._outputOverlay) return;
+
+      const imgBefore = this._outputOverlay.querySelector('.gv-out-before');
+      const imgAfter = this._outputOverlay.querySelector('.gv-out-after');
+      const counter = this._outputOverlay.querySelector('.gallery-viewer-counter');
+      const hasInput = !!job.input_url;
+
+      if (imgAfter) { const pre = new Image(); pre.onload = pre.onerror = () => { imgAfter.src = job.output_url; }; pre.src = job.output_url; }
+      if (imgBefore) { const pre = new Image(); pre.onload = pre.onerror = () => { imgBefore.src = hasInput ? job.input_url : job.output_url; imgBefore.style.display = ''; }; pre.src = hasInput ? job.input_url : job.output_url; }
+      if (counter) counter.textContent = `Result ${this.outputViewerIndex + 1} / ${jobs.length}`;
+
+      const prevBtn = this._outputOverlay.querySelector('.gallery-viewer-prev');
+      const nextBtn = this._outputOverlay.querySelector('.gallery-viewer-next');
+      if (prevBtn) prevBtn.style.visibility = this.outputViewerIndex > 0 ? 'visible' : 'hidden';
+      if (nextBtn) nextBtn.style.visibility = this.outputViewerIndex < jobs.length - 1 ? 'visible' : 'hidden';
+
+      this._outputZoom = 1; this._outputPanX = 0; this._outputPanY = 0;
+      this._outputSliderPos = 50;
+      this._outputApplyTransform();
+      this._outputUpdateSlider();
+    },
+
+    _outputApplyTransform() {
+      const img = this._outputOverlay && this._outputOverlay.querySelector('.gv-out-after');
+      const wrap = this._outputOverlay && this._outputOverlay.querySelector('.gv-out-zoom-wrap');
+      if (wrap) wrap.style.transform = `scale(${this._outputZoom}) translate(${this._outputPanX}px, ${this._outputPanY}px)`;
+      const lbl = this._outputOverlay && this._outputOverlay.querySelector('.gv-zoom-level');
+      if (lbl) lbl.textContent = Math.round(this._outputZoom * 100) + '%';
+    },
+
+    _outputSliderStyle() {
+      return `left: ${this._outputSliderPos}%`;
+    },
+
+    _outputClipStyle() {
+      const compare = this._outputOverlay && this._outputOverlay.querySelector('.gv-output-compare');
+      if (!compare) return 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)';
+      const W = compare.getBoundingClientRect().width;
+      const sliderPx = (this._outputSliderPos / 100) * W;
+      const wx = (sliderPx - W / 2) / this._outputZoom - this._outputPanX + W / 2;
+      const pct = Math.max(0, Math.min(100, (wx / W) * 100));
+      return `polygon(${pct}% 0, 100% 0, 100% 100%, ${pct}% 100%)`;
+    },
+
+    _outputUpdateSlider() {
+      const bar = this._outputOverlay && this._outputOverlay.querySelector('.gv-out-slider-bar');
+      const after = this._outputOverlay && this._outputOverlay.querySelector('.gv-out-after');
+      if (bar) bar.style.cssText = this._outputSliderStyle();
+      if (after) after.style.clipPath = this._outputClipStyle();
+      this._outputApplyTransform();
+    },
+
+    async outputViewerSave() {
+      const job = this._completedJobs[this.outputViewerIndex];
+      if (!job || !job.output_url) return;
+
+      const ts = Date.now().toString(36);
+      const typePrefix = job.type === 'enhance' ? 'enh' : job.type === 'generate' ? 'gen' : 'out';
+      const destName = `senzu_${typePrefix}_${ts}.png`;
+
+      await api.saveOutput(job.output_url, { saveFolder: this._appSaveFolder, destName });
+      this._outputSetSaveButtonState(true);
+      setTimeout(() => this._outputSetSaveButtonState(false), 2000);
+    },
+
+    _outputSetSaveButtonState(isSaved) {
+      const btn = this._outputOverlay && this._outputOverlay.querySelector('.gv-out-save');
+      if (btn) {
+        btn.innerHTML = isSaved ? '<i class="fa-solid fa-check"></i> Saved' : '<i class="fa-solid fa-download"></i> Save';
+        btn.style.background = isSaved ? 'var(--success)' : '';
+        btn.style.color = isSaved ? '#000' : '';
+        btn.style.borderColor = isSaved ? 'transparent' : '';
+      }
+    },
+
+    async outputViewerSendToEnhancer() {
+      const job = this._completedJobs[this.outputViewerIndex];
+      if (!job || !job.output_url) return;
+      try {
+        const blob = await fetch(job.output_url).then(r => r.blob());
+        const name = 'output_' + Date.now().toString(36) + '.png';
+        const file = new File([blob], name, { type: blob.type || 'image/png' });
+        this.closeOutputViewer();
+        window.dispatchEvent(new CustomEvent('senzu:route-image', { detail: { file, target: 'enhance' } }));
+      } catch (err) {
+        alert('Failed to send image: ' + (err.message || err));
+      }
+    },
+
+    _outputBuildOverlay() {
+      this._outputDestroyOverlay();
+      const overlay = document.createElement('div');
+      overlay.className = 'gv-output-overlay';
+      overlay.innerHTML = `
+        <div class="gallery-viewer-main">
+          <div class="gallery-viewer-image-area">
+            <button class="gallery-viewer-nav gallery-viewer-prev" title="Previous (←)"><i class="fa-solid fa-chevron-left"></i></button>
+            <div class="gv-output-compare">
+              <div class="gv-out-zoom-wrap">
+                <img class="gv-out-before gv-out-img" src="" draggable="false">
+                <img class="gv-out-after gv-out-img" src="" draggable="false">
+              </div>
+              <div class="gv-out-slider-bar"><div class="gv-out-slider-handle"><i class="fa-solid fa-arrows-left-right"></i></div></div>
+            </div>
+            <button class="gallery-viewer-nav gallery-viewer-next" title="Next (→)"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+          <div class="gallery-viewer-toolbar">
+            <button class="btn btn-sm btn-primary gv-out-save"><i class="fa-solid fa-download"></i> Save</button>
+            <span class="gallery-viewer-counter" style="min-width:110px;">Result 1 / 1</span>
+            <span class="gv-sep"></span>
+            <button class="gv-btn gv-out-zoom-out" title="Zoom out (−)"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+            <button class="gv-btn gv-out-zoom-reset" title="Fit (0)"><i class="fa-solid fa-expand"></i></button>
+            <button class="gv-btn gv-out-zoom-in" title="Zoom in (+)"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+            <span class="gv-zoom-level">100%</span>
+            <span class="gv-sep"></span>
+            <button class="gv-btn gv-out-enhance" title="Send to Enhancer"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+            <button class="gv-btn gv-out-close" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      this._outputOverlay = overlay;
+
+      const $ = (s) => overlay.querySelector(s);
+      $('.gv-out-save').addEventListener('click', (e) => { e.stopPropagation(); this.outputViewerSave(); });
+      $('.gv-out-zoom-in').addEventListener('click', (e) => { e.stopPropagation(); this._outputZoomCenter(0.25); });
+      $('.gv-out-zoom-out').addEventListener('click', (e) => { e.stopPropagation(); this._outputZoomCenter(-0.25); });
+      $('.gv-out-zoom-reset').addEventListener('click', (e) => { e.stopPropagation(); this._outputReset(); });
+      $('.gv-out-enhance').addEventListener('click', (e) => { e.stopPropagation(); this.outputViewerSendToEnhancer(); });
+      $('.gv-out-close').addEventListener('click', (e) => { e.stopPropagation(); this.closeOutputViewer(); });
+      overlay.querySelectorAll('.gallery-viewer-prev').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); this.outputViewerNav(-1); }));
+      overlay.querySelectorAll('.gallery-viewer-next').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); this.outputViewerNav(1); }));
+
+      const compare = $('.gv-output-compare');
+      compare.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        this._outputZoomAt(e.deltaY < 0 ? 0.15 : -0.15, e.clientX, e.clientY);
+      }, { passive: false });
+
+      const sliderBar = $('.gv-out-slider-bar');
+      sliderBar.addEventListener('mousedown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        this._outputDraggingSlider = true;
+        this._outputUpdateSliderFromEvent(e);
+      });
+      sliderBar.addEventListener('touchstart', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        this._outputDraggingSlider = true;
+        this._outputUpdateSliderFromEvent(e.touches[0]);
+      });
+      this._outputSliderMove = (e) => {
+        if (!this._outputDraggingSlider) return;
+        this._outputUpdateSliderFromEvent(e.touches ? e.touches[0] : e);
+      };
+      this._outputSliderEnd = () => { this._outputDraggingSlider = false; };
+      document.addEventListener('mousemove', this._outputSliderMove);
+      document.addEventListener('mouseup', this._outputSliderEnd);
+      document.addEventListener('touchmove', this._outputSliderMove);
+      document.addEventListener('touchend', this._outputSliderEnd);
+
+      let panStartX, panStartY, panOrigX, panOrigY, clickX, clickY;
+      compare.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.gv-out-slider-bar') || e.target.closest('button')) return;
+        clickX = e.clientX; clickY = e.clientY;
+        panStartX = e.clientX; panStartY = e.clientY;
+        panOrigX = this._outputPanX; panOrigY = this._outputPanY;
+        this._outputPanning = true;
+      });
+      this._outputPanMove = (e) => {
+        if (!this._outputPanning) return;
+        this._outputPanX = panOrigX + (e.clientX - panStartX);
+        this._outputPanY = panOrigY + (e.clientY - panStartY);
+        this._outputUpdateSlider();
+      };
+      this._outputPanEnd = (e) => {
+        if (this._outputPanning) {
+          this._outputPanning = false;
+          if (clickX !== undefined && e && Math.abs(e.clientX - clickX) < 5 && Math.abs(e.clientY - clickY) < 5) {
+            this.closeOutputViewer();
+          }
+        }
+        clickX = undefined;
+      };
+      document.addEventListener('mousemove', this._outputPanMove);
+      document.addEventListener('mouseup', this._outputPanEnd);
+    },
+
+    _outputDestroyOverlay() {
+      if (this._outputSliderMove) document.removeEventListener('mousemove', this._outputSliderMove);
+      if (this._outputSliderEnd) document.removeEventListener('mouseup', this._outputSliderEnd);
+      if (this._outputPanMove) document.removeEventListener('mousemove', this._outputPanMove);
+      if (this._outputPanEnd) document.removeEventListener('mouseup', this._outputPanEnd);
+      this._outputSliderMove = null; this._outputSliderEnd = null;
+      this._outputPanMove = null; this._outputPanEnd = null;
+      if (this._outputOverlay) { this._outputOverlay.remove(); this._outputOverlay = null; }
+    },
+
+    _outputZoomCenter(delta) {
+      const compare = this._outputOverlay && this._outputOverlay.querySelector('.gv-output-compare');
+      if (!compare) return;
+      const r = compare.getBoundingClientRect();
+      this._outputZoomAt(delta, r.left + r.width / 2, r.top + r.height / 2);
+    },
+
+    _outputZoomAt(delta, cx, cy) {
+      const compare = this._outputOverlay && this._outputOverlay.querySelector('.gv-output-compare');
+      if (!compare) return;
+      const r = compare.getBoundingClientRect();
+      const ox = cx - r.left - r.width / 2;
+      const oy = cy - r.top - r.height / 2;
+      const oldZoom = this._outputZoom;
+      this._outputZoom = Math.max(0.1, Math.min(20, this._outputZoom + delta));
+      const scale = this._outputZoom / oldZoom;
+      this._outputPanX = ox - scale * (ox - this._outputPanX);
+      this._outputPanY = oy - scale * (oy - this._outputPanY);
+      this._outputUpdateSlider();
+    },
+
+    _outputReset() {
+      this._outputZoom = 1; this._outputPanX = 0; this._outputPanY = 0;
+      this._outputUpdateSlider();
+    },
+
+    _outputUpdateSliderFromEvent(e) {
+      const compare = this._outputOverlay && this._outputOverlay.querySelector('.gv-output-compare');
+      if (!compare) return;
+      const r = compare.getBoundingClientRect();
+      this._outputSliderPos = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100));
+      this._outputUpdateSlider();
+    },
+
+    formatTime(ms) {
+      if (!ms) return '';
+      const diff = Date.now() - ms;
+      if (diff < 60000) return 'just now';
+      if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+      if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+      return Math.floor(diff / 86400000) + 'd ago';
+    },
+
+    outputTypeLabel(type) {
+      const map = { enhance: 'Enhance', generate: 'Generate', remove_bg: 'Remove BG', inpaint: 'Inpaint', outpaint: 'Outpaint' };
+      return map[type] || type || 'Unknown';
+    },
+
+    // =========================================================
     // Fullscreen viewer
     // =========================================================
     openViewer(index) {
@@ -1012,7 +1692,7 @@ document.addEventListener('alpine:init', () => {
 
       const imgWrap = $('.gallery-viewer-img-wrap');
       let dragStartX, dragStartY, startPanX, startPanY, clickX, clickY, didDrag;
-      area.addEventListener('mousedown', (e) => { clickX = e.clientX; clickY = e.clientY; didDrag = false; });
+      area.addEventListener('mousedown', (e) => { if (e.target.closest('button')) return; clickX = e.clientX; clickY = e.clientY; didDrag = false; });
       imgWrap.addEventListener('mousedown', (e) => {
         if (this.crop.active) return;
         if (e.button !== 0) return;
@@ -1070,11 +1750,29 @@ document.addEventListener('alpine:init', () => {
         const blob = await fetch(item.src).then(r => r.blob());
         const name = item.filename || ('gallery_' + Date.now().toString(36) + '.png');
         const file = new File([blob], name, { type: blob.type || 'image/png' });
-        this.closeViewer();
-        window.dispatchEvent(new CustomEvent('senzu:route-image', { detail: { file, target } }));
+        window.dispatchEvent(new CustomEvent('senzu:route-image', { detail: { file, target, stayInGallery: true } }));
+        this._flashButton(target);
       } catch (err) {
         alert('Failed to send image: ' + (err.message || err));
       }
+    },
+
+    _flashButton(target) {
+      const cls = target === 'enhance' ? '.gv-enhance' : target === 'generate' ? '.gv-img2img' : null;
+      if (!cls || !this._overlay) return;
+      const btn = this._overlay.querySelector(cls);
+      if (!btn) return;
+      const origHTML = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+      btn.style.background = 'var(--success)';
+      btn.style.color = '#000';
+      btn.style.borderColor = 'transparent';
+      setTimeout(() => {
+        btn.innerHTML = origHTML;
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }, 1200);
     },
 
     viewerNav(dir) {
@@ -1093,7 +1791,11 @@ document.addEventListener('alpine:init', () => {
       const item = this.items[index];
       if (!item || !this._overlay) return;
       const img = this._overlay.querySelector('.gallery-viewer-img');
-      if (img) { img.src = item.src; this.applyViewerTransform(); }
+      if (img) {
+        const pre = new Image();
+        pre.onload = pre.onerror = () => { img.src = item.src; this.applyViewerTransform(); };
+        pre.src = item.src;
+      }
 
       const label = `${index + 1} / ${this.items.length}`;
       const counter = this._overlay.querySelector('.gallery-viewer-counter');
@@ -1251,6 +1953,8 @@ document.addEventListener('alpine:init', () => {
         </div>
         <div class="gv-actions">
           <button class="gv-copy" data-value="${this.escapeHTML(item.prompt || '')}"><i class="fa-regular fa-clone"></i> Copy Prompt</button>
+          <button class="gv-copy gv-open-folder"><i class="fa-solid fa-folder-open"></i> Open folder</button>
+          <button class="gv-copy gv-trash"><i class="fa-regular fa-trash-can"></i> Trash</button>
         </div>
         <div class="gv-meta">
           ${this.metaRow('Model', item.model_name, 'model_name:' + item.model_name)}
@@ -1311,6 +2015,19 @@ document.addEventListener('alpine:init', () => {
           this.refreshTags();
         });
       });
+
+      const openBtn = container.querySelector('.gv-open-folder');
+      if (openBtn) openBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openContainingFolder(item.fingerprint);
+      });
+
+      const trashBtn = container.querySelector('.gv-trash');
+      if (trashBtn) trashBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.closeViewer();
+        this.deleteItems([item.fingerprint]);
+      });
     },
 
     addHyperfilter(fragment, event) {
@@ -1331,6 +2048,417 @@ document.addEventListener('alpine:init', () => {
     filterByTag(tag) {
       this.searchQuery = 'tag:' + tag;
       this.search(false);
+    },
+
+    // =========================================================
+    // Video Viewer
+    // =========================================================
+    openVideoViewer(index) {
+      this._viewerIndex = index;
+      this._zoom = 1; this._panX = 0; this._panY = 0;
+      this._panelHidden = !!this.settings.hidePanel;
+      this.clearSelection();
+      // Stop all card hover/locked playback
+      document.querySelectorAll('.video-card-item video').forEach(v => { v.pause(); v.currentTime = 0; });
+      this._buildVideoViewerOverlay();
+      this._showVideo(index);
+
+      this._keyHandler = (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'Escape') this._closeVideoViewer();
+        else if (e.key === 'ArrowLeft') this._videoNav(-1);
+        else if (e.key === 'ArrowRight') this._videoNav(1);
+        else if (e.key === '+' || e.key === '=') this._videoZoomBy(0.25);
+        else if (e.key === '-') this._videoZoomBy(-0.25);
+        else if (e.key === '0') this._videoZoomReset();
+        else if (e.key === ' ') { e.preventDefault(); this._videoTogglePlayback(); }
+        else if (e.key.toLowerCase() === 'i') this.togglePanel();
+        else if (e.key.toLowerCase() === 's') { e.preventDefault(); this._videoCaptureFrame(); }
+        else if (e.key === '.') { e.preventDefault(); this._videoStepFrame(1); }
+        else if (e.key === ',') { e.preventDefault(); this._videoStepFrame(-1); }
+        else if (e.key.toLowerCase() === 'm') { e.preventDefault(); this._videoToggleMute(); }
+      };
+      document.addEventListener('keydown', this._keyHandler);
+    },
+
+    _buildVideoViewerOverlay() {
+      this._closeVideoViewer(true);
+      const overlay = document.createElement('div');
+      overlay.className = 'gallery-viewer-overlay video-viewer';
+      overlay.innerHTML = `
+        <div class="gallery-viewer-main">
+          <div class="gallery-viewer-image-area">
+            <button class="gallery-viewer-nav gallery-viewer-prev" title="Previous (←)"><i class="fa-solid fa-chevron-left"></i></button>
+            <div class="gallery-viewer-img-wrap"><video class="gallery-viewer-video" loop playsinline></video></div>
+            <button class="gallery-viewer-nav gallery-viewer-next" title="Next (→)"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+          <div class="gallery-viewer-toolbar">
+            <span class="gallery-viewer-counter"></span>
+            <span class="gv-sep"></span>
+            <button class="gv-btn gv-vplay" title="Play/Pause (Space)"><i class="fa-solid fa-pause"></i></button>
+            <button class="gv-btn gv-vprev-frame" title="Previous frame (,)"><i class="fa-solid fa-backward-step"></i></button>
+            <button class="gv-btn gv-vnext-frame" title="Next frame (.)"><i class="fa-solid fa-forward-step"></i></button>
+            <button class="gv-btn gv-vcapture" title="Capture frame (S)"><i class="fa-solid fa-camera"></i></button>
+            <div class="gv-vseek-wrap">
+              <span class="gv-vtime gv-vtime-current">0:00</span>
+              <div class="gv-vseek">
+                <div class="gv-vseek-buffered"></div>
+                <div class="gv-vseek-progress"></div>
+                <input class="gv-vseek-input" type="range" min="0" max="1000" value="0" step="1">
+              </div>
+              <span class="gv-vtime gv-vtime-duration">0:00</span>
+            </div>
+            <button class="gv-btn gv-vmute" title="Mute (M)"><i class="fa-solid fa-volume-high"></i></button>
+            <input class="gv-vvolume" type="range" min="0" max="100" value="${this.videoVolume}" step="1">
+            <span class="gv-sep"></span>
+            <button class="gv-btn gv-zoom-out" title="Zoom out (−)"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+            <button class="gv-btn gv-zoom-reset" title="Fit (0)"><i class="fa-solid fa-expand"></i></button>
+            <button class="gv-btn gv-zoom-in" title="Zoom in (+)"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+            <span class="gv-zoom-level">100%</span>
+            <span class="gv-sep"></span>
+            <button class="gv-btn gv-panel" title="Info (i)"><i class="fa-solid fa-circle-info"></i></button>
+            <button class="gv-btn gv-close" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+        <div class="gallery-viewer-panel${this._panelHidden ? ' collapsed' : ''}"><div class="gv-panel-body"></div></div>
+      `;
+      document.body.appendChild(overlay);
+      this._overlay = overlay;
+
+      const $ = (s) => overlay.querySelector(s);
+      $('.gallery-viewer-prev').addEventListener('click', (e) => { e.stopPropagation(); this._videoNav(-1); });
+      $('.gallery-viewer-next').addEventListener('click', (e) => { e.stopPropagation(); this._videoNav(1); });
+      $('.gv-vplay').addEventListener('click', (e) => { e.stopPropagation(); this._videoTogglePlayback(); });
+      $('.gv-vprev-frame').addEventListener('click', (e) => { e.stopPropagation(); this._videoStepFrame(-1); });
+      $('.gv-vnext-frame').addEventListener('click', (e) => { e.stopPropagation(); this._videoStepFrame(1); });
+      $('.gv-vcapture').addEventListener('click', (e) => { e.stopPropagation(); this._videoCaptureFrame(); });
+      $('.gv-vmute').addEventListener('click', (e) => { e.stopPropagation(); this._videoToggleMute(); });
+      $('.gv-vvolume').addEventListener('input', (e) => { e.stopPropagation(); this._videoSetVolume(parseInt(e.target.value)); });
+      $('.gv-vseek-input').addEventListener('input', (e) => { e.stopPropagation(); this._videoSeek(parseInt(e.target.value)); });
+      $('.gv-zoom-in').addEventListener('click', (e) => { e.stopPropagation(); this._videoZoomBy(0.25); });
+      $('.gv-zoom-out').addEventListener('click', (e) => { e.stopPropagation(); this._videoZoomBy(-0.25); });
+      $('.gv-zoom-reset').addEventListener('click', (e) => { e.stopPropagation(); this._videoZoomReset(); });
+      $('.gv-panel').addEventListener('click', (e) => { e.stopPropagation(); this.togglePanel(); });
+      $('.gv-close').addEventListener('click', (e) => { e.stopPropagation(); this._closeVideoViewer(); });
+      $('.gallery-viewer-panel').addEventListener('click', (e) => e.stopPropagation());
+      $('.gallery-viewer-toolbar').addEventListener('click', (e) => e.stopPropagation());
+
+      const area = $('.gallery-viewer-image-area');
+      area.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        this._videoZoomAtPoint(e.deltaY < 0 ? 0.15 : -0.15, e.clientX, e.clientY);
+      }, { passive: false });
+
+      const vidWrap = $('.gallery-viewer-img-wrap');
+      let clickX, clickY, didDrag, clickTimer;
+      area.addEventListener('mousedown', (e) => { if (e.target.closest('button')) return; clickX = e.clientX; clickY = e.clientY; didDrag = false; });
+      vidWrap.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        this._isPanning = true;
+        this._panStartX = e.clientX; this._panStartY = e.clientY;
+        this._panOrigX = this._panX; this._panOrigY = this._panY;
+        vidWrap.style.cursor = 'grabbing';
+        e.preventDefault();
+      });
+      this._onPanMove = (e) => {
+        if (!this._isPanning) return;
+        const dx = e.clientX - this._panStartX, dy = e.clientY - this._panStartY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
+        this._panX = this._panOrigX + dx; this._panY = this._panOrigY + dy;
+        this._videoApplyTransform();
+      };
+      this._onPanEnd = (e) => {
+        if (this._isPanning) {
+          this._isPanning = false;
+          vidWrap.style.cursor = this._zoom > 1 ? 'grab' : 'default';
+        }
+        if (!didDrag && clickX !== undefined) {
+          if (Math.abs(e.clientX - clickX) < 5 && Math.abs(e.clientY - clickY) < 5) {
+            if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; this._closeVideoViewer(); }
+            else clickTimer = setTimeout(() => { clickTimer = null; this._videoTogglePlayback(); }, 300);
+          }
+        }
+        clickX = undefined;
+      };
+      document.addEventListener('mousemove', this._onPanMove);
+      document.addEventListener('mouseup', this._onPanEnd);
+    },
+
+    _videoNav(dir) {
+      const ni = this._viewerIndex + dir;
+      if (ni < 0 || ni >= this.items.length) return;
+      this._viewerIndex = ni;
+      this._zoom = 1; this._panX = 0; this._panY = 0;
+      this._showVideo(ni);
+    },
+
+    _showVideo(index) {
+      const item = this.items[index];
+      if (!item || !this._overlay) return;
+      const video = this._overlay.querySelector('.gallery-viewer-video');
+      if (video) {
+        video.onplay = () => this._videoSyncPlay(false);
+        video.onpause = () => this._videoSyncPlay(true);
+        video.ontimeupdate = () => this._videoUpdateSeekUI();
+        video.onprogress = () => this._videoUpdateSeekUI();
+        video.onloadedmetadata = () => {
+          this._videoUpdateSeekUI();
+          const data = this.items[this._viewerIndex];
+          if (data && data.fps) this.videoFps = data.fps;
+        };
+        video.onvolumechange = () => this._videoUpdateVolumeUI();
+        const src = item.src || '/api/gallery/videos/file/' + encodeURIComponent(item.fingerprint);
+        video.volume = this.videoVolume / 100;
+        video.muted = false;
+        video.src = src;
+        // Play once the new source is buffered enough; calling play()
+        // immediately after setting src can yield an AbortError.
+        const doPlay = () => {
+          video.play().catch(() => {
+            video.addEventListener('canplay', () => video.play().catch(() => {}), { once: true });
+          });
+        };
+        if (video.readyState >= 2) { doPlay(); }
+        else { video.addEventListener('canplay', doPlay, { once: true }); }
+      }
+      this._videoSyncPlay(false);
+
+      const label = `${index + 1} / ${this.items.length}`;
+      const counter = this._overlay.querySelector('.gallery-viewer-counter');
+      if (counter) counter.textContent = label;
+      const prev = this._overlay.querySelector('.gallery-viewer-prev');
+      const next = this._overlay.querySelector('.gallery-viewer-next');
+      if (prev) prev.style.visibility = index > 0 ? 'visible' : 'hidden';
+      if (next) next.style.visibility = index < this.items.length - 1 ? 'visible' : 'hidden';
+
+      this._videoApplyTransform();
+      this.updateZoomLabel();
+      this._videoUpdateSeekUI();
+      this._videoUpdateVolumeUI();
+      this._videoLoadPanel(item);
+    },
+
+    // Video playback
+    _videoTogglePlayback() {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      if (!v) return;
+      if (v.paused) v.play().catch(() => {});
+      else v.pause();
+    },
+    _videoSyncPlay(paused) {
+      const btn = this._overlay && this._overlay.querySelector('.gv-vplay i');
+      if (btn) { btn.classList.toggle('fa-play', paused); btn.classList.toggle('fa-pause', !paused); }
+    },
+    _videoSeek(raw) {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      if (!v || !isFinite(v.duration) || v.duration <= 0) return;
+      v.currentTime = (raw / 1000) * v.duration;
+      this._videoUpdateSeekUI();
+    },
+    _videoUpdateSeekUI() {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      if (!v) return;
+      const duration = isFinite(v.duration) ? v.duration : 0;
+      const current = isFinite(v.currentTime) ? v.currentTime : 0;
+      const input = this._overlay.querySelector('.gv-vseek-input');
+      const progress = this._overlay.querySelector('.gv-vseek-progress');
+      const buffered = this._overlay.querySelector('.gv-vseek-buffered');
+      const currentLabel = this._overlay.querySelector('.gv-vtime-current');
+      const durationLabel = this._overlay.querySelector('.gv-vtime-duration');
+      const pct = duration > 0 ? Math.min(100, Math.max(0, (current / duration) * 100)) : 0;
+      if (input) input.value = duration > 0 ? Math.round((current / duration) * 1000) : 0;
+      if (progress) progress.style.width = `${pct}%`;
+      if (buffered) {
+        let bufPct = 0;
+        if (duration > 0 && v.buffered && v.buffered.length) bufPct = Math.min(100, (v.buffered.end(v.buffered.length - 1) / duration) * 100);
+        buffered.style.width = `${bufPct}%`;
+      }
+      if (currentLabel) currentLabel.textContent = this.formatClock(current);
+      if (durationLabel) durationLabel.textContent = this.formatClock(duration);
+    },
+    _videoStepFrame(direction) {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      if (!v) return;
+      v.pause();
+      const fps = Number(this.videoFps) > 0 ? Number(this.videoFps) : 30;
+      const dur = isFinite(v.duration) ? v.duration : Number.MAX_SAFE_INTEGER;
+      v.currentTime = Math.max(0, Math.min(dur, (v.currentTime || 0) + (direction / fps)));
+      this._videoSyncPlay(true);
+      this._videoUpdateSeekUI();
+    },
+    // Volume
+    async _videoSetVolume(value) {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      const vol = Math.max(0, Math.min(100, isNaN(value) ? this.videoVolume : value));
+      this.videoVolume = vol;
+      if (v) { v.volume = vol / 100; v.muted = vol === 0; }
+      this._videoUpdateVolumeUI();
+    },
+    _videoToggleMute() {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      if (!v) return;
+      v.muted = !v.muted;
+      this._videoUpdateVolumeUI();
+    },
+    _videoUpdateVolumeUI() {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      const slider = this._overlay && this._overlay.querySelector('.gv-vvolume');
+      const icon = this._overlay && this._overlay.querySelector('.gv-vmute i');
+      if (slider) slider.value = this.videoVolume;
+      if (!icon || !v) return;
+      const level = v.muted || v.volume === 0 ? 'mute' : (v.volume < 0.5 ? 'low' : 'high');
+      icon.className = level === 'mute' ? 'fa-solid fa-volume-xmark' : (level === 'low' ? 'fa-solid fa-volume-low' : 'fa-solid fa-volume-high');
+    },
+    // Frame capture
+    _videoCaptureFrame() {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      const item = this.items[this._viewerIndex];
+      if (!v || !v.videoWidth || !v.videoHeight) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+      canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/png');
+      const base = (item.filename || item.fingerprint || 'video-frame').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '_');
+      const now = v.currentTime || 0;
+      const m = Math.floor(now / 60); const s = Math.floor(now % 60); const ms = Math.floor((now % 1) * 1000);
+      const ts = `${m}-${String(s).padStart(2, '0')}-${String(ms).padStart(3, '0')}`;
+      const filename = `${base}-${ts}.png`;
+
+      api.gallery.videoCaptureFrame(dataUrl, filename).then(result => {
+        if (result.saved) this._videoFlashCapture();
+      }).catch(() => {
+        const a = document.createElement('a'); a.href = dataUrl; a.download = filename; a.click();
+      });
+    },
+    _videoFlashCapture() {
+      const btn = this._overlay && this._overlay.querySelector('.gv-vcapture');
+      if (!btn) return;
+      btn.style.color = 'var(--success)';
+      clearTimeout(this._captureTimer);
+      this._captureTimer = setTimeout(() => { if (btn) btn.style.color = ''; }, 1200);
+    },
+    // Video zoom
+    _videoZoomBy(delta) {
+      this._zoom = Math.max(0.1, Math.min(20, this._zoom + delta));
+      this._videoApplyTransform(); this.updateZoomLabel();
+      const w = this._overlay && this._overlay.querySelector('.gallery-viewer-img-wrap');
+      if (w) w.style.cursor = this._zoom > 1 ? 'grab' : 'default';
+    },
+    _videoZoomAtPoint(delta, cx, cy) {
+      const w = this._overlay && this._overlay.querySelector('.gallery-viewer-img-wrap');
+      if (!w) return;
+      const r = w.getBoundingClientRect();
+      const ox = cx - r.left - r.width / 2, oy = cy - r.top - r.height / 2;
+      const oldZoom = this._zoom;
+      this._zoom = Math.max(0.1, Math.min(20, this._zoom + delta));
+      const scale = this._zoom / oldZoom;
+      this._panX = ox - scale * (ox - this._panX);
+      this._panY = oy - scale * (oy - this._panY);
+      this._videoApplyTransform(); this.updateZoomLabel();
+      if (w) w.style.cursor = this._zoom > 1 ? 'grab' : 'default';
+    },
+    _videoZoomReset() {
+      this._zoom = 1; this._panX = 0; this._panY = 0;
+      this._videoApplyTransform(); this.updateZoomLabel();
+    },
+    _videoApplyTransform() {
+      const v = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      if (v) v.style.transform = `translate(${this._panX}px, ${this._panY}px) scale(${this._zoom})`;
+    },
+    // Video panel
+    async _videoLoadPanel(item) {
+      const body = this._overlay && this._overlay.querySelector('.gv-panel-body');
+      if (!body) return;
+      body.innerHTML = this._videoBuildPanelHTML(item);
+      this._videoAttachPanelHandlers(body, item);
+    },
+    _videoBuildPanelHTML(item) {
+      const tagsHTML = (item.tags || []).map(t =>
+        `<span class="gv-tag"><span class="gv-filter" data-filter="tag:${this.escapeHTML(t)}">${this.escapeHTML(t)}</span><i class="fa-solid fa-xmark gv-tag-remove" data-tag="${this.escapeHTML(t)}"></i></span>`
+      ).join('');
+      const filenoext = (item.filename || '').replace(/\.[^.]+$/, '');
+      return `
+        <div class="gv-actions">
+          <button class="gv-copy" data-value="${this.escapeHTML(filenoext)}"><i class="fa-regular fa-clone"></i> Copy Name</button>
+        </div>
+        <div class="gv-tags">${tagsHTML}
+          <input type="text" class="gv-add-tag" placeholder="Add tag…">
+        </div>
+        <div class="gv-meta">
+          ${this.metaRow('File', item.filename, null)}
+          ${this.metaRow('Dimensions', (item.width && item.height) ? `${item.width} × ${item.height}` : '', null)}
+          ${this.metaRow('Duration', item.duration ? this.formatDuration(item.duration) : '', 'duration:' + item.duration)}
+          ${this.metaRow('FPS', item.fps ? Math.round(item.fps * 100) / 100 : '', null)}
+          ${this.metaRow('Codec', item.video_codec, null)}
+          ${this.metaRow('Size', item.size ? this.formatFileSize(item.size) : '', null)}
+        </div>`;
+    },
+    formatFileSize(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'], i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    },
+    _videoAttachPanelHandlers(container, item) {
+      const copyBtn = container.querySelector('.gv-copy');
+      if (copyBtn) copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const val = copyBtn.getAttribute('data-value');
+        if (navigator.clipboard) navigator.clipboard.writeText(val);
+        copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+        setTimeout(() => { copyBtn.innerHTML = '<i class="fa-regular fa-clone"></i> Copy Name'; }, 1800);
+      });
+
+      container.querySelectorAll('.gv-filter').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.addHyperfilter(el.getAttribute('data-filter'), e);
+        });
+      });
+
+      const tagInput = container.querySelector('.gv-add-tag');
+      if (tagInput) tagInput.addEventListener('keydown', async (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault(); e.stopPropagation();
+        const val = tagInput.value.trim();
+        if (!val) return;
+        const addFn = this.mediaType === 'videos' ? api.gallery.videoAddTags : api.gallery.addTags;
+        await addFn([item.fingerprint], [val]);
+        if (!item.tags.includes(val)) item.tags.push(val);
+        tagInput.value = '';
+        this._videoLoadPanel(item);
+        this.refreshCard(item.fingerprint);
+        this.refreshTags();
+      });
+
+      container.querySelectorAll('.gv-tag-remove').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const tag = el.getAttribute('data-tag');
+          const removeFn = this.mediaType === 'videos' ? api.gallery.videoRemoveTags : api.gallery.removeTags;
+          await removeFn([item.fingerprint], [tag]);
+          item.tags = item.tags.filter(t => t !== tag);
+          this._videoLoadPanel(item);
+          this.refreshCard(item.fingerprint);
+          this.refreshTags();
+        });
+      });
+    },
+    _closeVideoViewer(silent) {
+      const video = this._overlay && this._overlay.querySelector('.gallery-viewer-video');
+      if (video) video.pause();
+      this.destroyViewerOverlay();
+      if (!silent && this._keyHandler) { document.removeEventListener('keydown', this._keyHandler); this._keyHandler = null; }
+      // Reset all play-locked cards
+      document.querySelectorAll('.video-card-item.playing-locked').forEach(card => {
+        card.classList.remove('playing-locked');
+        const v = card.querySelector('video.video-hover') || card.querySelector('video.video-fallback');
+        if (v) { v.pause(); v.currentTime = 0; v.muted = true; }
+        const thumb = card.querySelector('img.video-thumb');
+        const hv = card.querySelector('video.video-hover');
+        if (thumb) { thumb.style.display = ''; if (hv) hv.style.display = ''; }
+        const btn = card.querySelector('.g-play-lock i');
+        if (btn) btn.className = 'fa-solid fa-play';
+      });
     }
   }));
 });
