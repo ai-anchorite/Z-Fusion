@@ -2016,14 +2016,14 @@
               <template x-if="genCompare()">
                 <img :src="genCompare()" class="slider-img" alt="Edit input">
               </template>
-              <template x-if="genCompare()">
-                <img :src="genOutput" class="slider-img slider-img-after" :style="getAfterClipStyle()" alt="Edit result">
+               <template x-if="genCompare()">
+                <img :src="genOutput" class="slider-img slider-img-after" :style="getGenAfterClipStyle()" alt="Edit result">
               </template>
             </div>
 
-            <div x-show="genOutput && genCompare()" class="slider-bar" :style="getSliderStyle()"
-                 @mousedown="startSliderDrag($event); $event.stopPropagation()"
-                 @touchstart="startSliderDrag($event); $event.stopPropagation()">
+             <div x-show="genOutput && genCompare()" class="slider-bar" :style="getGenSliderStyle()"
+                  @mousedown="startGenSliderDrag($event); $event.stopPropagation()"
+                  @touchstart="startGenSliderDrag($event); $event.stopPropagation()">
               <div class="slider-handle">
                 <i class="fa-solid fa-arrows-left-right"></i>
               </div>
@@ -2138,6 +2138,9 @@
               <i class="fa-solid" :class="sortDir === -1 ? 'fa-arrow-down-wide-short' : 'fa-arrow-up-short-wide'"></i>
             </button>
           </div>
+          <button class="btn btn-sm gallery-icon-btn" @click="selectAll()" title="Select all visible images">
+            <i class="fa-regular fa-square-check"></i>
+          </button>
           <button class="btn btn-sm gallery-icon-btn" @click="openQueue()" title="Output queue">
             <i class="fa-solid fa-photo-film"></i>
             <span x-show="_doneCount > 0" class="queue-badge" x-text="_doneCount > 99 ? '99+' : _doneCount"></span>
@@ -2275,12 +2278,15 @@
           <span x-show="!searchQuery && mediaType === 'videos'">Connect a folder with videos to get started.</span>
         </div>
 
-        <!-- Selection footer -->
+         <!-- Selection footer -->
         <div class="gallery-selection-footer" x-show="selectedFps.length > 0" x-cloak>
           <strong x-text="selectedFps.length"></strong> <span>selected</span>
           <button class="btn btn-sm" @click="bulkAddTag()"><i class="fa-solid fa-tag"></i> Tag</button>
+          <button class="btn btn-sm" @click="bulkAutoTag()" title="Auto-tag selected media using WD14 AI"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Tag</button>
+          <button class="btn btn-sm" @click="bulkRemoveAllTags()" title="Remove all tags from selected images"><i class="fa-solid fa-tags"></i> Clear Tags</button>
           <button class="btn btn-sm" @click="bulkDelete()" style="background: var(--danger-soft); border-color: rgba(255,82,82,0.2); color: var(--danger);"><i class="fa-solid fa-trash"></i> Delete</button>
           <button class="btn btn-sm" @click="clearSelection()"><i class="fa-solid fa-xmark"></i> Clear</button>
+          <span x-show="_taggingProgressText" class="gallery-selection-progress" x-text="_taggingProgressText" style="margin-left:12px;color:var(--primary-neon);font-size:0.82rem;"></span>
         </div>
 
         <!-- Settings slide-out -->
@@ -2320,10 +2326,10 @@
 
             <div class="input-group" style="margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between;">
-                <span class="input-label">Images per scroll <i class="fa-solid fa-circle-info" title="How many thumbnails load at a time when scrolling. Lower values mean shorter load pauses between batches; higher values show more at once but take slightly longer to appear." style="opacity:0.5; cursor:help; font-size:0.72rem; vertical-align:text-top;"></i></span>
+                <span class="input-label">Images per scroll <i class="fa-solid fa-circle-info" title="How many thumbnails load at a time. 'Select All' only selects loaded images &mdash; organize folders so each contains a workable batch, or increase this limit for larger folders." style="opacity:0.5; cursor:help; font-size:0.72rem; vertical-align:text-top;"></i></span>
                 <span class="range-val" x-text="settings.imageLimit"></span>
               </div>
-              <input type="range" class="range-slider" min="100" max="500" step="50"
+              <input type="range" class="range-slider" min="100" max="2000" step="100"
                      x-model.number="settings.imageLimit" @change="saveSettings(); search(false)">
             </div>
 
@@ -2468,9 +2474,9 @@
             <div x-show="jobs.length > 0" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;">
               <template x-for="job in jobs" :key="job.job_id">
                 <div class="queue-job-item" :class="job.status === 'done' ? 'queue-job-done' : ''">
-                  <div class="queue-job-thumb" @click="job.status === 'done' && openOutputViewerForJob(job.job_id)" :style="job.status === 'done' ? 'cursor:pointer' : ''">
-                    <img x-show="job.output_url" :src="job.output_url" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">
-                    <div x-show="!job.output_url" class="queue-job-thumb-placeholder" style="width:48px;height:48px;border-radius:6px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;">
+                  <div class="queue-job-thumb" @click="job.status === 'done' && job.type !== 'auto_tag' && openOutputViewerForJob(job.job_id)" :style="job.status === 'done' && job.type !== 'auto_tag' ? 'cursor:pointer' : ''">
+                    <img x-show="job.output_url || job.thumb_url" :src="job.output_url || job.thumb_url" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">
+                    <div x-show="!job.output_url && !job.thumb_url" class="queue-job-thumb-placeholder" style="width:48px;height:48px;border-radius:6px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;">
                       <i class="fa-solid fa-circle-notch fa-spin" style="color:var(--primary-neon);font-size:0.9rem;"></i>
                     </div>
                     <span x-show="job.status === 'processing'" class="queue-job-badge" style="background:var(--primary-neon);">
@@ -2482,7 +2488,11 @@
                   </div>
                   <div class="queue-job-info">
                     <span class="queue-job-type" x-text="outputTypeLabel(job.type)"></span>
-                    <span class="queue-job-status" x-show="job.status === 'processing'" style="color:var(--primary-neon);">Processing...</span>
+                    <span class="queue-job-status" x-show="job.status === 'processing'" style="color:var(--primary-neon);">
+                      <span x-show="job.type === 'auto_tag' && job._progress && job._progress.text" x-text="job._progress.text"></span>
+                      <span x-show="job.type === 'auto_tag' && job._progress && !job._progress.text">Tagging <span x-text="job._progress.current"></span>/<span x-text="job._progress.total"></span></span>
+                      <span x-show="!(job.type === 'auto_tag' && job._progress)">Processing...</span>
+                    </span>
                     <span class="queue-job-status" x-show="job.status === 'pending'" style="color:var(--text-muted);">Pending</span>
                     <span class="queue-job-status" x-show="job.status === 'done'" x-text="formatTime(job.completed_at)" style="color:var(--text-secondary);"></span>
                     <span class="queue-job-status" x-show="job.status === 'error'" style="color:var(--danger);">Error</span>
@@ -2494,7 +2504,7 @@
               </template>
             </div>
             <div x-show="jobs.length === 0" style="color:var(--text-muted);text-align:center;padding:24px 0;font-size:0.85rem;">
-              No jobs yet. Run an Enhance or Generate to see outputs here.
+              No jobs yet. Run an Enhance, Generate, or Auto-Tag to see outputs here.
             </div>
             <button class="btn btn-sm btn-primary" @click="openOutputViewer()" :disabled="_doneCount === 0"
                     style="width:100%;margin-top:auto;flex-shrink:0;" x-text="'View ' + _doneCount + ' output' + (_doneCount !== 1 ? 's' : '')"></button>

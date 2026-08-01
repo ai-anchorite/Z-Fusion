@@ -1187,6 +1187,160 @@ app.post('/api/enhance', upload.single('image'), async (req, res) => {
   }
 });
 
+// Batch Auto-Tag API (WD14 Tagger — async, returns immediately)
+const TAGGEFB62_SCRIPT = path.resolve(__dirname, 'senzu_tagger.py');
+const TAGGEFB62_PYTHON = process.platform === 'win32'
+  ? path.join(APP_ROOT, 'env', 'Scripts', 'python.exe')
+  : path.join(APP_ROOT, 'env', 'bin', 'python');
+
+function processTagBatch(job, fingerprints, mediaType) {
+  const isVideo = mediaType === 'videos';
+  const db = isVideo ? videoDb : galleryDb;
+
+  const tagPaths = [];
+  const pathToFp = {};
+  for (const fp of fingerprints) {
+    if (isVideo) {
+      const vid = db.getVideo(fp);
+      if (vid && vid.thumbnail_path && fs.existsSync(vid.thumbnail_path)) {
+        tagPaths.push(vid.thumbnail_path);
+        pathToFp[vid.thumbnail_path] = fp;
+      }
+    } else {
+      // Prefer cached 480px WebP thumbnail (much faster, already resized)
+      const thumbPath = path.join(GALLERY_THUMB_DIR, `${fp}_w480.webp`);
+      if (fs.existsSync(thumbPath)) {
+        tagPaths.push(thumbPath);
+        pathToFp[thumbPath] = fp;
+        continue;
+      }
+      // Fall back to full image
+      const img = db.getImage(fp);
+      if (img && img.file_path && fs.existsSync(img.file_path)) {
+        tagPaths.push(img.file_path);
+        pathToFp[img.file_path] = fp;
+      }
+    }
+  }
+
+  if (tagPaths.length === 0) {
+    job.status = 'error';
+    job.error = isVideo ? 'No valid video thumbnails found' : 'No valid images found';
+    try { io.emit('job-error', { job_id: job.job_id, error: job.error }); } catch (_) {}
+    return;
+  }
+
+  const env = {
+    ...process.env,
+    SENZU_TAGGER_MODEL: job.params.model || 'wd-v1-4-moat-tagger-v2',
+    SENZU_TAGGER_THRESHOLD: String(job.params.threshold ?? 0.35),
+    SENZU_TAGGER_CHAR_THRESHOLD: String(job.params.character_threshold ?? 0.85),
+    SENZU_TAGGER_EXCLUDE: job.params.exclude_tags || ''
+  };
+
+  try { io.emit('job-progress', { job_id: job.job_id, current: 0, total: tagPaths.length, message: 'Loading WD14 model...' }); } catch (_) {}
+
+  const proc = require('child_process').spawn(TAGGEFB62_PYTHON, [TAGGEFB62_SCRIPT, ...tagPaths], { env, cwd: __dirname });
+  let stdout = '';
+  let stderr = '';
+  let lastMsg = '';
+
+  proc.stdout.on('data', (chunk) => { stdout += chunk; });
+  proc.stderr.on('data', (chunk) => {
+    stderr += chunk;
+    for (const line of chunk.toString().split('\n')) {
+      // Non-JSON lines are informational (model download, etc.) — forward as progress text
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.progress) {
+          lastMsg = parsed.progress.message || lastMsg;
+          try { io.emit('job-progress', { job_id: job.job_id, current: parsed.progress.current, total: parsed.progress.total, message: lastMsg }); } catch (_) {}
+        }
+      } catch (_) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          lastMsg = trimmed;
+          try { io.emit('job-progress', { job_id: job.job_id, current: 0, total: tagPaths.length, message: trimmed }); } catch (_) {}
+        }
+      }
+    }
+  });
+
+  proc.on('close', (code) => {
+    if (code !== 0) {
+      job.status = 'error';
+      job.error = `Tagger exited with code ${code}: ${stderr.slice(-200)}`;
+      try { io.emit('job-error', { job_id: job.job_id, error: job.error }); } catch (_) {}
+      return;
+    }
+
+    try {
+      const results = JSON.parse(stdout);
+      const taggedFps = [];
+      for (const r of results) {
+        const fp = pathToFp[r.path];
+        if (fp && r.tags && r.tags.length > 0) {
+          try { db.addTags([fp], r.tags); } catch (_) {}
+          taggedFps.push(fp);
+        }
+      }
+
+      const tagResults = taggedFps.map(fp => {
+        const item = isVideo ? db.getVideo(fp) : db.getImage(fp);
+        return { fingerprint: fp, tags: item ? item.tags || [] : [] };
+      });
+
+      const firstFp = taggedFps[0] || fingerprints[0];
+      const thumbUrl = isVideo
+        ? `/api/gallery/videos/thumbnail/${encodeURIComponent(firstFp)}?w=96`
+        : `/api/gallery/thumbnail/${encodeURIComponent(firstFp)}?w=96`;
+
+      job.status = 'done';
+      job.results = { tagged: taggedFps.length, total: results.length };
+      try { io.emit('job-completed', { job_id: job.job_id, type: 'auto_tag', tagged_fingerprints: taggedFps, tag_results: tagResults, thumb_url: thumbUrl }); } catch (_) {}
+      try { io.emit(isVideo ? 'video-tags-refresh' : 'gallery-tags-refresh', {}); } catch (_) {}
+    } catch (e) {
+      job.status = 'error';
+      job.error = `Failed to parse tagger output: ${e.message}`;
+      try { io.emit('job-error', { job_id: job.job_id, error: job.error }); } catch (_) {}
+    }
+  });
+
+  proc.on('error', (err) => {
+    console.error(`[AutoTag] Failed to start tagger: ${err.message}`);
+    job.status = 'error';
+    job.error = `Failed to start tagger: ${err.message}`;
+    try { io.emit('job-error', { job_id: job.job_id, error: job.error }); } catch (_) {}
+  });
+}
+
+app.post('/api/batch-tag', async (req, res) => {
+  try {
+    const { fingerprints, mediaType, model, threshold, character_threshold, exclude_tags } = req.body || {};
+    if (!fingerprints || !Array.isArray(fingerprints) || fingerprints.length === 0) {
+      return res.status(400).json({ error: 'Missing or empty fingerprints array' });
+    }
+
+    const jobId = `tag_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const job = {
+      job_id: jobId,
+      type: 'auto_tag',
+      status: 'processing',
+      created_at: Date.now(),
+      params: { model, threshold, character_threshold, exclude_tags }
+    };
+
+    try { io.emit('job-started', { job_id: jobId, type: 'auto_tag' }); } catch (_) {}
+
+    processTagBatch(job, fingerprints, mediaType || 'images');
+
+    res.json({ job_id: jobId, status: 'queued', count: fingerprints.length });
+  } catch (err) {
+    console.error("Batch tag error:", err);
+    res.status(500).json({ error: err.message || "Batch tag failed" });
+  }
+});
+
 // ============================================================
 // Gallery: SQLite index + metadata crawler + file watcher + Socket.IO
 // ============================================================

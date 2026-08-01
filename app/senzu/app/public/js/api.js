@@ -536,6 +536,19 @@ const api = {
       return res.json();
     },
 
+    async batchTag(fingerprints, opts = {}) {
+      const res = await fetch(`${API_BASE}/batch-tag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprints, mediaType: opts.mediaType || 'images', ...opts })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Batch tag failed');
+      }
+      return res.json();
+    },
+
     // --- Videos ---
     async videoSearch({ q = '', sort = 'btime', direction = -1, offset = 0, limit = 100 } = {}) {
       const params = new URLSearchParams({ q, sort, direction, offset, limit });

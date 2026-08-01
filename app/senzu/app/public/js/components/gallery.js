@@ -34,7 +34,7 @@ document.addEventListener('alpine:init', () => {
       cardWidth: 240,
       layout: 'grid',      // 'masonry' | 'grid'
       showMeta: true,
-      imageLimit: 100,
+      imageLimit: 1000,
       showBookmarks: true,
       confirmDelete: true,
       hidePanel: false,        // start viewer with info panel hidden
@@ -123,6 +123,9 @@ document.addEventListener('alpine:init', () => {
         this.socket.on('job-started', (job) => this._onJobStarted(job));
         this.socket.on('job-completed', (job) => this._onJobCompleted(job));
         this.socket.on('job-error', (data) => this._onJobError(data));
+        this.socket.on('job-progress', (data) => this._onJobProgress(data));
+        this.socket.on('gallery-tags-refresh', () => this.refreshTags());
+        this.socket.on('video-tags-refresh', () => { if (this.mediaType === 'videos') this.refreshTags(); });
         // Video-specific events
         this.socket.on('video-new', (video) => { if (this.mediaType === 'videos') this.onSocketNew(video); });
         this.socket.on('video-remove', (data) => { if (this.mediaType === 'videos') this.onSocketRemove(data.fingerprint); });
@@ -729,6 +732,58 @@ document.addEventListener('alpine:init', () => {
       if (grid) grid.querySelectorAll('.gallery-card.selected').forEach(c => c.classList.remove('selected'));
     },
 
+    selectAll() {
+      const grid = this.$refs.grid;
+      if (!grid) return;
+      const cards = grid.querySelectorAll('.gallery-card');
+      const allSelected = this.selectedFps.length === cards.length && cards.length > 0;
+      if (allSelected) {
+        this.clearSelection();
+        return;
+      }
+      this.selectedFps = [];
+      cards.forEach(c => {
+        const fp = c.getAttribute('data-fp');
+        if (fp) {
+          this.selectedFps.push(fp);
+          c.classList.add('selected');
+        }
+      });
+    },
+
+    async bulkAutoTag() {
+      if (!this.selectedFps.length) return;
+      const count = this.selectedFps.length;
+      this._taggingProgress = null;
+      this._showToast(`Auto-tagging ${count} ${count === 1 ? 'image' : 'images'}...`, { id: 'auto-tag', persistent: true });
+      try {
+        await api.gallery.batchTag(this.selectedFps.slice(), { mediaType: this.mediaType });
+      } catch (e) {
+        this._dismissToast('auto-tag');
+        this._taggingProgress = null;
+        alert('Auto-tag failed: ' + e.message);
+      }
+    },
+
+    async bulkRemoveAllTags() {
+      if (!this.selectedFps.length) return;
+      const allTags = new Set();
+      for (const fp of this.selectedFps) {
+        const it = this.items.find(x => x.fingerprint === fp);
+        if (it && it.tags) it.tags.forEach(t => allTags.add(t));
+      }
+      if (!allTags.size) return;
+      if (!confirm(`Remove all ${allTags.size} unique tag(s) from ${this.selectedFps.length} selected ${this.selectedFps.length === 1 ? 'image' : 'images'}?`)) return;
+      const removeFn = this.mediaType === 'videos' ? api.gallery.videoRemoveTags : api.gallery.removeTags;
+      await removeFn(this.selectedFps.slice(), [...allTags]);
+      await this.refreshTags();
+      for (const fp of this.selectedFps) {
+        const it = this.items.find(x => x.fingerprint === fp);
+        if (it) it.tags = [];
+        // No card refresh needed — tags aren't visible on gallery cards
+      }
+    },
+
     async bulkAddTag() {
       const label = this.mediaType === 'videos' ? 'video' : 'image';
       const tag = prompt(`Add tag to ${this.selectedFps.length} selected ${label}(s):`);
@@ -739,7 +794,7 @@ document.addEventListener('alpine:init', () => {
       for (const fp of this.selectedFps) {
         const it = this.items.find(x => x.fingerprint === fp);
         if (it && !it.tags.includes(tag.trim())) it.tags.push(tag.trim());
-        this.refreshCard(fp);
+        // No card refresh needed — tags aren't visible on gallery cards
       }
     },
 
@@ -1268,18 +1323,35 @@ document.addEventListener('alpine:init', () => {
       const existing = this.jobs.find(j => j.job_id === job.job_id);
       if (existing) {
         existing.status = 'done';
-        existing.output_url = job.output_url || null;
+        existing.output_url = job.output_url || job.thumb_url || null;
         existing.input_url = job.input_url || null;
+        existing.thumb_url = job.thumb_url || null;
         existing.completed_at = Date.now();
+        existing.tag_results = job.tag_results || null;
+
+        // Update in-memory tags for auto-tag jobs (no card DOM refresh needed)
+        if (job.type === 'auto_tag' && job.tag_results) {
+          const tagged = job.tag_results.length;
+          for (const tr of job.tag_results) {
+            const it = this.items.find(x => x.fingerprint === tr.fingerprint);
+            if (it) it.tags = tr.tags;
+          }
+          this.refreshTags();
+          this._taggingProgress = null;
+          this._updateToast('auto-tag', `Tagged ${tagged} ${tagged === 1 ? 'image' : 'images'}`);
+          setTimeout(() => this._dismissToast('auto-tag'), 2500);
+        }
       } else {
         this.jobs.unshift({
           job_id: job.job_id,
           type: job.type || 'unknown',
           status: 'done',
-          output_url: job.output_url || null,
+          output_url: job.output_url || job.thumb_url || null,
           input_url: job.input_url || null,
+          thumb_url: job.thumb_url || null,
           created_at: Date.now(),
           completed_at: Date.now(),
+          tag_results: job.tag_results || null,
         });
         if (this.jobs.length > 100) this.jobs.pop();
       }
@@ -1294,12 +1366,34 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    _onJobProgress(data) {
+      if (!data || !data.job_id) return;
+      const existing = this.jobs.find(j => j.job_id === data.job_id);
+      if (existing) {
+        existing._progress = { current: data.current, total: data.total };
+      }
+      if (data.message) {
+        this._updateToast('auto-tag', data.message);
+        this._taggingProgress = { text: data.message };
+      } else {
+        this._updateToast('auto-tag', `Tagging ${data.current}/${data.total}...`);
+        this._taggingProgress = { current: data.current, total: data.total };
+      }
+    },
+
     get _completedJobs() {
       return this.jobs.filter(j => j.status === 'done');
     },
 
     get _doneCount() {
       return this._completedJobs.length;
+    },
+
+    get _taggingProgressText() {
+      if (!this._taggingProgress) return null;
+      if (this._taggingProgress.text) return this._taggingProgress.text;
+      const p = this._taggingProgress;
+      return `Tagging ${p.current}/${p.total}...`;
     },
 
     get _folders() {
@@ -1613,7 +1707,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     outputTypeLabel(type) {
-      const map = { enhance: 'Enhance', generate: 'Generate', remove_bg: 'Remove BG', inpaint: 'Inpaint', outpaint: 'Outpaint' };
+      const map = { enhance: 'Enhance', generate: 'Generate', remove_bg: 'Remove BG', auto_tag: 'Auto-Tag', inpaint: 'Inpaint', outpaint: 'Outpaint' };
       return map[type] || type || 'Unknown';
     },
 
@@ -1791,18 +1885,41 @@ document.addEventListener('alpine:init', () => {
       }, 1200);
     },
 
-    _showToast(message, duration = 2500) {
-      const existing = document.querySelector('.gv-toast');
-      if (existing) existing.remove();
+    _showToast(message, opts = {}) {
+      const id = opts.id || null;
+      if (id) {
+        const existing = document.querySelector(`.gv-toast[data-toast-id="${id}"]`);
+        if (existing) existing.remove();
+      } else {
+        const existing = document.querySelector('.gv-toast:not([data-toast-id])');
+        if (existing) existing.remove();
+      }
       const toast = document.createElement('div');
       toast.className = 'gv-toast';
       toast.textContent = message;
+      if (id) toast.setAttribute('data-toast-id', id);
       document.body.appendChild(toast);
       requestAnimationFrame(() => toast.classList.add('gv-toast-show'));
-      setTimeout(() => {
+      if (!opts.persistent) {
+        const duration = opts.duration || 2500;
+        setTimeout(() => {
+          toast.classList.remove('gv-toast-show');
+          setTimeout(() => { toast.remove(); }, 350);
+        }, duration);
+      }
+    },
+
+    _updateToast(id, message) {
+      const toast = document.querySelector(`.gv-toast[data-toast-id="${id}"]`);
+      if (toast) toast.textContent = message;
+    },
+
+    _dismissToast(id) {
+      const toast = document.querySelector(`.gv-toast[data-toast-id="${id}"]`);
+      if (toast) {
         toast.classList.remove('gv-toast-show');
         setTimeout(() => { toast.remove(); }, 350);
-      }, duration);
+      }
     },
 
     viewerNav(dir) {

@@ -36,6 +36,7 @@ document.addEventListener('alpine:init', () => {
     // Before/After slider
     sliderPos: 50,
     isDraggingSlider: false,
+    isDraggingGenSlider: false,
     
     // Zoom and pan
     zoomLevel: 1,
@@ -149,6 +150,7 @@ document.addEventListener('alpine:init', () => {
     genOutput: null,
     genOutputs: [],
     genViewedIndex: 0,
+    genSliderPos: 50,
     genProcessing: false,
     genCancelRequested: false,
     lastGenSaved: false,
@@ -1322,6 +1324,27 @@ document.addEventListener('alpine:init', () => {
       return `clip-path: polygon(${pct}% 0, 100% 0, 100% 100%, ${pct}% 100%)`;
     },
 
+    // Generate tab slider (isolated from Enhancer sliderPos)
+    getGenSliderStyle() {
+      return `left: ${this.genSliderPos}%`;
+    },
+
+    getGenAfterClipStyle() {
+      const container = this.getVisibleContainer();
+      if (!container) return `clip-path: polygon(${this.genSliderPos}% 0, 100% 0, 100% 100%, ${this.genSliderPos}% 100%)`;
+      const W = container.getBoundingClientRect().width;
+      const vx = (this.genSliderPos / 100) * W;
+      const wx = (vx - W / 2) / this.zoomLevel - this.panX + W / 2;
+      const pct = (wx / W) * 100;
+      return `clip-path: polygon(${pct}% 0, 100% 0, 100% 100%, ${pct}% 100%)`;
+    },
+
+    startGenSliderDrag(e) {
+      this.isDraggingSlider = true;
+      this.isDraggingGenSlider = true;
+      this.updateSliderPos(e);
+    },
+
     startSliderDrag(e) {
       this.isDraggingSlider = true;
       this.updateSliderPos(e);
@@ -1329,6 +1352,7 @@ document.addEventListener('alpine:init', () => {
 
     stopSliderDrag() {
       this.isDraggingSlider = false;
+      this.isDraggingGenSlider = false;
     },
 
     dragSlider(e) {
@@ -1345,7 +1369,11 @@ document.addEventListener('alpine:init', () => {
       let pos = ((clientX - rect.left) / rect.width) * 100;
       if (pos < 0) pos = 0;
       if (pos > 100) pos = 100;
-      this.sliderPos = pos;
+      if (this.isDraggingGenSlider) {
+        this.genSliderPos = pos;
+      } else {
+        this.sliderPos = pos;
+      }
     },
     
     // App Settings
@@ -1722,7 +1750,7 @@ document.addEventListener('alpine:init', () => {
           this.genOutputs.push({ url: res.output, prompt: this.genParams.prompt, compare });
           this.genViewedIndex = this.genOutputs.length - 1;
           this.genOutput = res.output;
-          this.sliderPos = 50;
+          this.genSliderPos = 50;
         }
 
         const noun = this.genOutputs.length === 1 ? 'image' : 'images';
@@ -1758,7 +1786,7 @@ document.addEventListener('alpine:init', () => {
         this.genViewedIndex--;
         this.genOutput = this.genOutputs[this.genViewedIndex].url;
         this.resetZoom();
-        this.sliderPos = 50;
+        this.genSliderPos = 50;
       }
     },
 
@@ -1767,7 +1795,7 @@ document.addEventListener('alpine:init', () => {
         this.genViewedIndex++;
         this.genOutput = this.genOutputs[this.genViewedIndex].url;
         this.resetZoom();
-        this.sliderPos = 50;
+        this.genSliderPos = 50;
       }
     },
 

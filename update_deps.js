@@ -57,7 +57,8 @@ module.exports = {
           "uv pip install -r requirements.txt",
           "uv pip install gguf>=0.13.0 sentencepiece protobuf",
           "uv pip install einops omegaconf>=2.3.0 diffusers>=0.33.1 peft>=0.17.0 rotary_embedding_torch>=0.5.3 opencv-python matplotlib imageio-ffmpeg bitsandbytes>=0.42.0 compressed-tensors>=0.6.0",
-          "uv pip install numba colour-science rembg pixeloe transparent-background clip_interrogator>=0.6.0 lark opencv-python-headless"
+          "uv pip install numba colour-science rembg pixeloe transparent-background clip_interrogator>=0.6.0 lark opencv-python-headless",
+          "uv pip install onnxruntime" // wd14 tagger
         ]
       }
     },
