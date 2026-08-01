@@ -28,7 +28,7 @@ function inferPlaybackStrategy(filePath, meta = {}) {
   const isWebm = ext === '.webm' || /webm/.test(fn);
   const isOgg = ext === '.ogv' || /ogg/.test(fn);
 
-  if (isMp4 && ['h264', 'avc1', 'hevc', 'h265', 'av1'].includes(vc)) return 'direct';
+  if (isMp4 && ['h264', 'avc1', 'av1'].includes(vc)) return 'direct';
   if (isMov && ['h264', 'avc1'].includes(vc)) return 'direct';
   if (isWebm && ['vp8', 'vp9', 'av1'].includes(vc)) return 'direct';
   if (isOgg && ['theora'].includes(vc)) return 'direct';
@@ -114,6 +114,15 @@ async function scanFile(db, filePath, rootPath, thumbDir) {
       if (strategy !== existing.playback_strategy) {
         db.db.prepare('UPDATE videos SET playback_strategy = ? WHERE fingerprint = ?')
           .run(strategy, existing.fingerprint);
+      }
+      // Fix root_path drift — a file indexed under a parent folder won't
+      // match the folder-chip filter when scanned via its own connected folder.
+      if (existing.root_path !== rootPath) {
+        const dirName = path.dirname(filePath);
+        const relative = path.relative(rootPath, dirName);
+        const subfolder = (relative && relative !== '.') ? relative : null;
+        db.db.prepare('UPDATE videos SET root_path = ?, subfolder = ? WHERE fingerprint = ?')
+          .run(rootPath, subfolder, existing.fingerprint);
       }
       if (!existing.thumbnail_path) {
         const tp = await generateThumbnail(filePath, existing.fingerprint, thumbDir);

@@ -96,6 +96,13 @@ function createManager({ db, parser, io, staticRoot, watchPaths = [] }) {
           try { curStats = await fs.promises.stat(file); } catch (_) { continue; }
           if (curStats.mtimeMs !== existing.mtime) {
             await indexFile(db, parser, file, rootPath);
+          } else if (existing.root_path !== rootPath) {
+            // Fix root_path drift — file previously indexed under a parent folder
+            const dirName = path.dirname(file);
+            const relative = path.relative(rootPath, dirName);
+            const subfolder = (relative && relative !== '.') ? relative : null;
+            db.db.prepare('UPDATE images SET root_path = ?, subfolder = ? WHERE fingerprint = ?')
+              .run(rootPath, subfolder, existing.fingerprint);
           }
         }
       } catch (err) {

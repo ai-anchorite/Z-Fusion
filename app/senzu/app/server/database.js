@@ -226,6 +226,7 @@ class GalleryDatabase {
       ON CONFLICT(fingerprint) DO UPDATE SET
         file_path = excluded.file_path,
         filename = excluded.filename,
+        root_path = excluded.root_path,
         subfolder = excluded.subfolder,
         agent = COALESCE(excluded.agent, images.agent),
         prompt = COALESCE(excluded.prompt, images.prompt),

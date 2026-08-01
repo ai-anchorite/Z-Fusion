@@ -115,6 +115,7 @@ class VideoDatabase {
       ON CONFLICT(fingerprint) DO UPDATE SET
         file_path = excluded.file_path,
         filename = excluded.filename,
+        root_path = excluded.root_path,
         subfolder = excluded.subfolder,
         mtime = excluded.mtime,
         indexed_at = excluded.indexed_at,
