@@ -1238,28 +1238,22 @@ function processTagBatch(job, fingerprints, mediaType) {
     SENZU_TAGGER_EXCLUDE: job.params.exclude_tags || ''
   };
 
-  try { io.emit('job-progress', { job_id: job.job_id, current: 0, total: tagPaths.length, message: 'Loading WD14 model...' }); } catch (_) {}
-
   const proc = require('child_process').spawn(TAGGEFB62_PYTHON, [TAGGEFB62_SCRIPT, ...tagPaths], { env, cwd: __dirname });
   let stdout = '';
   let stderr = '';
-  let lastMsg = '';
 
   proc.stdout.on('data', (chunk) => { stdout += chunk; });
   proc.stderr.on('data', (chunk) => {
     stderr += chunk;
     for (const line of chunk.toString().split('\n')) {
-      // Non-JSON lines are informational (model download, etc.) — forward as progress text
       try {
         const parsed = JSON.parse(line);
         if (parsed.progress) {
-          lastMsg = parsed.progress.message || lastMsg;
-          try { io.emit('job-progress', { job_id: job.job_id, current: parsed.progress.current, total: parsed.progress.total, message: lastMsg }); } catch (_) {}
+          try { io.emit('job-progress', { job_id: job.job_id, current: parsed.progress.current, total: parsed.progress.total }); } catch (_) {}
         }
       } catch (_) {
         const trimmed = line.trim();
         if (trimmed) {
-          lastMsg = trimmed;
           try { io.emit('job-progress', { job_id: job.job_id, current: 0, total: tagPaths.length, message: trimmed }); } catch (_) {}
         }
       }
