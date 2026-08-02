@@ -26,6 +26,8 @@ from modules.model_ui import (
     setup_model_handlers,
     get_model_inputs,
     validate_models,
+    scan_models,
+    ALL_MODEL_EXTENSIONS,
 )
 
 from modules.joycaption_ui import create_joycaption_ui, setup_joycaption_handlers
@@ -644,14 +646,17 @@ def create_tab(services: "SharedServices") -> gr.TabItem:
     samplers = comfyui_options["samplers"]
     schedulers = comfyui_options["schedulers"]
     
-    # Determine if setup banner should be shown (model_ui will handle detection)
-    # For now, we'll let the model accordion open state indicate setup needed
-    show_setup_banner = False  # model_ui handles this internally
+    # Determine if setup banner should be shown
+    # Check if any models exist in the standard directories
+    diff_models = scan_models(services.models_dir / "diffusion_models", ALL_MODEL_EXTENSIONS)
+    te_models = scan_models(services.models_dir / "text_encoders", ALL_MODEL_EXTENSIONS)
+    vae_models = scan_models(services.models_dir / "vae", ALL_MODEL_EXTENSIONS)
+    show_setup_banner = not (diff_models or te_models or vae_models)
     
     with gr.TabItem(TAB_LABEL, id=TAB_ID) as tab:
         # Setup banner - shown when no models installed
         setup_banner = gr.Markdown(
-            "⚠️ **Setup Required** — Select a model preset and download models from the **🔧 Models** section.",
+            "⚠️ **Setup Required** — Download all the required Z-Image models from the **🔧 Models** section. <a href='#models-section'>Click here to get started!</a>",
             visible=show_setup_banner,
             elem_classes=["setup-banner"]
         )

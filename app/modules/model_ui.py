@@ -595,7 +595,7 @@ def validate_models(unet_name: str, clip_name: str, vae_name: str,
         missing.append(f"VAE: {vae_name}")
     
     if missing:
-        return False, "Missing models:\n• " + "\n• ".join(missing)
+        return False, "Missing models:\n• " + "\n• ".join(missing) + "\n\n📦 Download models in the 🔧 Models section → 📦 Download Models (bottom of the accordion)."
     return True, ""
 
 
@@ -893,7 +893,7 @@ def create_model_ui(
     # Check if any models are missing
     needs_setup = not (diff_models and te_models and vae_models)
     
-    with gr.Accordion(accordion_label, open=accordion_open or needs_setup):
+    with gr.Accordion(accordion_label, open=accordion_open or needs_setup, elem_id="models-section"):
         gr.Markdown("*Configure and save model presets for quick switching.*")
         
         # If no external quick_preset provided, create internal one
