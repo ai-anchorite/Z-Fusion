@@ -12,7 +12,7 @@ module.exports = {
           "git -C comfyui pull || git clone https://github.com/comfyanonymous/ComfyUI.git comfyui",
           "git -C comfyui/custom_nodes/ComfyUI-Manager pull || git clone https://github.com/ltdrdata/ComfyUI-Manager.git comfyui/custom_nodes/ComfyUI-Manager",
           "git -C comfyui/custom_nodes/ComfyUI-GGUF pull || git clone https://github.com/city96/ComfyUI-GGUF.git comfyui/custom_nodes/ComfyUI-GGUF",
-          "git -C comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler pull || git clone https://github.com/SeedVR2/ComfyUI-SeedVR2_VideoUpscaler.git comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler",
+          "git -C comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler pull || git clone https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler",
           "git -C comfyui/custom_nodes/ComfyUI-VideoHelperSuite pull || git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git comfyui/custom_nodes/ComfyUI-VideoHelperSuite",
           "git -C comfyui/custom_nodes/SeedVarianceEnhancer pull || git clone https://github.com/ChangeTheConstants/SeedVarianceEnhancer.git comfyui/custom_nodes/SeedVarianceEnhancer",
           "git -C comfyui/custom_nodes/ComfyUI-JoyCaption pull || git clone https://github.com/1038lab/ComfyUI-JoyCaption.git comfyui/custom_nodes/ComfyUI-JoyCaption",
@@ -57,7 +57,7 @@ module.exports = {
           "uv pip install -r requirements.txt",
           "uv pip install gguf>=0.13.0 sentencepiece protobuf",
           "uv pip install einops omegaconf>=2.3.0 diffusers>=0.33.1 peft>=0.17.0 rotary_embedding_torch>=0.5.3 opencv-python matplotlib imageio-ffmpeg bitsandbytes>=0.42.0 compressed-tensors>=0.6.0",
-          "uv pip install numba colour-science rembg pixeloe transparent-background clip_interrogator>=0.6.0 lark opencv-python-headless",
+          "uv pip install numba colour-science color-matcher mss rembg pixeloe transparent-background clip_interrogator>=0.6.0 lark opencv-python-headless",
           "uv pip install onnxruntime" // wd14 tagger
         ]
       }
