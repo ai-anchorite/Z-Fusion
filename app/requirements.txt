@@ -5,7 +5,7 @@ httpx>=0.24.0
 
 # LLM Prompt Assistant dependencies
 transformers==4.57.1
-av
+av==17.1.0
 qwen-vl-utils==0.0.14
 accelerate
 
