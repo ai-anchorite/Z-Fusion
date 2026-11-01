@@ -1,10 +1,10 @@
 module.exports = {
-  version: "3.7",
+  version: "8.0",
   title: "Z-Fusion",
   description: "Z-Image, Flux2 Klein, & SeedVR2 with a Gradio UI. Uses a built-in ComfyUI backend for speed and efficiency! [8GB+VRAM, 16GB+ RAM]",
   icon: "icon.png",
   menu: async (kernel, info) => {
-    let installed = info.exists("app/env")
+    let installed = info.exists("app/venv")
     let running = {
       install: info.running("install.js"),
       start: info.running("start.js"),

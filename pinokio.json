@@ -1,0 +1,5 @@
+{
+  "title": "Z-Fusion",
+  "description": "Generate images with Z-Image, Flux2 Klein, Krea2. Upscale images and videos with SeedVR2 in a Gradio UI. Uses a built-in ComfyUI backend for speed and efficiency! [8GB+VRAM, 16GB+ RAM] (Python 3.11 version, also compatible with MacOS 27)",
+  "icon": "icon.png"
+}
