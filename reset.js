@@ -11,7 +11,14 @@ module.exports = {
     {
       method: "fs.rm",
       params: {
-        path: "app/env"
+        path: "app/venv"
+      }
+    },
+    // Remove CameraPromptsGenerator
+    {
+      method: "fs.rm",
+      params: {
+        path: "app/CameraPromptsGenerator"
       }
     }
   ]
