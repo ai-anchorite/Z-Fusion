@@ -23,7 +23,7 @@ module.exports = {
       "id": "start_comfyui",
       method: "shell.run",
       params: {
-        venv: "env",
+        venv: "venv",
         env: {
           PYTORCH_ENABLE_MPS_FALLBACK: "1",
           TOKENIZERS_PARALLELISM: "false"
@@ -82,7 +82,7 @@ module.exports = {
       "id": "start_gradio",
       method: "shell.run",
       params: {
-        venv: "env",
+        venv: "venv",
         path: "app",
         message: [
           "python app.py"
